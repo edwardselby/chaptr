@@ -220,20 +220,12 @@ class StoryUpdate(BaseModel):
             raise ValueError('end_date must be after start_date')
         return self
 
-    @model_validator(mode='after')
-    def validate_funding(self):
-        """Validate funding_amount required for FIXED/PROJECTED_PLUS modes if funding_mode provided."""
-        if self.funding_mode in [FundingMode.FIXED, FundingMode.PROJECTED_PLUS]:
-            if self.funding_amount is None:
-                raise ValueError(f'funding_amount required for {self.funding_mode.value} mode')
-        return self
-
-    @model_validator(mode='after')
-    def validate_goal(self):
-        """Validate goal_amount required when goal_type is set."""
-        if self.goal_type and self.goal_type != GoalType.NONE and self.goal_amount is None:
-            raise ValueError('goal_amount required when goal_type is set')
-        return self
+    # NOTE: Removed validate_funding and validate_goal from StoryUpdate
+    # These validators cannot work correctly in partial update context where
+    # only one field (e.g., funding_mode) might be provided without its related
+    # field (e.g., funding_amount). The relationship must be validated at the
+    # API layer after merging update data with existing record.
+    # See: StoryBase validators for creation-time validation
 
 
 class Story(StoryBase):
@@ -282,6 +274,13 @@ class EventBase(BaseModel):
         if not v.isupper() or len(v) != 3:
             raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
         return v
+
+    @model_validator(mode='after')
+    def validate_baseline_story_exclusivity(self):
+        """Ensure baseline events and story events are mutually exclusive."""
+        if self.is_baseline and self.story_id is not None:
+            raise ValueError('Baseline events cannot belong to a story (story_id must be None when is_baseline=True)')
+        return self
 
 
 class EventCreate(EventBase):
@@ -518,12 +517,19 @@ class SettingsBase(BaseModel):
     @classmethod
     def validate_rate_precision(cls, v: dict[str, Decimal]) -> dict[str, Decimal]:
         """
-        Validate rate values for precision and positivity.
+        Validate rate values for precision, positivity, and currency code format.
 
-        Enforces max_digits=19, decimal_places=8 for consistency with other Decimal fields.
+        Enforces:
+        - Currency codes must be 3 uppercase letters
+        - Rates must be positive
+        - max_digits=19, decimal_places=8 for consistency with other Decimal fields
         """
         if v:
             for currency, rate in v.items():
+                # Validate currency code format
+                if not currency.isupper() or len(currency) != 3:
+                    raise ValueError(f'Currency code {currency} must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+
                 # Check positive value
                 if rate <= 0:
                     raise ValueError(f'Rate for {currency} must be positive, got {rate}')
@@ -561,12 +567,19 @@ class SettingsUpdate(BaseModel):
     @classmethod
     def validate_rate_precision(cls, v: Optional[dict[str, Decimal]]) -> Optional[dict[str, Decimal]]:
         """
-        Validate rate values for precision and positivity if rates provided.
+        Validate rate values for precision, positivity, and currency code format if rates provided.
 
-        Enforces max_digits=19, decimal_places=8 for consistency with other Decimal fields.
+        Enforces:
+        - Currency codes must be 3 uppercase letters
+        - Rates must be positive
+        - max_digits=19, decimal_places=8 for consistency with other Decimal fields
         """
         if v:
             for currency, rate in v.items():
+                # Validate currency code format
+                if not currency.isupper() or len(currency) != 3:
+                    raise ValueError(f'Currency code {currency} must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+
                 # Check positive value
                 if rate <= 0:
                     raise ValueError(f'Rate for {currency} must be positive, got {rate}')

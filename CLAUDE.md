@@ -30,6 +30,42 @@
 
 This project uses **Taskwarrior** for comprehensive task tracking across all development phases.
 
+### ⚠️ CRITICAL: Task Status Workflow
+
+**MANDATORY WORKFLOW - NO EXCEPTIONS:**
+
+When working on tasks, you MUST follow this exact sequence:
+
+1. **SELECT** task(s) to work on: `task project:chaptr.backend-api next`
+2. **START** the task BEFORE beginning work: `task <id> start`
+3. **IMPLEMENT** the task (code, test, document)
+4. **COMPLETE** the task when finished: `task <id> done`
+
+**❌ NEVER skip the START step** - The user relies on task status in their graphical UI to track progress.
+
+**Workflow Diagram:**
+```
+┌─────────────┐    task <id> start    ┌─────────────┐    Implement     ┌─────────────┐    task <id> done    ┌─────────────┐
+│   Pending   │ ──────────────────────>│  Started    │ ───────────────>│ In Progress │ ──────────────────>│  Completed  │
+│  (status)   │   REQUIRED FIRST STEP  │  (visible   │  (working on    │  (testing   │   FINAL STEP        │  (done)     │
+└─────────────┘                        │   in UI)    │     code)       │   & docs)   │                     └─────────────┘
+                                       └─────────────┘                  └─────────────┘
+```
+
+**Example:**
+```bash
+# ✅ CORRECT workflow
+task project:chaptr.backend-api next    # Find next task (e.g., task 5)
+task 5 start                            # MUST mark as started FIRST
+# ... implement the task ...
+task 5 done                             # Mark complete when finished
+
+# ❌ WRONG workflow (DO NOT DO THIS)
+task project:chaptr.backend-api next    # Find task
+# ... implement without starting ...
+task 5 done                             # Skipped the start step!
+```
+
 ### Task Structure
 
 ```
@@ -75,7 +111,70 @@ task project:chaptr summary
 
 # Count tasks in a phase
 task project:chaptr.backend-api count
+
+# Add annotation to track implementation notes
+task <id> annotate "Note text here"
+
+# View task details including annotations
+task <id> info
+
+# Remove specific annotation
+task <id> denotate "Text to match"
 ```
+
+### 📝 Task Annotations - Tracking Implementation Notes
+
+**Use annotations to track adjustments, discoveries, and implementation notes as you work.**
+
+Annotations are timestamped notes attached to tasks that help track:
+- Implementation decisions made during work
+- Issues discovered that need addressing
+- Dependencies or blockers encountered
+- Adjustments needed to the original plan
+- Technical debt or follow-up items
+
+**Adding Annotations:**
+```bash
+# Add a note about an implementation decision
+task 5 annotate "Using Pydantic validators instead of manual validation"
+
+# Track a discovered issue
+task 5 annotate "TODO: Add index on account_id field for performance"
+
+# Note a dependency
+task 5 annotate "Blocked: Waiting for MongoDB schema design in task 4"
+
+# Multiple annotations can be added to track progress
+task 5 annotate "Added basic CRUD endpoints"
+task 5 annotate "Still need to implement cascade delete logic"
+```
+
+**Reading Annotations:**
+```bash
+# View full task details with all annotations
+task 5 info
+
+# Annotations appear under the description with timestamps:
+# Description: Implement account endpoints
+#               2025-12-19 10:30:00 Using Pydantic validators
+#               2025-12-19 11:45:00 TODO: Add index on account_id
+```
+
+**Removing Annotations:**
+```bash
+# Remove a specific annotation by matching text
+task 5 denotate "Blocked: Waiting"
+
+# Or remove by partial match
+task 5 denotate "TODO"
+```
+
+**Best Practices:**
+- **Annotate during work** - Add notes as you discover issues or make decisions
+- **Be specific** - Include enough detail to understand the note later
+- **Use prefixes** - `TODO:`, `BLOCKED:`, `DECISION:`, `BUG:` for clarity
+- **Read before starting** - Check `task <id> info` for existing annotations before starting work
+- **Clean up when done** - Remove obsolete annotations when completing tasks
 
 ### Task Tags
 
@@ -302,13 +401,148 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 
 ### For Development Sessions
 
+**⚠️ ALWAYS follow this workflow - NO EXCEPTIONS:**
+
 1. **Check task status**: `task project:chaptr summary`
 2. **Review current phase**: Check which phase you're working on
 3. **Pick next task**: `task project:chaptr.backend-api next`
-4. **Reference docs**: Open relevant spec sections
-5. **Start task**: `task <id> start`
-6. **Implement & test**: Follow spec and plan
-7. **Complete task**: `task <id> done`
+4. **Read task details**: `task <id> info` ← Check for existing annotations/notes
+5. **Reference docs**: Open relevant spec sections
+6. **🚨 START TASK FIRST**: `task <id> start` ← **MANDATORY BEFORE ANY WORK**
+7. **Implement & test**: Follow spec and plan
+   - **Add annotations** as you work: `task <id> annotate "Implementation note"`
+   - Track decisions, issues, TODOs discovered during implementation
+8. **Complete task**: `task <id> done`
+9. **After PR creation**: Check for review feedback (see PR Review Workflow below)
+
+**CRITICAL REMINDERS:**
+- Step 6 is NOT optional. You MUST run `task <id> start` before beginning implementation. This updates the user's graphical UI to show the task as "in progress".
+- Step 7: Use annotations liberally to track implementation adjustments, decisions, and follow-up items discovered during work.
+- Step 9: After creating a PR, another agent may add review comments. Always check and address feedback.
+
+### Pull Request Review Workflow
+
+**After creating a pull request, another agent reviews your code and adds detailed feedback as PR comments. You MUST check for and address this feedback.**
+
+#### Finding the Current PR
+
+```bash
+# Get PR number for current branch
+gh pr view --json number,title
+
+# Example output:
+# {"number":4,"title":"Feature/phase1.3 pydantic models"}
+```
+
+#### Viewing PR Review Comments
+
+```bash
+# View complete PR details including comments and reviews
+gh pr view --json title,body,reviews,comments
+
+# Or view in readable format
+gh pr view
+
+# For specific PR number
+gh pr view 4 --json title,body,reviews,comments
+```
+
+#### When to Check PR Comments
+
+**ALWAYS check for PR comments in these situations:**
+1. **After creating a PR** - Wait 2-5 minutes for automated review agent to comment
+2. **When user mentions PR feedback** - If user says "address the PR feedback"
+3. **Before merging** - Always review comments before merge
+4. **During task work** - If working on PR-related tasks
+
+#### Understanding PR Review Comments
+
+Review comments typically include:
+
+**Priority Levels:**
+- 🚨 **CRITICAL** - Must fix before merge (security, bugs, breaking changes)
+- ⚠️ **HIGH** - Should fix before merge (spec violations, major issues)
+- 🔍 **MEDIUM** - Should fix soon (validation gaps, missing patterns)
+- 💡 **LOW** - Consider for future (suggestions, enhancements)
+
+**Comment Structure:**
+```json
+{
+  "comments": [
+    {
+      "author": {"login": "claude"},
+      "body": "## Pull Request Review...\n### Issues Found\n#### 1. Field Name Inconsistency...",
+      "createdAt": "2025-12-19T19:26:21Z"
+    }
+  ]
+}
+```
+
+#### Addressing PR Feedback
+
+**Workflow for handling review comments:**
+
+1. **Read the full review**:
+   ```bash
+   gh pr view --json comments | jq -r '.comments[].body'
+   ```
+
+2. **Identify action items**:
+   - Note all CRITICAL and HIGH priority issues
+   - List MEDIUM priority issues for follow-up
+   - Consider LOW priority suggestions
+
+3. **Create task annotations** for each issue:
+   ```bash
+   task <current_task_id> annotate "PR FEEDBACK: Fix date vs event_date field name (HIGH)"
+   task <current_task_id> annotate "PR FEEDBACK: Add StoryUpdate validators (MEDIUM)"
+   ```
+
+4. **Fix issues** based on priority:
+   - Fix CRITICAL/HIGH issues immediately
+   - Create new tasks for MEDIUM issues if needed
+   - Note LOW suggestions in task annotations
+
+5. **Commit fixes** with clear reference to PR feedback:
+   ```bash
+   git add -A
+   git commit -m "Fix: Address PR #4 feedback - resolve date field inconsistency"
+   git push
+   ```
+
+6. **Verify fixes** by re-reading PR comments and confirming all HIGH/CRITICAL items addressed
+
+#### Example: Reading and Acting on PR Feedback
+
+```bash
+# Step 1: Check PR for current branch
+gh pr view --json number,title
+# Output: {"number":4,"title":"Feature/phase1.3 pydantic models"}
+
+# Step 2: View detailed comments
+gh pr view --json comments | jq -r '.comments[].body' | head -100
+
+# Step 3: Identify issues from review
+# Example found: "HIGH: Field Name Inconsistency: date vs event_date"
+
+# Step 4: Annotate current task
+task 12 annotate "PR #4 FEEDBACK (HIGH): Change event_date to date per spec"
+
+# Step 5: Implement fix
+# ... make code changes ...
+
+# Step 6: Commit with PR reference
+git add api/models.py
+git commit -m "Fix: Rename event_date to date field per spec (PR #4 feedback)"
+git push
+```
+
+#### Tips for Efficient PR Review Processing
+
+- **Parse JSON with jq** for easier reading: `gh pr view --json comments | jq`
+- **Search for priority keywords**: Look for "CRITICAL", "HIGH", "MEDIUM" in comments
+- **Create GitHub issues** for MEDIUM/LOW items if not addressing immediately
+- **Re-request review** after fixes: The review agent may re-check your changes
 
 ### Key Principles
 
@@ -317,6 +551,7 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 - **Reference the spec** - Don't guess at business logic
 - **Follow the mockup** - UI should match the visual design
 - **Keep it simple** - Avoid over-engineering beyond spec requirements
+- **Address PR feedback** - Always check for and fix review comments before merge
 
 ---
 
