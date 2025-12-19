@@ -1,135 +1,273 @@
 """
 Event management endpoints.
 
-Provides CRUD operations for financial events (income, expenses).
-
-TODO Phase 1.4: Implement full CRUD logic
-See spec: Core Concepts > Events
+Provides CRUD operations for financial events (income, expenses) with
+account resolution, rate locking, and same-day ordering.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Query
+from uuid import UUID
+from typing import Optional, Annotated
+from datetime import date
+
+from api.config import MongoDB
+from api.models import Event, EventCreate, EventUpdate
+from api.repositories.events import EventRepository
 
 router = APIRouter()
 
 
-@router.get("/events")
-async def list_events():
+def get_event_repo() -> EventRepository:
     """
-    List events with optional filtering.
+    Dependency injection for EventRepository.
 
-    TODO Phase 1.4:
-    - Query MongoDB events collection
-    - Support query params: story_id, account_id, date_from, date_to
-    - Apply same-day ordering: date ASC, amount DESC, created_at ASC
-    - Return array of Event models
-
-    Query Parameters:
-        story_id: Filter by story (optional)
-        account_id: Filter by account (optional)
-        date_from: Start date filter (optional)
-        date_to: End date filter (optional)
-
-    Returns:
-        list: Array of event objects
+    :return: Initialized EventRepository
+    :rtype: EventRepository
     """
-    return []
+    db = MongoDB.get_database()
+    return EventRepository(db)
 
 
-@router.get("/events/{id}")
-async def get_event(id: str):
+@router.get("/events", response_model=list[Event])
+async def list_events(
+    story_id: Annotated[Optional[UUID], Query(
+        description="Filter by story UUID"
+    )] = None,
+    account_id: Annotated[Optional[UUID], Query(
+        description="Filter by account UUID"
+    )] = None,
+    date_from: Annotated[Optional[date], Query(
+        description="Filter events from this date (inclusive)"
+    )] = None,
+    date_to: Annotated[Optional[date], Query(
+        description="Filter events to this date (inclusive)"
+    )] = None,
+    skip: Annotated[int, Query(
+        description="Number of records to skip (pagination)",
+        ge=0
+    )] = 0,
+    limit: Annotated[int, Query(
+        description="Maximum records to return",
+        ge=1,
+        le=1000
+    )] = 100,
+    repo: EventRepository = Depends(get_event_repo)
+):
+    """
+    List events with filtering and same-day ordering.
+
+    Events are returned with critical ordering for balance projections:
+    - event_date ASC (chronological)
+    - amount DESC (income first - positive amounts before negative)
+    - created_at ASC (creation order)
+
+    This ordering minimizes balance dips by processing income before expenses
+    on the same day.
+
+    :param story_id: Filter by story UUID
+    :type story_id: Optional[UUID]
+    :param account_id: Filter by account UUID
+    :type account_id: Optional[UUID]
+    :param date_from: Start date (inclusive)
+    :type date_from: Optional[date]
+    :param date_to: End date (inclusive)
+    :type date_to: Optional[date]
+    :param skip: Records to skip (pagination)
+    :type skip: int
+    :param limit: Max records to return
+    :type limit: int
+    :param repo: Injected EventRepository
+    :type repo: EventRepository
+    :return: List of events
+    :rtype: list[Event]
+
+    :Example:
+
+    ```bash
+    # List all events
+    curl http://localhost:8000/api/events
+
+    # List events for specific story
+    curl "http://localhost:8000/api/events?story_id={story-id}"
+
+    # List events for account in date range
+    curl "http://localhost:8000/api/events?account_id={account-id}&date_from=2025-01-01&date_to=2025-12-31"
+    ```
+    """
+    return await repo.list_with_ordering(
+        story_id=story_id,
+        account_id=account_id,
+        date_from=date_from,
+        date_to=date_to,
+        skip=skip,
+        limit=limit
+    )
+
+
+@router.get("/events/{event_id}", response_model=Event)
+async def get_event(
+    event_id: UUID,
+    repo: EventRepository = Depends(get_event_repo)
+):
     """
     Get single event by ID.
 
-    TODO Phase 1.4:
-    - Query MongoDB by id
-    - Return 404 if not found
-    - Return Event model
+    :param event_id: Event UUID
+    :type event_id: UUID
+    :param repo: Injected EventRepository
+    :type repo: EventRepository
+    :return: Event details
+    :rtype: Event
+    :raises ResourceNotFoundError: If event not found (404)
 
-    Args:
-        id: Event UUID
+    :Example:
 
-    Returns:
-        dict: Event object
+    ```bash
+    curl http://localhost:8000/api/events/{event-id}
+    ```
     """
-    raise HTTPException(status_code=404, detail="Event not found")
+    return await repo.get(event_id)
 
 
-@router.post("/events")
-async def create_event():
+@router.post("/events", response_model=Event, status_code=201)
+async def create_event(
+    data: EventCreate,
+    story_id: Annotated[Optional[UUID], Query(
+        description="Story UUID this event belongs to (null = baseline)"
+    )] = None,
+    repo: EventRepository = Depends(get_event_repo)
+):
     """
-    Create new event with account resolution.
+    Create new event with account resolution and rate locking.
 
-    TODO Phase 1.4:
-    - Validate EventCreate model
-    - Resolve account_id via hierarchy (see spec)
-    - Lock rate_to_base from current settings rates
-    - Set created_by from auth token
-    - Insert into MongoDB
-    - Return created Event
+    Critical Business Rules:
+    - Account resolution uses 3-level hierarchy:
+      1. User explicit account_id → use it (verify exists and not archived)
+      2. Story's default_account_id → use it
+      3. Global default account (is_default=true) → use it (fallback)
+      4. No account → ERROR
+    - Currency rate is locked from current settings (immutable unless event edited)
+    - Resolved account_id is stored permanently
 
-    Account Resolution Hierarchy:
-    1. Event's explicit account_id → use it
-    2. Story's default_account_id → use it
-    3. Global default account → fallback
+    :param data: Event creation data
+    :type data: EventCreate
+    :param story_id: Story UUID (null = baseline event)
+    :type story_id: Optional[UUID]
+    :param repo: Injected EventRepository
+    :type repo: EventRepository
+    :return: Created event
+    :rtype: Event
+    :raises ValidationError: If no account could be resolved (422)
+    :raises ValidationError: If currency rate not found (422)
 
-    Business Rules:
-    - account_id is REQUIRED (resolved at creation, stored permanently)
-    - rate_to_base locked at creation from settings
-    - currency must be 3-char ISO code
-    - amount can be positive (income) or negative (expense)
+    :Example:
 
-    See spec: Events > Account Resolution at Creation
+    ```bash
+    # Create baseline event (no story_id)
+    curl -X POST http://localhost:8000/api/events \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "event_date": "2025-01-15",
+        "description": "Salary",
+        "amount": 3000,
+        "currency": "GBP",
+        "is_baseline": true
+      }'
 
-    Returns:
-        dict: Created event object
+    # Create event in story with explicit account
+    curl -X POST "http://localhost:8000/api/events?story_id={story-id}" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "event_date": "2025-06-05",
+        "description": "Hotel deposit",
+        "amount": -500,
+        "currency": "CAD",
+        "account_id": "{account-id}"
+      }'
+
+    # Create event in story (uses story default account)
+    curl -X POST "http://localhost:8000/api/events?story_id={story-id}" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "event_date": "2025-06-10",
+        "description": "Car rental",
+        "amount": -320,
+        "currency": "CAD"
+      }'
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    return await repo.create(data, story_id=story_id)
 
 
-@router.put("/events/{id}")
-async def update_event(id: str):
+@router.put("/events/{event_id}", response_model=Event)
+async def update_event(
+    event_id: UUID,
+    data: EventUpdate,
+    repo: EventRepository = Depends(get_event_repo)
+):
     """
     Update existing event.
 
-    TODO Phase 1.4:
-    - Validate EventUpdate model
-    - Check if event exists
-    - Prompt for rate_to_base update (keep existing or use current)
-    - Update in MongoDB
-    - Trigger snapshot invalidation if date changed
-    - Return updated Event
+    Supports partial updates - only provided fields are updated.
 
     Business Rules:
+    - Cannot edit is_auto_adjustment events (managed by reconciliation system)
+    - If currency changed, rate_to_base can be optionally updated
     - Past events CAN be edited (users may need to correct mistakes)
-    - Editing triggers recalculation of all subsequent balances
-    - Cannot modify is_auto_adjustment events directly
-    - If currency changed, prompt to update rate_to_base
 
-    Args:
-        id: Event UUID
+    :param event_id: Event UUID
+    :type event_id: UUID
+    :param data: Update data (partial)
+    :type data: EventUpdate
+    :param repo: Injected EventRepository
+    :type repo: EventRepository
+    :return: Updated event
+    :rtype: Event
+    :raises ResourceNotFoundError: If event not found (404)
+    :raises ResourceConflictError: If trying to edit auto-adjustment event (409)
 
-    Returns:
-        dict: Updated event object
+    :Example:
+
+    ```bash
+    # Update event amount
+    curl -X PUT http://localhost:8000/api/events/{event-id} \\
+      -H "Content-Type: application/json" \\
+      -d '{"amount": -350}'
+
+    # Update event date
+    curl -X PUT http://localhost:8000/api/events/{event-id} \\
+      -H "Content-Type: application/json" \\
+      -d '{"event_date": "2025-06-12"}'
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    return await repo.update(event_id, data)
 
 
-@router.delete("/events/{id}")
-async def delete_event(id: str):
+@router.delete("/events/{event_id}", status_code=204)
+async def delete_event(
+    event_id: UUID,
+    repo: EventRepository = Depends(get_event_repo)
+):
     """
-    Delete event.
+    Delete event (hard delete).
 
-    TODO Phase 1.4:
-    - Check if event exists
-    - Prevent deletion of is_auto_adjustment events
-    - Delete from MongoDB (hard delete)
-    - Trigger snapshot invalidation
-    - Return success status
+    Business Rules:
+    - Cannot delete is_auto_adjustment events (managed by reconciliation system)
+    - Permanent deletion
 
-    Args:
-        id: Event UUID
+    :param event_id: Event UUID
+    :type event_id: UUID
+    :param repo: Injected EventRepository
+    :type repo: EventRepository
+    :return: No content (204)
+    :raises ResourceNotFoundError: If event not found (404)
+    :raises ResourceConflictError: If trying to delete auto-adjustment event (409)
 
-    Returns:
-        dict: Success message
+    :Example:
+
+    ```bash
+    curl -X DELETE http://localhost:8000/api/events/{event-id}
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    await repo.delete(event_id)
+    return None

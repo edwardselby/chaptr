@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-275: PUT /api/stories/{id} with merge-then-validate pattern for cross-field validation
 - DELETE /api/stories/{id} with CASCADE delete to events (destructive, permanent)
 - StoryRepository with merge-then-validate for partial updates and cascade delete
+- GET /api/events endpoint with filtering (story_id, account_id, date_from, date_to) and same-day ordering
+- GET /api/events/{id} endpoint
+- POST /api/events with 3-level account resolution hierarchy and currency rate locking
+- PUT /api/events/{id} with auto-adjustment protection
+- DELETE /api/events/{id} with auto-adjustment protection
+- EventRepository with account resolution, rate locking, and same-day ordering (date ASC, amount DESC, created_at ASC)
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
