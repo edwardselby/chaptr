@@ -216,6 +216,88 @@ Follow the **back-to-front** approach outlined in the implementation plan:
 
 ---
 
+## Changelog Standards
+
+### Format
+
+This project follows a **concise, ticket-based changelog format** to prevent excessive growth while maintaining clear release history.
+
+**File:** `CHANGELOG.md`
+
+**Structure:**
+```markdown
+# Changelog
+
+## [Unreleased]
+
+### Added
+- Description of addition (Task #XXX)
+
+### Changed
+- Description of change (Task #XXX)
+
+### Fixed
+- Description of fix (Task #XXX)
+
+### Removed
+- Description of removal (Task #XXX)
+
+## [X.Y.Z] - YYYY-MM-DD
+
+### Added
+- One line per modification (Task #XXX)
+```
+
+**Rules:**
+1. **One line per modification** - Keep entries brief and focused
+2. **Task number prefix** - Start each line with project key and task ID: `CPTR-1:`
+3. **Use categories** - Only Added, Changed, Fixed, Removed
+4. **Version format** - Semantic versioning: MAJOR.MINOR.PATCH
+5. **Date format** - ISO 8601: YYYY-MM-DD
+6. **Group related tasks** - Multiple task IDs comma-separated: `CPTR-3, CPTR-4:`
+7. **Unreleased work** - All unreleased changes go under `[Unreleased]` section until release
+
+**Project Key:** `CPTR` (CHAPTR)
+
+**Workflow:**
+- During development: Add entries under `[Unreleased]`
+- When releasing: Move `[Unreleased]` entries to new `[X.Y.Z] - YYYY-MM-DD` section
+
+**Example (Unreleased):**
+```markdown
+## [Unreleased]
+
+### Added
+- CPTR-1: Project directory structure with api, routes, core, tests
+- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-3, CPTR-4: MongoDB connection configuration and health check
+```
+
+**Example (Released):**
+```markdown
+## [0.1.0] - 2024-12-19
+
+### Added
+- CPTR-1: Project directory structure with api, routes, core, tests
+- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-3, CPTR-4: MongoDB connection configuration and health check
+- CPTR-291: Route stubs for accounts, stories, events, sync endpoints
+- CPTR-290: Core module stubs for projection and reconciliation
+```
+
+**What NOT to include:**
+- Implementation details (save for commit messages)
+- Code examples
+- Verbose descriptions
+- Internal refactoring unless user-visible
+
+**Version Numbering:**
+- **MAJOR (X.0.0)** - Breaking changes, major features
+- **MINOR (0.X.0)** - New features, backward compatible
+- **PATCH (0.0.X)** - Bug fixes, minor improvements
+
+---
+
 ## Getting Started
 
 ### For Development Sessions
