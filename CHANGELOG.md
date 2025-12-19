@@ -39,3 +39,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-10: Account balance_updated_at changed to optional (new accounts may not have initial timestamp)
 - CPTR-14: User model extended with username and created_at for UI identity and proper user tracking
 - CPTR-10 to CPTR-15: All Decimal fields add precision constraints (max_digits=19, decimal_places=4 for amounts, 8 for rates)
+- CPTR-10 to CPTR-15: All full models add auto-generation for id (UUID4) and timestamps (UTC) via default_factory
+- CPTR-11, CPTR-12: Story and Event created_by/updated_by fields changed to Optional (auth not implemented until Phase 1.5)

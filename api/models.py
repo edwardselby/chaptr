@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from enum import Enum
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 # ==================== Enums ====================
@@ -114,10 +114,19 @@ class Account(AccountBase):
 
     Accounts cannot be deleted, only archived. Archived accounts
     retain historical events but are hidden from active account lists.
+
+    Note: id, created_at, and updated_at are auto-generated at model instantiation
+    for new records. When reading from database, existing values are preserved.
     """
-    id: UUID = Field(..., description="Unique account identifier")
-    created_at: datetime = Field(..., description="Account creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    id: UUID = Field(default_factory=uuid4, description="Unique account identifier (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Account creation timestamp (auto-generated)"
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp (auto-updated)"
+    )
 
 
 # ==================== Story Models ====================
@@ -239,12 +248,21 @@ class Story(StoryBase):
 
     Stories can have overlapping date ranges. The system handles this
     via gap indicators in projections.
+
+    Note: id, created_at, and updated_at are auto-generated at model instantiation.
+    created_by and updated_by are optional until authentication is implemented (Phase 1.5).
     """
-    id: UUID = Field(..., description="Unique story identifier")
-    created_at: datetime = Field(..., description="Story creation timestamp")
-    created_by: UUID = Field(..., description="User who created the story")
-    updated_at: datetime = Field(..., description="Last update timestamp")
-    updated_by: UUID = Field(..., description="User who last updated the story")
+    id: UUID = Field(default_factory=uuid4, description="Unique story identifier (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Story creation timestamp (auto-generated)"
+    )
+    created_by: Optional[UUID] = Field(default=None, description="User who created the story (requires auth)")
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp (auto-updated)"
+    )
+    updated_by: Optional[UUID] = Field(default=None, description="User who last updated the story (requires auth)")
 
 
 # ==================== Event Models ====================
@@ -327,12 +345,21 @@ class Event(EventBase):
 
     Same-day ordering: Events on same date ordered by amount DESC (income first),
     then created_at ASC (earlier created first) to minimize balance dips.
+
+    Note: id, created_at, and updated_at are auto-generated at model instantiation.
+    created_by and updated_by are optional until authentication is implemented (Phase 1.5).
     """
-    id: UUID = Field(..., description="Unique event identifier")
-    created_at: datetime = Field(..., description="Event creation timestamp (for same-day ordering)")
-    created_by: UUID = Field(..., description="User who created the event")
-    updated_at: datetime = Field(..., description="Last update timestamp")
-    updated_by: UUID = Field(..., description="User who last updated the event")
+    id: UUID = Field(default_factory=uuid4, description="Unique event identifier (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Event creation timestamp (auto-generated, used for same-day ordering)"
+    )
+    created_by: Optional[UUID] = Field(default=None, description="User who created the event (requires auth)")
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp (auto-updated)"
+    )
+    updated_by: Optional[UUID] = Field(default=None, description="User who last updated the event (requires auth)")
     recurring_rule_id: Optional[UUID] = Field(default=None, description="Recurring rule that generated this event")
 
 
@@ -436,10 +463,18 @@ class RecurringRule(RecurringRuleBase):
 
     Lifecycle: Creation generates events, modification updates future events,
     deletion removes rule and future events (past events retained).
+
+    Note: id, created_at, and updated_at are auto-generated at model instantiation.
     """
-    id: UUID = Field(..., description="Unique rule identifier")
-    created_at: datetime = Field(..., description="Rule creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    id: UUID = Field(default_factory=uuid4, description="Unique rule identifier (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Rule creation timestamp (auto-generated)"
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp (auto-updated)"
+    )
 
 
 # ==================== User Models ====================
@@ -471,9 +506,14 @@ class User(UserBase):
 
     Used for tracking created_by/updated_by/resolved_by fields
     on events, stories, and conflicts.
+
+    Note: id and created_at are auto-generated at model instantiation.
     """
-    id: UUID = Field(..., description="Unique user identifier")
-    created_at: datetime = Field(..., description="User account creation timestamp")
+    id: UUID = Field(default_factory=uuid4, description="Unique user identifier (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="User account creation timestamp (auto-generated)"
+    )
 
 
 # ==================== Settings Models ====================
@@ -551,10 +591,20 @@ class SettingsUpdate(BaseModel):
 
 
 class Settings(SettingsBase):
-    """Complete settings model with metadata."""
-    id: UUID = Field(..., description="Settings document ID")
-    created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: datetime = Field(..., description="Last update timestamp")
+    """
+    Complete settings model with metadata.
+
+    Note: id, created_at, and updated_at are auto-generated at model instantiation.
+    """
+    id: UUID = Field(default_factory=uuid4, description="Settings document ID (auto-generated)")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation timestamp (auto-generated)"
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp (auto-updated)"
+    )
 
 
 # ==================== Sync Models ====================
