@@ -229,7 +229,7 @@ class EventBase(BaseModel):
     Events belong to either baseline or a story. Account resolution happens
     at creation via hierarchy and is stored permanently.
     """
-    event_date: date = Field(..., description="When this event occurs")
+    event_date: date = Field(..., alias='date', serialization_alias='date', description="When this event occurs")
     description: str = Field(..., min_length=1, description="Event description (e.g., Car rental, Hotel deposit)")
     amount: Decimal = Field(..., description="Amount (positive=income, negative=expense)")
     currency: str = Field(..., min_length=3, max_length=3, description="Native currency code (GBP, CAD, USD)")
@@ -270,7 +270,7 @@ class EventUpdate(BaseModel):
     Past events CAN be edited - users may need to correct mistakes.
     Editing triggers recalculation of all subsequent running balances.
     """
-    event_date: Optional[date] = Field(default=None)
+    event_date: Optional[date] = Field(default=None, alias='date', serialization_alias='date')
     description: Optional[str] = Field(default=None, min_length=1)
     amount: Optional[Decimal] = Field(default=None)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
