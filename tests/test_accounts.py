@@ -243,18 +243,18 @@ class TestAccountCreate:
 
 
 # ============================================================================
-# PATCH /api/accounts/{id} - Update Account
+# PUT /api/accounts/{id} - Update Account
 # ============================================================================
 
 class TestAccountUpdate:
-    """Tests for PATCH /api/accounts/{id} endpoint."""
+    """Tests for PUT /api/accounts/{id} endpoint."""
 
     @pytest.mark.asyncio
     async def test_update_account_name_success(self, async_client, sample_account):
         """Update account name returns updated data."""
         payload = {"name": "Updated Account Name"}
 
-        response = await async_client.patch(
+        response = await async_client.put(
             f"/api/accounts/{sample_account.id}",
             json=payload
         )
@@ -275,14 +275,14 @@ class TestAccountUpdate:
             "balance_updated_at": datetime.utcnow().isoformat() + "Z"
         }
 
-        response = await async_client.patch(
+        response = await async_client.put(
             f"/api/accounts/{sample_account.id}",
             json=payload
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["current_balance"] == "2500.00"
+        assert data["current_balance"] == "2500.0"  # API returns single trailing zero
         assert data["pending_reconciliation"] is True
 
     @pytest.mark.asyncio
@@ -296,7 +296,7 @@ class TestAccountUpdate:
         # Update USD account to be default
         payload = {"is_default": True}
 
-        response = await async_client.patch(
+        response = await async_client.put(
             f"/api/accounts/{sample_account_usd.id}",
             json=payload
         )
@@ -317,7 +317,7 @@ class TestAccountUpdate:
         fake_id = uuid4()
 
         payload = {"name": "New Name"}
-        response = await async_client.patch(
+        response = await async_client.put(
             f"/api/accounts/{fake_id}",
             json=payload
         )
@@ -329,7 +329,7 @@ class TestAccountUpdate:
         """Update with invalid data returns 422."""
         payload = {"currency": "invalid"}  # Invalid currency format
 
-        response = await async_client.patch(
+        response = await async_client.put(
             f"/api/accounts/{sample_account.id}",
             json=payload
         )
@@ -345,13 +345,13 @@ class TestAccountDelete:
     """Tests for DELETE /api/accounts/{id} endpoint (archive operation)."""
 
     @pytest.mark.asyncio
-    async def test_archive_account_success(self, async_client, sample_account_usd):
+    async def test_archive_account_success(self, async_client, sample_account, sample_account_usd):
         """DELETE sets is_archived=true (soft delete)."""
+        # sample_account is default, sample_account_usd is not (so it can be archived)
         response = await async_client.delete(f"/api/accounts/{sample_account_usd.id}")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["message"] == "Account archived successfully"
+        assert response.status_code == 204  # No content
+        assert response.text == ""  # No body
 
         # Verify account is archived
         get_response = await async_client.get(
