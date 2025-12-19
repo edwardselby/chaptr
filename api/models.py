@@ -437,11 +437,12 @@ class RecurringRule(RecurringRuleBase):
 
 class UserBase(BaseModel):
     """
-    Base user model with role assignment.
+    Base user model with role assignment and identity.
 
-    Note: Minimal per spec - external auth assumed.
-    No email/password fields defined in specification.
+    Note: External auth assumed for credentials (email/password).
+    Minimal fields for UI purposes and user tracking on events/stories.
     """
+    username: str = Field(..., min_length=1, description="Display name for UI (e.g., 'Edward', 'Kat')")
     role: UserRole = Field(..., description="User role: admin or user")
 
 
@@ -457,12 +458,13 @@ class UserCreate(UserBase):
 
 class User(UserBase):
     """
-    Complete user model with unique identifier.
+    Complete user model with unique identifier and metadata.
 
     Used for tracking created_by/updated_by/resolved_by fields
     on events, stories, and conflicts.
     """
     id: UUID = Field(..., description="Unique user identifier")
+    created_at: datetime = Field(..., description="User account creation timestamp")
 
 
 # ==================== Settings Models ====================
