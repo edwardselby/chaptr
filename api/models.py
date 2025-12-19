@@ -64,7 +64,7 @@ class AccountBase(BaseModel):
     name: str = Field(..., min_length=1, description="Account name (e.g., Monzo, HSBC)")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency code (GBP, CAD, USD)")
     current_balance: Decimal = Field(..., description="Current account balance (manually updated snapshot)")
-    balance_updated_at: datetime = Field(..., description="When balance was last updated")
+    balance_updated_at: Optional[datetime] = Field(default=None, description="When balance was last updated (set on manual balance updates)")
     is_default: bool = Field(default=False, description="Is this the global default spending account?")
     is_archived: bool = Field(default=False, description="Archived accounts are hidden but retained for history")
     pending_reconciliation: bool = Field(default=False, description="Balance updated but reconciliation not yet run?")
