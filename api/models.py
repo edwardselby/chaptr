@@ -7,11 +7,12 @@ Implementation Status: SKELETON - Phase 1.3
 TODO Phase 1.3: Add complete field definitions per spec
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 from datetime import datetime, date
 from typing import Optional
 from decimal import Decimal
+from uuid import UUID
 
 
 # ==================== Enums ====================
@@ -180,22 +181,65 @@ class User(UserBase):
 # ==================== Settings Models ====================
 
 class SettingsBase(BaseModel):
-    """Base settings model."""
-    # TODO Phase 1.3: Add fields (base_currency, rates, baseline_display_months,
-    #                              date_format)
-    pass
+    """
+    Base settings model with application preferences and configuration.
+
+    Settings are global (not per-user) and admin-only for modification.
+    """
+    base_currency: str = Field(..., min_length=3, max_length=3, description="Base currency for conversions (e.g., GBP)")
+    default_currency: str = Field(..., min_length=3, max_length=3, description="Default currency for new items")
+    date_format: str = Field(default="DD/MM/YYYY", description="Date display format")
+    baseline_display_months: int = Field(default=1, ge=1, le=12, description="Months to show in baseline view")
+    rates: dict[str, Decimal] = Field(default_factory=dict, description="Currency conversion rates (currency → rate)")
+    server_url: str = Field(default="", description="Sync server URL")
+    last_backup_date: Optional[datetime] = Field(default=None, description="Last backup timestamp")
+    version: str = Field(default="1.0.0", description="Application version")
+
+    @field_validator('base_currency', 'default_currency')
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        """Validate currency code is 3 uppercase letters."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+        return v
+
+    @model_validator(mode='after')
+    def validate_rates(self):
+        """Validate all rate values are positive."""
+        if self.rates:
+            for currency, rate in self.rates.items():
+                if rate <= 0:
+                    raise ValueError(f'Rate for {currency} must be positive, got {rate}')
+        return self
 
 
-class SettingsUpdate(SettingsBase):
-    """Model for updating settings."""
-    # TODO Phase 1.3: All fields optional
-    pass
+class SettingsUpdate(BaseModel):
+    """
+    Model for updating settings (all fields optional for partial updates).
+    """
+    base_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    date_format: Optional[str] = Field(default=None)
+    baseline_display_months: Optional[int] = Field(default=None, ge=1, le=12)
+    rates: Optional[dict[str, Decimal]] = Field(default=None)
+    server_url: Optional[str] = Field(default=None)
+    last_backup_date: Optional[datetime] = Field(default=None)
+    version: Optional[str] = Field(default=None)
+
+    @field_validator('base_currency', 'default_currency')
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        """Validate currency code is 3 uppercase letters if provided."""
+        if v and (not v.isupper() or len(v) != 3):
+            raise ValueError('Currency code must be 3 uppercase letters')
+        return v
 
 
 class Settings(SettingsBase):
-    """Complete settings model."""
-    # TODO Phase 1.3: Add id, created_at, updated_at
-    pass
+    """Complete settings model with metadata."""
+    id: UUID = Field(..., description="Settings document ID")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
 
 
 # ==================== Sync Models ====================
