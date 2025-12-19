@@ -205,6 +205,28 @@ class StoryUpdate(BaseModel):
             raise ValueError('Currency code must be 3 uppercase letters')
         return v
 
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        """Validate end_date is after start_date if both provided."""
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
+
+    @model_validator(mode='after')
+    def validate_funding(self):
+        """Validate funding_amount required for FIXED/PROJECTED_PLUS modes if funding_mode provided."""
+        if self.funding_mode in [FundingMode.FIXED, FundingMode.PROJECTED_PLUS]:
+            if self.funding_amount is None:
+                raise ValueError(f'funding_amount required for {self.funding_mode.value} mode')
+        return self
+
+    @model_validator(mode='after')
+    def validate_goal(self):
+        """Validate goal_amount required when goal_type is set."""
+        if self.goal_type and self.goal_type != GoalType.NONE and self.goal_amount is None:
+            raise ValueError('goal_amount required when goal_type is set')
+        return self
+
 
 class Story(StoryBase):
     """
