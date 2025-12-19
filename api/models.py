@@ -160,22 +160,33 @@ class RecurringRule(RecurringRuleBase):
 # ==================== User Models ====================
 
 class UserBase(BaseModel):
-    """Base user model."""
-    # TODO Phase 1.3: Add fields (username, email, role)
-    pass
+    """
+    Base user model with role assignment.
+
+    Note: Minimal per spec - external auth assumed.
+    No email/password fields defined in specification.
+    """
+    role: UserRole = Field(..., description="User role: admin or user")
 
 
 class UserCreate(UserBase):
-    """Model for creating a user."""
-    # TODO Phase 1.3: Add password field (plain, will be hashed)
+    """
+    Model for creating a user.
+
+    Inherits from UserBase - external authentication system
+    handles credentials and identity.
+    """
     pass
 
 
 class User(UserBase):
-    """Complete user model."""
-    # TODO Phase 1.3: Add id, password_hash, created_at, updated_at
-    # Note: password_hash not exposed in responses
-    pass
+    """
+    Complete user model with unique identifier.
+
+    Used for tracking created_by/updated_by/resolved_by fields
+    on events, stories, and conflicts.
+    """
+    id: UUID = Field(..., description="Unique user identifier")
 
 
 # ==================== Settings Models ====================
