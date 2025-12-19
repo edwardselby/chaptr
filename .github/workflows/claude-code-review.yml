@@ -40,14 +40,49 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Review this PR and provide STRUCTURED, CONCISE feedback using the format below.
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            **TARGET: 300 lines, MAX: 400 lines**
+
+            Use this EXACT format:
+
+            ## PR Review: [Title] (#[number])
+            **Status**: ✅ Approve | ⚠️ Approve with Changes | ❌ Request Changes
+            **Summary**: [2-3 sentences overall assessment]
+            **Issues**: [X] Critical | [X] High | [X] Medium | [X] Low
+
+            ---
+
+            ## 🚨 Critical Issues (Must fix before merge)
+            For each: Problem + Why it matters (1-2 sentences) + Fix + Reference
+
+            ## ⚠️ High Priority (Should fix before merge)
+            For each: Problem + Why it matters (1-2 sentences) + Fix + Reference
+
+            ## 💡 Medium Priority (Address in follow-up)
+            For each: Problem + Why it matters (brief) + Fix
+
+            ## 📝 Low Priority (Nice to have)
+            Brief bullets with context
+
+            ## ✅ Strengths
+            4-5 concise bullets highlighting what's done well
+
+            ## 🔒 Security & Performance Notes
+            Brief combined section (only if relevant findings)
+
+            ## 📋 Required Actions
+            **Before merge**: [checklist]
+            **Follow-up**: [checklist]
+            **Testing**: [brief checklist]
+
+            GUIDELINES:
+            - Keep explanations concise but provide context where it adds value
+            - Use brief inline examples when they clarify the fix (avoid large code blocks)
+            - Focus on actionable feedback with file:line references
+            - Reference spec/docs instead of explaining known concepts
+            - Group related issues to save space
+            - TARGET 300 lines, allow up to 400 if necessary for clarity
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 

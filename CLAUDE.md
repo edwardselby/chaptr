@@ -629,6 +629,179 @@ curl -X POST http://localhost:8000/api/sync \
 
 ---
 
+## Agent Communication Guidelines
+
+### Response Format and Conciseness
+
+**When providing updates, explanations, or progress reports, keep responses focused and actionable.**
+
+#### Target Response Length
+
+- **Simple task updates**: 50-100 lines
+- **Complex implementation reports**: 150-250 lines
+- **Comprehensive explanations**: 300 lines (target), 400 lines (maximum)
+
+#### Response Structure
+
+**For implementation updates:**
+
+```markdown
+## [Task Name/Description]
+
+**Status**: ✅ Complete | 🔄 In Progress | ⚠️ Blocked
+**Files Modified**: [count] files
+**Summary**: [2-3 sentence overview of what was done]
+
+---
+
+## Changes Made
+
+### 1. [Component/Module Name]
+- **What**: [Brief description of change]
+- **Why**: [1-2 sentences explaining rationale]
+- **Location**: `path/to/file.py:123-145`
+
+### 2. [Component/Module Name]
+- **What**: [Brief description]
+- **Why**: [Brief rationale]
+- **Location**: `path/to/file.py`
+
+---
+
+## Issues Encountered
+
+*[If none, omit this section]*
+
+- **Issue**: [Description]
+- **Resolution**: [How it was fixed]
+- **Impact**: [Any implications]
+
+---
+
+## Next Steps
+
+- [ ] [Immediate next action]
+- [ ] [Follow-up task]
+- [ ] [Testing/validation needed]
+
+---
+
+**Testing**: [Brief testing status]
+**Documentation**: [Brief doc status]
+```
+
+#### Communication Principles
+
+**DO:**
+- ✅ Lead with status and summary (quick scan value)
+- ✅ Use clear section headers for scannability
+- ✅ Provide brief context where it adds value
+- ✅ Reference file locations with line numbers
+- ✅ Group related changes together
+- ✅ Include concrete next steps
+- ✅ Highlight blockers or issues clearly
+
+**DON'T:**
+- ❌ Repeat yourself - one clear explanation is enough
+- ❌ Include full code blocks unless essential (reference files instead)
+- ❌ Write verbose introductions or conclusions
+- ❌ Explain obvious or trivial changes
+- ❌ Provide multiple alternative solutions (choose the best one)
+- ❌ Include extensive background unless specifically requested
+
+#### Examples
+
+**❌ Too Verbose (200+ lines for simple task):**
+```markdown
+I've completed the implementation of the Account model. Let me explain in detail what I did...
+
+First, I started by analyzing the specification document thoroughly. The spec indicates that accounts should have the following fields: id, name, currency, current_balance... [continues for 50 lines]
+
+Then I implemented the BaseModel class. Here's the full code:
+[50 line code block]
+
+After that, I added validation. Let me explain each validator in detail...
+[continues for 100 more lines]
+```
+
+**✅ Concise and Clear (50-75 lines):**
+```markdown
+## Implemented Account Pydantic Model
+
+**Status**: ✅ Complete
+**Files**: `api/models.py` (+85 lines)
+**Summary**: Created Account model with three-tier pattern (Base/Create/Update/Full) including currency validation and spec-compliant fields.
+
+---
+
+## Changes Made
+
+### Account Models - `api/models.py:15-98`
+- **Base model**: Core fields (name, currency, current_balance, is_default, etc.)
+- **Validators**: Currency code validation (3 uppercase letters), positive balance
+- **Pattern**: Base → Create (excludes id/timestamps) → Update (all optional) → Full (includes id/timestamps)
+
+---
+
+## Validation Rules
+
+- Currency must be 3 uppercase letters (e.g., "GBP", "USD")
+- Balance can be negative (overdrafts allowed per spec)
+- Only one account can be default (enforced at API level)
+
+---
+
+## Next Steps
+
+- [ ] Implement Story model (similar pattern)
+- [ ] Add comprehensive validator tests
+
+**Spec compliance**: ✅ 100% aligned with "Core Concepts > Accounts"
+```
+
+#### Context-Specific Guidelines
+
+**For bug fixes:**
+- State the bug clearly (1-2 sentences)
+- Explain root cause briefly
+- Describe the fix
+- Note any related issues or testing done
+
+**For feature implementations:**
+- Brief overview of feature
+- Key design decisions with rationale
+- Files/components affected
+- Testing approach
+
+**For refactoring:**
+- What was changed and why
+- Impact on existing code
+- Any breaking changes
+- Migration notes if needed
+
+**For PR feedback responses:**
+- Reference PR number and issue
+- State what was changed
+- Confirm issue resolved
+- Note any follow-up items
+
+#### Special Cases: When to Be More Detailed
+
+**Allow longer responses (up to 400 lines) when:**
+- Implementing complex algorithms (projection engine, reconciliation logic)
+- Explaining architectural decisions with significant impact
+- Documenting breaking changes or migrations
+- Providing comprehensive error diagnosis
+- Responding to specific requests for detailed explanation
+
+**Even then, maintain structure:**
+- Clear sections with headers
+- Concise paragraphs (3-5 sentences max)
+- Code examples only when essential
+- Visual aids (diagrams, tables) over text when possible
+
+---
+
 ## Support
 
 For questions about:
