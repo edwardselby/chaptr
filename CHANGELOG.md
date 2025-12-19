@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-258: PUT /api/recurring-rules/{id} for partial updates (note: affects future events only per spec, event generation deferred to Phase 7)
 - CPTR-259: DELETE /api/recurring-rules/{id} (note: removes future events per spec, event generation deferred to Phase 7)
 - RecurringRuleRepository with account validation and CRUD operations (event generation ±1 month window deferred to Phase 7)
+- Database indexes on events collection for query performance (event_date, story_id+event_date, account_id+event_date)
+
+### Changed
+- PR#5 Review Fixes: EventCreate model - account_id and rate_to_base now optional (auto-resolved if not provided)
+- PR#5 Review Fixes: EventRepository.create() - only locks rate_to_base from settings if not explicitly provided
+- PR#5 Review Fixes: Added database index creation on startup for events.event_date and composite indexes for filtering
+- PR#5 Review Fixes: Verified RecurringRuleBase has frequency/day validation (already implemented)
+- PR#5 Review Fixes: Verified StoryRepository has default_account_id validation (already implemented)
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints

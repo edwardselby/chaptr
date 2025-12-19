@@ -34,6 +34,22 @@ async def lifespan(app: FastAPI):
 
     if await MongoDB.ping():
         logger.info("✓ MongoDB connected successfully")
+
+        # Create database indexes for query performance
+        db = MongoDB.get_database()
+        try:
+            # Event date index for projection queries (sort and filter)
+            await db.events.create_index([("event_date", 1)])
+            logger.info("✓ Created index on events.event_date")
+
+            # Composite indexes for filtering by story/account + date range
+            await db.events.create_index([("story_id", 1), ("event_date", 1)])
+            logger.info("✓ Created composite index on events (story_id, event_date)")
+
+            await db.events.create_index([("account_id", 1), ("event_date", 1)])
+            logger.info("✓ Created composite index on events (account_id, event_date)")
+        except Exception as e:
+            logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
         logger.warning("✗ MongoDB connection failed")
 

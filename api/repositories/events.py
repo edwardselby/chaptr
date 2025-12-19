@@ -109,9 +109,13 @@ class EventRepository(BaseRepository[Event]):
             explicit_account_id=data.account_id
         )
 
-        # Lock rate_to_base from current settings
+        # Lock rate_to_base from current settings if not provided
+        # If provided explicitly, use that rate (for manual corrections)
         # Rate is stored permanently and never auto-updates
-        rate = await get_rate_to_base(self.db, data.currency)
+        if data.rate_to_base is None:
+            rate = await get_rate_to_base(self.db, data.currency)
+        else:
+            rate = data.rate_to_base
 
         # Create event with resolved account and locked rate
         event = Event(
