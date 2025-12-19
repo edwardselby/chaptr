@@ -521,6 +521,15 @@ class SettingsUpdate(BaseModel):
             raise ValueError('Currency code must be 3 uppercase letters')
         return v
 
+    @model_validator(mode='after')
+    def validate_rates(self):
+        """Validate all rate values are positive if rates provided."""
+        if self.rates:
+            for currency, rate in self.rates.items():
+                if rate <= 0:
+                    raise ValueError(f'Rate for {currency} must be positive, got {rate}')
+        return self
+
 
 class Settings(SettingsBase):
     """Complete settings model with metadata."""
