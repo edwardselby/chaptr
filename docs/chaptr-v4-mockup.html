@@ -1,0 +1,2468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CHAPTR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-tertiary: #1a1a1a;
+            --green-bright: #4af626;
+            --green-dim: #2d8a18;
+            --green-glow: rgba(74, 246, 38, 0.15);
+            --red: #ff4444;
+            --red-dim: #992222;
+            --red-glow: rgba(255, 68, 68, 0.15);
+            --amber: #ffaa00;
+            --text-bright: #ffffff;
+            --text-dim: #666666;
+            --text-mid: #888888;
+            --border: #333333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--green-bright);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        /* Scanline effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1) 0px,
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            z-index: 1000;
+        }
+
+        /* Screen container */
+        .screen {
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
+
+        .logo span {
+            color: var(--text-dim);
+        }
+
+        .header-context {
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: var(--green-bright);
+        }
+
+        .header-back {
+            font-size: 18px;
+            color: var(--green-bright);
+            text-decoration: none;
+            padding: 4px 8px;
+            margin-left: -8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .settings-btn {
+            background: none;
+            border: none;
+            color: var(--text-mid);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            transition: color 0.15s;
+        }
+
+        .settings-btn:active {
+            color: var(--green-bright);
+        }
+
+        .sync-status {
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sync-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--green-bright);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Main content area */
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+
+        .main.no-padding {
+            padding: 0;
+            padding-bottom: 80px;
+        }
+
+        /* Section boxes */
+        .section {
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+            background: var(--bg-secondary);
+        }
+
+        .section.no-margin {
+            margin-bottom: 0;
+            border-left: none;
+            border-right: none;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            color: var(--text-mid);
+        }
+
+        .section-action {
+            font-size: 11px;
+            color: var(--green-bright);
+            text-decoration: none;
+            padding: 4px 8px;
+            border: 1px solid var(--green-dim);
+            transition: all 0.15s;
+            cursor: pointer;
+            background: none;
+            font-family: inherit;
+        }
+
+        .section-action:active {
+            background: var(--green-glow);
+        }
+
+        /* Filter chips */
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .filter-chip {
+            padding: 6px 12px;
+            font-size: 11px;
+            font-family: inherit;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-mid);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+
+        .filter-chip.active {
+            background: var(--green-glow);
+            border-color: var(--green-dim);
+            color: var(--green-bright);
+        }
+
+        .filter-chip:active {
+            background: var(--green-glow);
+        }
+
+        /* Stories list */
+        .story-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 4px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .story-item:last-child {
+            border-bottom: none;
+        }
+
+        .story-item:active {
+            background: var(--green-glow);
+        }
+
+        .story-name {
+            font-weight: 500;
+            color: var(--text-bright);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .story-arrow {
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .story-dates {
+            font-size: 11px;
+            color: var(--text-dim);
+            grid-column: 1;
+        }
+
+        .story-balance {
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .story-status {
+            font-size: 10px;
+            text-align: right;
+            letter-spacing: 1px;
+        }
+
+        .status-ok { color: var(--green-bright); }
+        .status-warn { color: var(--amber); }
+        .status-over { color: var(--red); }
+
+        /* Account items */
+        .account-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .account-item:last-child {
+            border-bottom: none;
+        }
+
+        .account-name {
+            color: var(--text-bright);
+        }
+
+        .account-updated {
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+
+        .account-balance {
+            font-weight: 600;
+            color: var(--green-bright);
+        }
+
+        .account-balance.negative {
+            color: var(--red);
+        }
+
+        /* Command bar */
+        .command-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .cmd-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--green-bright);
+            padding: 12px 8px;
+            font-family: inherit;
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s;
+            cursor: pointer;
+        }
+
+        .cmd-btn:active {
+            background: var(--green-glow);
+            border-color: var(--green-dim);
+        }
+
+        .cmd-key {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .cmd-label {
+            font-size: 9px;
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+        }
+
+        /* Projection header */
+        .projection-header {
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .projection-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .projection-title {
+            font-size: 12px;
+            color: var(--text-mid);
+            margin-bottom: 4px;
+        }
+
+        .projection-dates {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .projection-current {
+            text-align: right;
+        }
+
+        .projection-current-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+        }
+
+        .projection-current-amount {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--green-bright);
+        }
+
+        .projection-notice {
+            font-size: 10px;
+            color: var(--amber);
+            background: rgba(255, 170, 0, 0.1);
+            padding: 6px 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .projection-currency {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+
+        /* Goal bar */
+        .goal-bar {
+            margin-top: 8px;
+        }
+
+        .goal-text {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .goal-progress {
+            height: 4px;
+            background: var(--border);
+            position: relative;
+        }
+
+        .goal-fill {
+            height: 100%;
+            background: var(--green-bright);
+            box-shadow: 0 0 8px var(--green-glow);
+        }
+
+        .goal-fill.over {
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red-glow);
+        }
+
+        .goal-marker {
+            position: absolute;
+            top: -3px;
+            width: 2px;
+            height: 10px;
+            background: var(--amber);
+        }
+
+        /* Timeline */
+        .timeline-row {
+            display: grid;
+            grid-template-columns: 58px 1fr 60px 72px;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            gap: 6px;
+            background: var(--bg-primary);
+        }
+
+        .timeline-row.header {
+            background: var(--bg-tertiary);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            padding: 8px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .timeline-row.past {
+            opacity: 0.5;
+        }
+
+        .timeline-row.baseline {
+            background: var(--bg-secondary);
+        }
+
+        .timeline-date {
+            color: var(--text-mid);
+            font-size: 12px;
+        }
+
+        .timeline-event {
+            color: var(--text-bright);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .timeline-event .tag {
+            color: var(--text-dim);
+            font-size: 10px;
+        }
+
+        .timeline-amount {
+            text-align: right;
+            font-weight: 500;
+            color: var(--text-mid);
+        }
+
+        .timeline-amount.negative {
+            color: var(--red);
+        }
+
+        .timeline-amount.positive {
+            color: var(--green-bright);
+        }
+
+        .timeline-balance {
+            text-align: right;
+            color: var(--green-bright);
+            font-weight: 600;
+        }
+
+        .timeline-balance.negative {
+            color: var(--red);
+        }
+
+        /* TODAY divider */
+        .today-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .today-line {
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .today-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+        }
+
+        /* Gap indicator */
+        .gap-row {
+            display: flex;
+            align-items: center;
+            padding: 4px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .gap-row:active {
+            background: var(--bg-tertiary);
+        }
+
+        .gap-line {
+            flex: 1;
+            height: 1px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .gap-amount {
+            padding: 0 12px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .gap-amount.negative {
+            color: var(--red-dim);
+        }
+
+        .gap-amount.positive {
+            color: var(--green-dim);
+        }
+
+        /* Revealed hidden events */
+        .timeline-row.revealed {
+            background: var(--bg-tertiary);
+            padding-left: 32px;
+            font-size: 12px;
+        }
+
+        .timeline-row.revealed .timeline-event {
+            color: var(--text-mid);
+        }
+
+        /* Summary row */
+        .timeline-summary {
+            background: var(--bg-tertiary);
+            padding: 14px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .summary-label {
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        .summary-value {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .summary-value.ok {
+            color: var(--green-bright);
+        }
+
+        .summary-value.negative {
+            color: var(--red);
+        }
+
+        /* Warning banner */
+        .warning-banner {
+            padding: 10px 16px;
+            background: var(--red-glow);
+            border-bottom: 1px solid var(--red-dim);
+            font-size: 11px;
+            color: var(--red);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Settings styles */
+        .settings-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-item:last-child {
+            border-bottom: none;
+        }
+
+        .settings-item-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .settings-label {
+            color: var(--text-bright);
+            font-size: 13px;
+        }
+
+        .settings-sublabel {
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        .settings-sublabel.danger {
+            color: var(--red-dim);
+        }
+
+        .settings-value {
+            color: var(--green-bright);
+            font-size: 12px;
+        }
+
+        .settings-value.dim {
+            color: var(--text-dim);
+        }
+
+        .settings-btn-small {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--green-bright);
+            padding: 6px 10px;
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .settings-btn-small:active {
+            background: var(--green-glow);
+            border-color: var(--green-dim);
+        }
+
+        .settings-btn-small.danger {
+            color: var(--red);
+            border-color: var(--red-dim);
+        }
+
+        .settings-btn-small.danger:active {
+            background: rgba(255, 68, 68, 0.15);
+        }
+
+        /* Accounts styles */
+        .account-detail-item {
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .account-detail-item:last-child {
+            border-bottom: none;
+        }
+
+        .account-detail-item:active {
+            background: var(--green-glow);
+        }
+
+        .account-detail-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .account-detail-name {
+            color: var(--text-bright);
+            font-weight: 500;
+        }
+
+        .account-detail-meta {
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .account-currency {
+            color: var(--text-mid);
+            font-weight: 500;
+        }
+
+        .account-dot {
+            color: var(--border);
+        }
+
+        .account-detail-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .account-detail-balance {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--green-bright);
+        }
+
+        .account-detail-balance.negative {
+            color: var(--red);
+        }
+
+        .account-detail-arrow {
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+
+        .currency-total-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .currency-total-item:last-child {
+            border-bottom: none;
+        }
+
+        .currency-label {
+            color: var(--text-mid);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .currency-amount {
+            color: var(--green-bright);
+            font-weight: 600;
+        }
+
+        .currency-amount.negative {
+            color: var(--red);
+        }
+
+        .info-note {
+            margin: 16px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .info-icon {
+            color: var(--text-mid);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ==================== -->
+    <!-- SCREEN 1: Dashboard  -->
+    <!-- ==================== -->
+    <div class="screen active" id="screen-dashboard">
+        <header class="header">
+            <div class="logo">CHAPTR <span>//</span> home</div>
+            <div class="header-right">
+                <button class="settings-btn" title="Settings" onclick="showSettings()">⚙</button>
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- Stories List -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">STORIES</span>
+                    <button class="section-action">+ NEW</button>
+                </div>
+                <div class="story-item" onclick="showProjection('canada')">
+                    <span class="story-name">canada-trip <span class="story-arrow">→</span></span>
+                    <span class="story-balance">-£870</span>
+                    <span class="story-dates">Dec 04 → Jan 05</span>
+                    <span class="story-status status-ok">✓ £130 LEFT</span>
+                </div>
+                <div class="story-item" onclick="showProjection('volvo')">
+                    <span class="story-name">volvo <span class="story-arrow">→</span></span>
+                    <span class="story-balance">-£2,717</span>
+                    <span class="story-dates">Oct 01 → ongoing</span>
+                    <span class="story-status status-over">⚠ £217 OVER</span>
+                </div>
+                <div class="story-item" onclick="showProjection('skiing')">
+                    <span class="story-name">skiing <span class="story-arrow">→</span></span>
+                    <span class="story-balance">-$1,850</span>
+                    <span class="story-dates">Dec 23 → Dec 28</span>
+                    <span class="story-status status-ok">✓ $150 LEFT</span>
+                </div>
+                <div class="story-item" onclick="showProjection('baseline')">
+                    <span class="story-name">baseline <span class="story-arrow">→</span></span>
+                    <span class="story-balance">--</span>
+                    <span class="story-dates">recurring</span>
+                    <span class="story-status" style="color: var(--text-dim);">VIEW</span>
+                </div>
+            </section>
+
+            <!-- Accounts Quick View -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">ACCOUNTS</span>
+                    <button class="section-action" onclick="showAccounts()">MANAGE</button>
+                </div>
+                <div class="account-item">
+                    <div>
+                        <div class="account-name">Monzo</div>
+                        <div class="account-updated">updated 2h ago</div>
+                    </div>
+                    <div class="account-balance">£2,500</div>
+                </div>
+                <div class="account-item">
+                    <div>
+                        <div class="account-name">HSBC</div>
+                        <div class="account-updated">updated 1d ago</div>
+                    </div>
+                    <div class="account-balance">£11,000</div>
+                </div>
+                <div class="account-item">
+                    <div>
+                        <div class="account-name">Kat Credit (CAD)</div>
+                        <div class="account-updated">updated 5h ago</div>
+                    </div>
+                    <div class="account-balance negative">-$500</div>
+                </div>
+            </section>
+
+            <!-- Global Projection Summary -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PROJECTION</span>
+                    <button class="section-action" onclick="showProjection('all')">VIEW ALL</button>
+                </div>
+                <div style="padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-dim); font-size: 11px;">Today (Dec 18)</span>
+                        <span style="color: var(--green-bright); font-weight: 600;">£13,500</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-dim); font-size: 11px;">End of Dec</span>
+                        <span style="color: var(--green-bright); font-weight: 600;">£14,574</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-dim); font-size: 11px;">Mid Jan</span>
+                        <span style="color: var(--green-bright); font-weight: 600;">£12,342</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD EVENT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">BALANCE</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 2: Projection (ALL) -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-projection-all">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> projection</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter chips -->
+        <div class="filter-bar">
+            <button class="filter-chip active">ALL</button>
+            <button class="filter-chip" onclick="showProjection('canada')">canada-trip</button>
+            <button class="filter-chip" onclick="showProjection('volvo')">volvo</button>
+            <button class="filter-chip" onclick="showProjection('skiing')">skiing</button>
+            <button class="filter-chip">baseline</button>
+        </div>
+
+        <!-- Projection header -->
+        <div class="projection-header">
+            <div class="projection-meta">
+                <div>
+                    <div class="projection-title">All activity</div>
+                    <div class="projection-dates">Dec 18 → Jan 18</div>
+                </div>
+                <div class="projection-current">
+                    <div class="projection-current-label">NOW</div>
+                    <div class="projection-current-amount">£13,500</div>
+                </div>
+            </div>
+        </div>
+
+        <main class="main no-padding">
+            <div class="timeline-row header">
+                <span>DATE</span>
+                <span>EVENT</span>
+                <span>CHANGE</span>
+                <span>BALANCE</span>
+            </div>
+
+            <div class="today-divider">
+                <span class="today-line"></span>
+                <span class="today-label">TODAY // DEC 18</span>
+                <span class="today-line"></span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 20</span>
+                <span class="timeline-event">car rental <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£320</span>
+                <span class="timeline-balance">£13,180</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 22</span>
+                <span class="timeline-event">new tyres <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£380</span>
+                <span class="timeline-balance">£12,800</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">ski passes <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£349</span>
+                <span class="timeline-balance">£12,451</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 24</span>
+                <span class="timeline-event">equipment <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£262</span>
+                <span class="timeline-balance">£12,189</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 25</span>
+                <span class="timeline-event">gifts <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£150</span>
+                <span class="timeline-balance">£12,039</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 26</span>
+                <span class="timeline-event">lessons <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£465</span>
+                <span class="timeline-balance">£11,574</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Dec 28</span>
+                <span class="timeline-event">salary <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount positive">+£3,000</span>
+                <span class="timeline-balance">£14,574</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">rent <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£1,200</span>
+                <span class="timeline-balance">£13,374</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">bills <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£100</span>
+                <span class="timeline-balance">£13,274</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">hotel <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£400</span>
+                <span class="timeline-balance">£12,874</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 10</span>
+                <span class="timeline-event">MOT + service <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£350</span>
+                <span class="timeline-balance">£12,524</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 15</span>
+                <span class="timeline-event">brake pads <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£182</span>
+                <span class="timeline-balance">£12,342</span>
+            </div>
+
+            <div class="timeline-summary">
+                <div>
+                    <div class="summary-label">JAN 18 // END</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="summary-value ok">£12,342</div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD EVENT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">BALANCE</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 3: Projection (Canada) -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-projection-canada">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> canada-trip</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter chips -->
+        <div class="filter-bar">
+            <button class="filter-chip" onclick="showProjection('all')">ALL</button>
+            <button class="filter-chip active">canada-trip</button>
+            <button class="filter-chip" onclick="showProjection('volvo')">volvo</button>
+            <button class="filter-chip" onclick="showProjection('skiing')">skiing</button>
+            <button class="filter-chip">baseline</button>
+        </div>
+
+        <!-- Projection header -->
+        <div class="projection-header">
+            <div class="projection-meta">
+                <div>
+                    <div class="projection-title">canada-trip</div>
+                    <div class="projection-dates">Dec 04 → Jan 05</div>
+                </div>
+                <div class="projection-current">
+                    <div class="projection-current-label">NOW</div>
+                    <div class="projection-current-amount">£13,500</div>
+                </div>
+            </div>
+            <div class="goal-bar">
+                <div class="goal-text">
+                    <span>SPEND UP TO: £1,000</span>
+                    <span style="color: var(--green-bright);">£130 left</span>
+                </div>
+                <div class="goal-progress">
+                    <div class="goal-fill" style="width: 87%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <main class="main no-padding">
+            <div class="timeline-row header">
+                <span>DATE</span>
+                <span>EVENT</span>
+                <span>CHANGE</span>
+                <span>BALANCE</span>
+            </div>
+
+            <div class="timeline-row past">
+                <span class="timeline-date">Dec 04</span>
+                <span class="timeline-event">period start</span>
+                <span class="timeline-amount">--</span>
+                <span class="timeline-balance">£13,885</span>
+            </div>
+
+            <!-- Gap: volvo events Dec 05, 10, 12 -->
+            <div class="gap-row" onclick="toggleGap('canada-gap-1')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£385 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-1-1" style="display: none;">
+                <span class="timeline-date">Dec 05</span>
+                <span class="timeline-event">labour <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£800</span>
+                <span class="timeline-balance">£13,085</span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-1-2" style="display: none;">
+                <span class="timeline-date">Dec 10</span>
+                <span class="timeline-event">family loan <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount positive">+£500</span>
+                <span class="timeline-balance">£13,585</span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-1-3" style="display: none;">
+                <span class="timeline-date">Dec 12</span>
+                <span class="timeline-event">sensor <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£85</span>
+                <span class="timeline-balance">£13,500</span>
+            </div>
+
+            <div class="today-divider">
+                <span class="today-line"></span>
+                <span class="today-label">TODAY // DEC 18</span>
+                <span class="today-line"></span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 20</span>
+                <span class="timeline-event">car rental</span>
+                <span class="timeline-amount negative">-£320</span>
+                <span class="timeline-balance">£13,180</span>
+            </div>
+
+            <!-- Gap: volvo tyres -->
+            <div class="gap-row" onclick="toggleGap('canada-gap-2')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£380 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-2-1" style="display: none;">
+                <span class="timeline-date">Dec 22</span>
+                <span class="timeline-event">tyres <span class="tag">[volvo]</span></span>
+                <span class="timeline-amount negative">-£380</span>
+                <span class="timeline-balance">£12,800</span>
+            </div>
+
+            <!-- Gap: skiing events -->
+            <div class="gap-row" onclick="toggleGap('canada-gap-3')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£1,076 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-3-1" style="display: none;">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">ski passes <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£349</span>
+                <span class="timeline-balance">£12,451</span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-3-2" style="display: none;">
+                <span class="timeline-date">Dec 24</span>
+                <span class="timeline-event">equipment <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£262</span>
+                <span class="timeline-balance">£12,189</span>
+            </div>
+            <div class="timeline-row revealed" id="canada-gap-3-3" style="display: none;">
+                <span class="timeline-date">Dec 26</span>
+                <span class="timeline-event">lessons <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£465</span>
+                <span class="timeline-balance">£11,724</span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 25</span>
+                <span class="timeline-event">gifts</span>
+                <span class="timeline-amount negative">-£150</span>
+                <span class="timeline-balance">£12,039</span>
+            </div>
+
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Dec 28</span>
+                <span class="timeline-event">salary <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount positive">+£3,000</span>
+                <span class="timeline-balance">£14,574</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">rent <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£1,200</span>
+                <span class="timeline-balance">£13,374</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">bills <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£100</span>
+                <span class="timeline-balance">£13,274</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">hotel</span>
+                <span class="timeline-amount negative">-£400</span>
+                <span class="timeline-balance">£12,874</span>
+            </div>
+
+            <div class="timeline-summary">
+                <div>
+                    <div class="summary-label">JAN 05 // END</div>
+                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Story spend: £870</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="summary-value ok">£12,874</div>
+                    <div style="font-size: 10px; color: var(--green-bright); margin-top: 4px;">✓ £130 LEFT</div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD EVENT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">FUNDING</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 4: Projection (Volvo) -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-projection-volvo">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> volvo</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter chips -->
+        <div class="filter-bar">
+            <button class="filter-chip" onclick="showProjection('all')">ALL</button>
+            <button class="filter-chip" onclick="showProjection('canada')">canada-trip</button>
+            <button class="filter-chip active">volvo</button>
+            <button class="filter-chip" onclick="showProjection('skiing')">skiing</button>
+            <button class="filter-chip">baseline</button>
+        </div>
+
+        <!-- Projection header -->
+        <div class="projection-header">
+            <div class="projection-meta">
+                <div>
+                    <div class="projection-title">volvo</div>
+                    <div class="projection-dates">Nov 18 → Jan 18</div>
+                </div>
+                <div class="projection-current">
+                    <div class="projection-current-label">NOW</div>
+                    <div class="projection-current-amount">£13,500</div>
+                </div>
+            </div>
+            <div class="projection-notice" style="background: rgba(100, 149, 237, 0.15); color: #6495ED;">
+                ℹ This story includes additional funding
+            </div>
+            <div class="goal-bar">
+                <div class="goal-text">
+                    <span>SPEND UP TO: £2,500</span>
+                    <span style="color: var(--red);">£217 over</span>
+                </div>
+                <div class="goal-progress">
+                    <div class="goal-fill over" style="width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <main class="main no-padding">
+            <div class="timeline-row header">
+                <span>DATE</span>
+                <span>EVENT</span>
+                <span>CHANGE</span>
+                <span>BALANCE</span>
+            </div>
+
+            <div class="timeline-row past">
+                <span class="timeline-date">Nov 18</span>
+                <span class="timeline-event">period start</span>
+                <span class="timeline-amount">--</span>
+                <span class="timeline-balance">£12,185</span>
+            </div>
+            <div class="timeline-row past baseline">
+                <span class="timeline-date">Nov 28</span>
+                <span class="timeline-event">salary <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount positive">+£3,000</span>
+                <span class="timeline-balance">£15,185</span>
+            </div>
+            <div class="timeline-row past baseline">
+                <span class="timeline-date">Dec 01</span>
+                <span class="timeline-event">rent <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£1,200</span>
+                <span class="timeline-balance">£13,985</span>
+            </div>
+            <div class="timeline-row past baseline">
+                <span class="timeline-date">Dec 01</span>
+                <span class="timeline-event">bills <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£100</span>
+                <span class="timeline-balance">£13,885</span>
+            </div>
+            <div class="timeline-row past">
+                <span class="timeline-date">Dec 05</span>
+                <span class="timeline-event">labour</span>
+                <span class="timeline-amount negative">-£800</span>
+                <span class="timeline-balance">£13,085</span>
+            </div>
+            <div class="timeline-row past">
+                <span class="timeline-date">Dec 10</span>
+                <span class="timeline-event">family loan</span>
+                <span class="timeline-amount positive">+£500</span>
+                <span class="timeline-balance">£13,585</span>
+            </div>
+            <div class="timeline-row past">
+                <span class="timeline-date">Dec 12</span>
+                <span class="timeline-event">camshaft sensor</span>
+                <span class="timeline-amount negative">-£85</span>
+                <span class="timeline-balance">£13,500</span>
+            </div>
+
+            <div class="today-divider">
+                <span class="today-line"></span>
+                <span class="today-label">TODAY // DEC 18</span>
+                <span class="today-line"></span>
+            </div>
+
+            <!-- Gap: canada car rental -->
+            <div class="gap-row" onclick="toggleGap('volvo-gap-1')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£320 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-1-1" style="display: none;">
+                <span class="timeline-date">Dec 20</span>
+                <span class="timeline-event">car rental <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£320</span>
+                <span class="timeline-balance">£13,180</span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 22</span>
+                <span class="timeline-event">new tyres</span>
+                <span class="timeline-amount negative">-£380</span>
+                <span class="timeline-balance">£12,800</span>
+            </div>
+
+            <!-- Gap: skiing + canada gifts -->
+            <div class="gap-row" onclick="toggleGap('volvo-gap-2')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£1,226 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-2-1" style="display: none;">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">ski passes <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£349</span>
+                <span class="timeline-balance">£12,451</span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-2-2" style="display: none;">
+                <span class="timeline-date">Dec 24</span>
+                <span class="timeline-event">equipment <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£262</span>
+                <span class="timeline-balance">£12,189</span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-2-3" style="display: none;">
+                <span class="timeline-date">Dec 25</span>
+                <span class="timeline-event">gifts <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£150</span>
+                <span class="timeline-balance">£12,039</span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-2-4" style="display: none;">
+                <span class="timeline-date">Dec 26</span>
+                <span class="timeline-event">lessons <span class="tag">[skiing]</span></span>
+                <span class="timeline-amount negative">-£465</span>
+                <span class="timeline-balance">£11,574</span>
+            </div>
+
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Dec 28</span>
+                <span class="timeline-event">salary <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount positive">+£3,000</span>
+                <span class="timeline-balance">£14,574</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">rent <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£1,200</span>
+                <span class="timeline-balance">£13,374</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">bills <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount negative">-£100</span>
+                <span class="timeline-balance">£13,274</span>
+            </div>
+
+            <!-- Gap: canada hotel -->
+            <div class="gap-row" onclick="toggleGap('volvo-gap-3')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-£400 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="volvo-gap-3-1" style="display: none;">
+                <span class="timeline-date">Jan 01</span>
+                <span class="timeline-event">hotel <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-£400</span>
+                <span class="timeline-balance">£12,874</span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 10</span>
+                <span class="timeline-event">MOT + service</span>
+                <span class="timeline-amount negative">-£350</span>
+                <span class="timeline-balance">£12,524</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Jan 15</span>
+                <span class="timeline-event">brake pads</span>
+                <span class="timeline-amount negative">-£182</span>
+                <span class="timeline-balance">£12,342</span>
+            </div>
+
+            <div class="timeline-summary">
+                <div>
+                    <div class="summary-label">JAN 18 // END</div>
+                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Story spend: £2,717</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="summary-value ok">£12,342</div>
+                    <div style="font-size: 10px; color: var(--red); margin-top: 4px;">⚠ £217 OVER</div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD EVENT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">FUNDING</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 5: Projection (Skiing - CAD) -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-projection-skiing">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> skiing</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter chips -->
+        <div class="filter-bar">
+            <button class="filter-chip" onclick="showProjection('all')">ALL</button>
+            <button class="filter-chip" onclick="showProjection('canada')">canada-trip</button>
+            <button class="filter-chip" onclick="showProjection('volvo')">volvo</button>
+            <button class="filter-chip active">skiing</button>
+            <button class="filter-chip">baseline</button>
+        </div>
+
+        <!-- Projection header -->
+        <div class="projection-header">
+            <div class="projection-meta">
+                <div>
+                    <div class="projection-title">skiing</div>
+                    <div class="projection-dates">Dec 23 → Dec 28</div>
+                </div>
+                <div class="projection-current">
+                    <div class="projection-current-label">START BAL</div>
+                    <div class="projection-current-amount">$22,516</div>
+                </div>
+            </div>
+            <div class="projection-notice">
+                ⚠ This story has hypothetical funding
+            </div>
+            <div class="projection-currency">
+                Display: CAD (1 GBP = 1.72 CAD)
+            </div>
+            <div class="goal-bar">
+                <div class="goal-text">
+                    <span>SPEND UP TO: $2,000</span>
+                    <span style="color: var(--green-bright);">$150 left</span>
+                </div>
+                <div class="goal-progress">
+                    <div class="goal-fill" style="width: 92.5%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <main class="main no-padding">
+            <div class="timeline-row header">
+                <span>DATE</span>
+                <span>EVENT</span>
+                <span>CHANGE</span>
+                <span>BALANCE</span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">period start</span>
+                <span class="timeline-amount">--</span>
+                <span class="timeline-balance">$22,016</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">expected contribution <span class="tag">[planned]</span></span>
+                <span class="timeline-amount" style="color: var(--amber);">+$500</span>
+                <span class="timeline-balance">$22,516</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 23</span>
+                <span class="timeline-event">ski passes</span>
+                <span class="timeline-amount negative">-$600</span>
+                <span class="timeline-balance">$21,916</span>
+            </div>
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 24</span>
+                <span class="timeline-event">equipment rental</span>
+                <span class="timeline-amount negative">-$450</span>
+                <span class="timeline-balance">$21,466</span>
+            </div>
+
+            <!-- Gap: canada gifts -->
+            <div class="gap-row" onclick="toggleGap('skiing-gap-1')">
+                <span class="gap-line"></span>
+                <span class="gap-amount negative">-$258 other</span>
+                <span class="gap-line"></span>
+            </div>
+            <div class="timeline-row revealed" id="skiing-gap-1-1" style="display: none;">
+                <span class="timeline-date">Dec 25</span>
+                <span class="timeline-event">gifts <span class="tag">[canada]</span></span>
+                <span class="timeline-amount negative">-$258</span>
+                <span class="timeline-balance">$21,208</span>
+            </div>
+
+            <div class="timeline-row">
+                <span class="timeline-date">Dec 26</span>
+                <span class="timeline-event">lessons</span>
+                <span class="timeline-amount negative">-$800</span>
+                <span class="timeline-balance">$20,408</span>
+            </div>
+            <div class="timeline-row baseline">
+                <span class="timeline-date">Dec 28</span>
+                <span class="timeline-event">salary <span class="tag">[baseline]</span></span>
+                <span class="timeline-amount positive">+$5,160</span>
+                <span class="timeline-balance">$25,568</span>
+            </div>
+
+            <div class="timeline-summary">
+                <div>
+                    <div class="summary-label">DEC 28 // END</div>
+                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Story spend: $1,850</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="summary-value ok">$25,568</div>
+                    <div style="font-size: 10px; color: var(--green-bright); margin-top: 4px;">✓ $150 LEFT</div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD EVENT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">FUNDING</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 6: Settings    -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-settings">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> settings</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <main class="main" style="padding-bottom: 20px;">
+            <!-- User Management -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">USERS</span>
+                    <button class="section-action">+ ADD</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">edward</div>
+                        <div class="settings-sublabel">admin</div>
+                    </div>
+                    <button class="settings-btn-small">EDIT</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">katrina</div>
+                        <div class="settings-sublabel">user</div>
+                    </div>
+                    <button class="settings-btn-small">EDIT</button>
+                </div>
+            </section>
+
+            <!-- Backup & Restore -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">BACKUP & RESTORE</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Export data</div>
+                        <div class="settings-sublabel">Download as JSON</div>
+                    </div>
+                    <button class="settings-btn-small">EXPORT</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Import data</div>
+                        <div class="settings-sublabel">Restore from JSON</div>
+                    </div>
+                    <button class="settings-btn-small">IMPORT</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Last backup</div>
+                        <div class="settings-sublabel">Dec 15, 2024 @ 14:32</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Preferences -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PREFERENCES</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Base currency</div>
+                    </div>
+                    <span class="settings-value">GBP</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Date format</div>
+                    </div>
+                    <span class="settings-value">DD/MM/YYYY</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Baseline display</div>
+                        <div class="settings-sublabel">Months to show</div>
+                    </div>
+                    <span class="settings-value">3</span>
+                </div>
+            </section>
+
+            <!-- Conversion Rates -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">CONVERSION RATES</span>
+                    <button class="section-action">EDIT</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">GBP → CAD</div>
+                    </div>
+                    <span class="settings-value">1.72</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">GBP → USD</div>
+                    </div>
+                    <span class="settings-value">1.27</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">GBP → EUR</div>
+                    </div>
+                    <span class="settings-value">1.17</span>
+                </div>
+            </section>
+
+            <!-- Sync -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">SYNC</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Server</div>
+                        <div class="settings-sublabel">https://home.local:8443</div>
+                    </div>
+                    <button class="settings-btn-small">EDIT</button>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Clear local data</div>
+                        <div class="settings-sublabel danger">Removes all data from device</div>
+                    </div>
+                    <button class="settings-btn-small danger">CLEAR</button>
+                </div>
+            </section>
+
+            <!-- About -->
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">ABOUT</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Version</div>
+                    </div>
+                    <span class="settings-value dim">0.1.0</span>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 7: Accounts    -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-accounts">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> accounts</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">YOUR ACCOUNTS</span>
+                    <button class="section-action">+ ADD</button>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('monzo')">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">Monzo <span class="tag">[default]</span></div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">GBP</span>
+                            <span class="account-dot">•</span>
+                            <span class="account-updated">updated 2h ago</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance">£2,500</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('hsbc')">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">HSBC</div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">GBP</span>
+                            <span class="account-dot">•</span>
+                            <span class="account-updated">updated 1d ago</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance">£11,000</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('kat')">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">Kat Credit</div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">CAD</span>
+                            <span class="account-dot">•</span>
+                            <span class="account-updated">updated 5h ago</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance negative">-$500</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">TOTAL BY CURRENCY</span>
+                </div>
+                <div class="currency-total-item">
+                    <span class="currency-label">GBP</span>
+                    <span class="currency-amount">£13,500</span>
+                </div>
+                <div class="currency-total-item">
+                    <span class="currency-label">CAD</span>
+                    <span class="currency-amount negative">-$500</span>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PROJECTION VS REALITY</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Accounts total</div>
+                    </div>
+                    <span class="settings-value">£13,500</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Projected NOW</div>
+                    </div>
+                    <span class="settings-value">£13,500</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Drift</div>
+                    </div>
+                    <span class="settings-value">£0 (0%) ✓</span>
+                </div>
+            </section>
+
+            <div class="info-note">
+                <span class="info-icon">ℹ</span>
+                Update account balances to trigger automatic reconciliation. Changes are batched until you leave this screen.
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD ACCT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">BALANCE</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 8: Account Detail (Monzo) -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-account-monzo">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showAccounts()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> Monzo</span>
+            </div>
+            <div class="header-right">
+                <button class="settings-btn" title="Edit">✎</button>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">CURRENT BALANCE</span>
+                    <button class="section-action" onclick="showUpdateBalance('monzo')">UPDATE</button>
+                </div>
+                <div style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: var(--green-bright);">£2,500</div>
+                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">updated 2h ago</div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">ACCOUNT INFO</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Currency</div>
+                    </div>
+                    <span class="settings-value">GBP</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Role</div>
+                    </div>
+                    <span class="settings-value">Default spending account</span>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PROJECTION</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Today (Dec 18)</div>
+                    </div>
+                    <span class="settings-value">£2,500</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Dec 31</div>
+                    </div>
+                    <span class="settings-value">£1,424</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Jan 15</div>
+                    </div>
+                    <span class="settings-value">£2,592</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Jan 31</div>
+                    </div>
+                    <span class="settings-value">£4,092</span>
+                </div>
+                <div style="padding: 10px 12px; color: var(--green-bright); font-size: 11px;">
+                    ✓ Always positive
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">RECENT ACTIVITY</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 15</span>
+                    <span class="timeline-event">Netflix <span class="tag">[baseline]</span></span>
+                    <span class="timeline-amount negative">-£15</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 12</span>
+                    <span class="timeline-event">groceries <span class="tag">[baseline]</span></span>
+                    <span class="timeline-amount negative">-£120</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 10</span>
+                    <span class="timeline-event">coffee <span class="tag">[baseline]</span></span>
+                    <span class="timeline-amount negative">-£45</span>
+                </div>
+            </section>
+
+            <div style="padding: 16px; text-align: center;">
+                <button class="settings-btn-small danger">ARCHIVE ACCOUNT</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 9: Account Detail (HSBC) - with warning -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-account-hsbc">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showAccounts()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> HSBC</span>
+            </div>
+            <div class="header-right">
+                <button class="settings-btn" title="Edit">✎</button>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">CURRENT BALANCE</span>
+                    <button class="section-action" onclick="showUpdateBalance('hsbc')">UPDATE</button>
+                </div>
+                <div style="padding: 16px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 700; color: var(--green-bright);">£11,000</div>
+                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">updated 1d ago</div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">ACCOUNT INFO</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Currency</div>
+                    </div>
+                    <span class="settings-value">GBP</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Role</div>
+                    </div>
+                    <span class="settings-value dim">Bills account</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Story default</div>
+                    </div>
+                    <span class="settings-value dim">volvo</span>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PROJECTION</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Today (Dec 18)</div>
+                    </div>
+                    <span class="settings-value">£11,000</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Dec 31</div>
+                    </div>
+                    <span class="settings-value">£10,850</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Jan 15</div>
+                    </div>
+                    <span class="settings-value">£9,118</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Jan 31</div>
+                    </div>
+                    <span class="settings-value">£7,618</span>
+                </div>
+                <div style="padding: 10px 12px; color: var(--green-bright); font-size: 11px;">
+                    ✓ Always positive
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">RECENT ACTIVITY</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 12</span>
+                    <span class="timeline-event">sensor <span class="tag">[volvo]</span></span>
+                    <span class="timeline-amount negative">-£85</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 10</span>
+                    <span class="timeline-event">family loan <span class="tag">[volvo]</span></span>
+                    <span class="timeline-amount positive">+£500</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 05</span>
+                    <span class="timeline-event">labour <span class="tag">[volvo]</span></span>
+                    <span class="timeline-amount negative">-£800</span>
+                </div>
+                <div class="timeline-row" style="grid-template-columns: 58px 1fr 60px;">
+                    <span class="timeline-date">Dec 01</span>
+                    <span class="timeline-event">rent <span class="tag">[baseline]</span></span>
+                    <span class="timeline-amount negative">-£1,200</span>
+                </div>
+            </section>
+
+            <div style="padding: 16px; text-align: center;">
+                <button class="settings-btn-small danger">ARCHIVE ACCOUNT</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 10: Update Balance Modal -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-update-balance">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showAccountDetail('monzo')">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> update balance</span>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">MONZO</span>
+                </div>
+                <div style="padding: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">CURRENT BALANCE</div>
+                        <div style="font-size: 18px; color: var(--text-mid);">£2,500</div>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">NEW BALANCE</div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 18px; color: var(--text-mid);">£</span>
+                            <input type="text" value="2,200" style="
+                                background: var(--bg-tertiary);
+                                border: 1px solid var(--green-dim);
+                                color: var(--green-bright);
+                                font-family: inherit;
+                                font-size: 18px;
+                                padding: 8px 12px;
+                                width: 150px;
+                            ">
+                        </div>
+                    </div>
+                    <div style="padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); margin-bottom: 16px;">
+                        <div style="font-size: 11px; color: var(--text-dim);">DIFFERENCE</div>
+                        <div style="font-size: 14px; color: var(--red);">-£300</div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="info-note">
+                <span class="info-icon">ℹ</span>
+                Reconciliation will run when you leave the accounts screen. You can update multiple accounts before then.
+            </div>
+
+            <div style="padding: 16px; display: flex; gap: 12px;">
+                <button class="settings-btn-small" style="flex: 1; padding: 12px;" onclick="showAccountDetail('monzo')">CANCEL</button>
+                <button class="settings-btn-small" style="flex: 1; padding: 12px; background: var(--green-glow); border-color: var(--green-bright);" onclick="showAccountsWithPending()">SAVE</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== -->
+    <!-- SCREEN 11: Accounts with Pending Reconciliation -->
+    <!-- ==================== -->
+    <div class="screen" id="screen-accounts-pending">
+        <header class="header">
+            <div class="header-left">
+                <button class="header-back" onclick="showDashboard()">←</button>
+                <span class="header-context">CHAPTR <span style="color: var(--text-dim);">//</span> accounts</span>
+            </div>
+            <div class="header-right">
+                <div class="sync-status">
+                    <span class="sync-dot"></span>
+                    2m ago
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">YOUR ACCOUNTS</span>
+                    <button class="section-action">+ ADD</button>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('monzo')" style="background: var(--bg-tertiary);">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">Monzo <span class="tag">[default]</span> <span style="color: var(--amber);">●</span></div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">GBP</span>
+                            <span class="account-dot">•</span>
+                            <span style="color: var(--amber);">pending reconciliation</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance">£2,200</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('hsbc')">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">HSBC</div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">GBP</span>
+                            <span class="account-dot">•</span>
+                            <span class="account-updated">updated 1d ago</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance">£11,000</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+                <div class="account-detail-item" onclick="showAccountDetail('kat')">
+                    <div class="account-detail-main">
+                        <div class="account-detail-name">Kat Credit</div>
+                        <div class="account-detail-meta">
+                            <span class="account-currency">CAD</span>
+                            <span class="account-dot">•</span>
+                            <span class="account-updated">updated 5h ago</span>
+                        </div>
+                    </div>
+                    <div class="account-detail-right">
+                        <div class="account-detail-balance negative">-$500</div>
+                        <div class="account-detail-arrow">→</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">TOTAL BY CURRENCY</span>
+                </div>
+                <div class="currency-total-item">
+                    <span class="currency-label">GBP</span>
+                    <span class="currency-amount">£13,200</span>
+                </div>
+                <div class="currency-total-item">
+                    <span class="currency-label">CAD</span>
+                    <span class="currency-amount negative">-$500</span>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    <span class="section-title">PROJECTION VS REALITY</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Accounts total</div>
+                    </div>
+                    <span class="settings-value">£13,200</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Projected NOW</div>
+                    </div>
+                    <span class="settings-value">£13,500</span>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-item-left">
+                        <div class="settings-label">Drift</div>
+                    </div>
+                    <span class="settings-value" style="color: var(--amber);">-£300 (2.2%) ⚠</span>
+                </div>
+            </section>
+
+            <div class="info-note" style="background: rgba(255, 170, 0, 0.1); border-color: var(--amber);">
+                <span class="info-icon" style="color: var(--amber);">⚠</span>
+                <span style="color: var(--amber);">1 account pending reconciliation. Changes will be applied when you leave this screen.</span>
+            </div>
+        </main>
+
+        <nav class="command-bar">
+            <button class="cmd-btn">
+                <span class="cmd-key">+</span>
+                <span class="cmd-label">ADD ACCT</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">$</span>
+                <span class="cmd-label">BALANCE</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">↻</span>
+                <span class="cmd-label">SYNC</span>
+            </button>
+            <button class="cmd-btn">
+                <span class="cmd-key">?</span>
+                <span class="cmd-label">HELP</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        function hideAllScreens() {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        }
+
+        function showDashboard() {
+            hideAllScreens();
+            document.getElementById('screen-dashboard').classList.add('active');
+        }
+
+        function showProjection(type) {
+            hideAllScreens();
+            if (type === 'all') {
+                document.getElementById('screen-projection-all').classList.add('active');
+            } else if (type === 'canada') {
+                document.getElementById('screen-projection-canada').classList.add('active');
+            } else if (type === 'volvo') {
+                document.getElementById('screen-projection-volvo').classList.add('active');
+            } else if (type === 'skiing') {
+                document.getElementById('screen-projection-skiing').classList.add('active');
+            } else {
+                document.getElementById('screen-projection-all').classList.add('active');
+            }
+        }
+
+        function showSettings() {
+            hideAllScreens();
+            document.getElementById('screen-settings').classList.add('active');
+        }
+
+        function showAccounts() {
+            hideAllScreens();
+            document.getElementById('screen-accounts').classList.add('active');
+        }
+
+        function showAccountDetail(account) {
+            hideAllScreens();
+            if (account === 'monzo') {
+                document.getElementById('screen-account-monzo').classList.add('active');
+            } else if (account === 'hsbc') {
+                document.getElementById('screen-account-hsbc').classList.add('active');
+            } else {
+                document.getElementById('screen-account-monzo').classList.add('active');
+            }
+        }
+
+        function showUpdateBalance(account) {
+            hideAllScreens();
+            document.getElementById('screen-update-balance').classList.add('active');
+        }
+
+        function showAccountsWithPending() {
+            hideAllScreens();
+            document.getElementById('screen-accounts-pending').classList.add('active');
+        }
+
+        function toggleGap(gapId) {
+            // Find all elements that start with this gap ID
+            let i = 1;
+            let element = document.getElementById(gapId + '-' + i);
+            while (element) {
+                if (element.style.display === 'none') {
+                    element.style.display = 'grid';
+                } else {
+                    element.style.display = 'none';
+                }
+                i++;
+                element = document.getElementById(gapId + '-' + i);
+            }
+        }
+    </script>
+</body>
+</html>
