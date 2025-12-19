@@ -194,6 +194,9 @@ async def resolve_account_id(
             })
             if account:
                 return account_id
+            # Note: If story's default_account_id is archived, we fall through
+            # to global default (Level 3) rather than failing. This allows events
+            # to continue being created even if the story's account is archived.
 
     # Level 3: Global default account
     default = await db['accounts'].find_one({

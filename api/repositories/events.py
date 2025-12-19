@@ -12,7 +12,7 @@ from datetime import date
 from api.repositories.base import BaseRepository
 from api.models import Event, EventCreate, EventUpdate
 from api.utils.db import generate_id, utc_now, to_str, resolve_account_id, get_rate_to_base
-from api.utils.errors import ResourceConflictError
+from api.utils.errors import ResourceConflictError, ValidationError
 
 
 class EventRepository(BaseRepository[Event]):
@@ -259,14 +259,18 @@ class EventRepository(BaseRepository[Event]):
         limit: int = 100
     ) -> list[Event]:
         """
-        List events with same-day ordering.
+        List events with projection iteration and same-day ordering.
 
-        Critical Ordering for Balance Projections:
-        - event_date ASC (chronological)
-        - amount DESC (income first, positive > negative)
-        - created_at ASC (creation order)
+        Critical Ordering for Balance Projections (spec-compliant):
+        1. event_date ASC - Chronological iteration across days (projection requirement)
+        2. amount DESC - Same-day ordering: income first, then expenses (spec: "amount DESC")
+        3. created_at ASC - Same-day tie-breaker: creation order (spec: "created_at ASC")
 
-        This ordering minimizes balance dips by processing income before expenses.
+        This ordering minimizes balance dips by processing income before expenses
+        on the same day, while iterating chronologically across dates for projections.
+
+        Spec reference: "Events > Same-day ordering" - Events on the same date are
+        ordered by amount DESC (positive before negative) then created_at ASC.
 
         :param story_id: Filter by story (None = include all)
         :type story_id: Optional[UUID]

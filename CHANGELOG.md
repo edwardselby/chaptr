@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR#5 Review Fixes Round 2: Added account_id validation to EventRepository.update() - prevents reassigning to non-existent accounts
 - PR#5 Review Fixes Round 2: Event date field uses Pydantic aliases (alias='date', serialization_alias='date') for spec compliance
 - PR#5 Review Fixes Round 2: Rate locking behavior clarified in EventCreate docstring - auto-locks if not provided, uses explicit if provided
+- PR#5 Review Fixes Round 3: Fixed missing ValidationError import in EventRepository (critical bug fix)
+- PR#5 Review Fixes Round 3: Clarified same-day ordering documentation - event_date ASC for projection iteration, amount DESC + created_at ASC for same-day ordering
+- PR#5 Review Fixes Round 3: Documented account resolution fallback behavior - archived story default_account_id falls through to global default
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
