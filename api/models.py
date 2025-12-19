@@ -292,9 +292,26 @@ class EventCreate(EventBase):
     2. Story's default_account_id → use it
     3. Global default account → use it (fallback)
 
+    Rate locking (resolved at API level, locked from settings):
+    - If rate_to_base not provided, automatically locked from current settings
+    - If provided, uses explicit rate (for manual corrections)
+
     Currency and account are independent - a GBP event can be assigned to a CAD account.
     """
-    pass
+    # Override to make optional - resolved via 3-level hierarchy if not provided
+    account_id: Optional[UUID] = Field(
+        default=None,
+        description="Optional account (resolved via hierarchy if not provided)"
+    )
+
+    # Override to make optional - auto-locked from settings if not provided
+    rate_to_base: Optional[Decimal] = Field(
+        default=None,
+        gt=0,
+        max_digits=19,
+        decimal_places=8,
+        description="Optional rate (auto-locked from settings if not provided)"
+    )
 
 
 class EventUpdate(BaseModel):

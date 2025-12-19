@@ -1,0 +1,133 @@
+"""
+Settings repository for CHAPTR API.
+
+Provides data access layer for application settings using singleton pattern.
+Settings are global (not per-user) and admin-only for modification.
+"""
+
+from uuid import UUID
+from typing import Optional
+
+from api.repositories.base import BaseRepository
+from api.models import Settings, SettingsUpdate
+from api.utils.db import generate_id, utc_now
+
+
+class SettingsRepository(BaseRepository[Settings]):
+    """
+    Repository for managing application settings.
+
+    Implements singleton pattern:
+    - Only one settings document exists in the database
+    - GET creates default settings if none exist
+    - PUT updates the singleton document
+
+    :Example:
+
+    >>> repo = SettingsRepository(db)
+    >>> settings = await repo.get_or_create_default()
+    >>> updated = await repo.update_singleton(SettingsUpdate(base_currency="USD"))
+    """
+
+    def __init__(self, db):
+        """
+        Initialize settings repository.
+
+        :param db: MongoDB database instance
+        :type db: AsyncIOMotorDatabase
+        """
+        super().__init__(db, "settings", Settings)
+
+    async def get_or_create_default(self) -> Settings:
+        """
+        Get existing settings or create default if none exist.
+
+        This implements the singleton pattern - there should only be one
+        settings document in the database.
+
+        :return: Settings document
+        :rtype: Settings
+
+        :Example:
+
+        >>> settings = await repo.get_or_create_default()
+        >>> print(settings.base_currency)  # "GBP"
+        """
+        # Try to find existing settings
+        doc = await self.collection.find_one({})
+
+        if doc:
+            return Settings(**doc)
+
+        # Create default settings if none exist
+        default_settings = Settings(
+            id=generate_id(),
+            base_currency="GBP",
+            default_currency="GBP",
+            date_format="DD/MM/YYYY",
+            baseline_display_months=1,
+            rates={
+                "USD": "1.27",
+                "CAD": "1.76",
+                "EUR": "1.20"
+            },
+            server_url="",
+            last_backup_date=None,
+            version="1.0.0",
+            created_at=utc_now(),
+            updated_at=utc_now()
+        )
+
+        # Insert into MongoDB
+        await self.collection.insert_one(default_settings.model_dump(mode="json"))
+
+        return default_settings
+
+    async def update_singleton(
+        self,
+        data: SettingsUpdate,
+        updated_by: Optional[UUID] = None
+    ) -> Settings:
+        """
+        Update the singleton settings document.
+
+        This updates the one and only settings document in the database.
+        Creates default settings if none exist yet.
+
+        :param data: Update data (partial)
+        :type data: SettingsUpdate
+        :param updated_by: User ID updating settings (Phase 1.5, admin-only)
+        :type updated_by: Optional[UUID]
+        :return: Updated settings
+        :rtype: Settings
+
+        :Example:
+
+        >>> settings = await repo.update_singleton(
+        ...     SettingsUpdate(
+        ...         rates={
+        ...             "USD": "1.30",
+        ...             "EUR": "1.15"
+        ...         }
+        ...     )
+        ... )
+        """
+        # Get or create settings
+        existing = await self.get_or_create_default()
+
+        # Prepare update dictionary
+        update_dict = data.model_dump(exclude_unset=True)
+
+        # Always update timestamp
+        update_dict['updated_at'] = utc_now()
+
+        # Apply update
+        await self.collection.update_one(
+            {"id": str(existing.id)},
+            {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
+                      str(v) if isinstance(v, UUID) else v
+                      for k, v in update_dict.items()}}
+        )
+
+        # Return updated settings
+        return await self.get_or_create_default()

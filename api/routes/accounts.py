@@ -2,110 +2,210 @@
 Account management endpoints.
 
 Provides CRUD operations for financial accounts (Monzo, HSBC, etc.).
-
-TODO Phase 1.4: Implement full CRUD logic
-See spec: Core Concepts > Accounts
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Query
+from uuid import UUID
+from typing import Annotated
+
+from api.config import MongoDB
+from api.models import Account, AccountCreate, AccountUpdate
+from api.repositories.accounts import AccountRepository
 
 router = APIRouter()
 
 
-@router.get("/accounts")
-async def list_accounts():
+def get_account_repo() -> AccountRepository:
     """
-    List all accounts (excluding archived by default).
+    Dependency injection for AccountRepository.
 
-    TODO Phase 1.4:
-    - Query MongoDB accounts collection
-    - Filter is_archived = false by default
-    - Add query param to include archived if needed
-    - Return array of Account models
-
-    Returns:
-        list: Array of account objects
+    :return: Initialized AccountRepository
+    :rtype: AccountRepository
     """
-    return []
+    db = MongoDB.get_database()
+    return AccountRepository(db)
 
 
-@router.get("/accounts/{id}")
-async def get_account(id: str):
+@router.get("/accounts", response_model=list[Account])
+async def list_accounts(
+    include_archived: Annotated[bool, Query(
+        description="Include archived accounts in results"
+    )] = False,
+    repo: AccountRepository = Depends(get_account_repo)
+):
+    """
+    List all accounts.
+
+    By default, excludes archived accounts. Use include_archived=true
+    to include archived accounts in the response.
+
+    :param include_archived: Whether to include archived accounts (default: False)
+    :type include_archived: bool
+    :param repo: Injected AccountRepository
+    :type repo: AccountRepository
+    :return: List of accounts
+    :rtype: list[Account]
+
+    :Example:
+
+    ```bash
+    # List active accounts only
+    curl http://localhost:8000/api/accounts
+
+    # List all accounts including archived
+    curl http://localhost:8000/api/accounts?include_archived=true
+    ```
+    """
+    if include_archived:
+        return await repo.list()
+    return await repo.list_active()
+
+
+@router.get("/accounts/{account_id}", response_model=Account)
+async def get_account(
+    account_id: UUID,
+    repo: AccountRepository = Depends(get_account_repo)
+):
     """
     Get single account by ID.
 
-    TODO Phase 1.4:
-    - Query MongoDB by id
-    - Return 404 if not found
-    - Return Account model
+    :param account_id: Account UUID
+    :type account_id: UUID
+    :param repo: Injected AccountRepository
+    :type repo: AccountRepository
+    :return: Account details
+    :rtype: Account
+    :raises ResourceNotFoundError: If account not found (404)
 
-    Args:
-        id: Account UUID
+    :Example:
 
-    Returns:
-        dict: Account object
+    ```bash
+    curl http://localhost:8000/api/accounts/{account-id}
+    ```
     """
-    raise HTTPException(status_code=404, detail="Account not found")
+    return await repo.get(account_id)
 
 
-@router.post("/accounts")
-async def create_account():
+@router.post("/accounts", response_model=Account, status_code=201)
+async def create_account(
+    data: AccountCreate,
+    repo: AccountRepository = Depends(get_account_repo)
+):
     """
     Create new account.
 
-    TODO Phase 1.4:
-    - Validate AccountCreate model
-    - Enforce exactly one is_default = true
-    - Insert into MongoDB
-    - Return created Account
-
     Business Rules:
-    - Exactly one account must have is_default = true
-    - If creating first account, auto-set is_default = true
-    - Currency must be 3-char ISO code
+    - If this is the first account, is_default is automatically set to true
+    - If is_default=true, all other accounts are set to is_default=false
+    - Server generates UUID and timestamps
 
-    Returns:
-        dict: Created account object
+    :param data: Account creation data
+    :type data: AccountCreate
+    :param repo: Injected AccountRepository
+    :type repo: AccountRepository
+    :return: Created account
+    :rtype: Account
+
+    :Example:
+
+    ```bash
+    # Create first account (auto-sets is_default=true)
+    curl -X POST http://localhost:8000/api/accounts \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "Monzo",
+        "currency": "GBP",
+        "current_balance": 2500,
+        "balance_updated_at": "2024-12-19T10:00:00Z"
+      }'
+
+    # Create second account and set as default
+    curl -X POST http://localhost:8000/api/accounts \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "HSBC",
+        "currency": "GBP",
+        "current_balance": 5000,
+        "balance_updated_at": "2024-12-19T10:00:00Z",
+        "is_default": true
+      }'
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    return await repo.create(data)
 
 
-@router.put("/accounts/{id}")
-async def update_account(id: str):
+@router.put("/accounts/{account_id}", response_model=Account)
+async def update_account(
+    account_id: UUID,
+    data: AccountUpdate,
+    repo: AccountRepository = Depends(get_account_repo)
+):
     """
     Update existing account.
 
-    TODO Phase 1.4:
-    - Validate AccountUpdate model
-    - Check if account exists
-    - Update in MongoDB
-    - Handle is_default enforcement
-    - Set pending_reconciliation flag if balance updated
-    - Return updated Account
+    Supports partial updates - only provided fields are updated.
 
-    Args:
-        id: Account UUID
+    Business Rules:
+    - If setting is_default=true, all other accounts are set to false
+    - If balance is updated, pending_reconciliation is automatically set to true
+    - balance_updated_at is updated if balance changes
 
-    Returns:
-        dict: Updated account object
+    :param account_id: Account UUID
+    :type account_id: UUID
+    :param data: Update data (partial)
+    :type data: AccountUpdate
+    :param repo: Injected AccountRepository
+    :type repo: AccountRepository
+    :return: Updated account
+    :rtype: Account
+    :raises ResourceNotFoundError: If account not found (404)
+
+    :Example:
+
+    ```bash
+    # Update account balance
+    curl -X PUT http://localhost:8000/api/accounts/{account-id} \\
+      -H "Content-Type: application/json" \\
+      -d '{"current_balance": 3000}'
+
+    # Set as default account
+    curl -X PUT http://localhost:8000/api/accounts/{account-id} \\
+      -H "Content-Type: application/json" \\
+      -d '{"is_default": true}'
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    return await repo.update(account_id, data)
 
 
-@router.delete("/accounts/{id}")
-async def delete_account(id: str):
+@router.delete("/accounts/{account_id}", status_code=204)
+async def delete_account(
+    account_id: UUID,
+    repo: AccountRepository = Depends(get_account_repo)
+):
     """
     Archive account (soft delete).
 
-    TODO Phase 1.4:
-    - Set is_archived = true (don't hard delete)
-    - Prevent deletion if is_default = true (must reassign first)
-    - Return success status
+    Accounts are never hard-deleted to preserve historical data.
+    Instead, they are archived (is_archived=true).
 
-    Args:
-        id: Account UUID
+    Business Rules:
+    - Cannot archive the default account - set another as default first
+    - Archived accounts are hidden from active account lists
+    - Historical events are retained
 
-    Returns:
-        dict: Success message
+    :param account_id: Account UUID
+    :type account_id: UUID
+    :param repo: Injected AccountRepository
+    :type repo: AccountRepository
+    :return: No content (204)
+    :raises ResourceNotFoundError: If account not found (404)
+    :raises ResourceConflictError: If trying to archive default account (409)
+
+    :Example:
+
+    ```bash
+    curl -X DELETE http://localhost:8000/api/accounts/{account-id}
+    ```
     """
-    raise HTTPException(status_code=501, detail="Not implemented")
+    await repo.archive(account_id)
+    return None
