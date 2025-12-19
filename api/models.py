@@ -121,29 +121,101 @@ class Account(AccountBase):
 # ==================== Story Models ====================
 
 class StoryBase(BaseModel):
-    """Base story model with common fields."""
-    # TODO Phase 1.3: Add all fields per spec (Core Concepts > Stories)
-    # Fields: name, start_date, end_date, default_account_id, funding_mode,
-    #         funding_amount, goal_type, goal_amount, display_currency
-    pass
+    """
+    Base story model - a container for related financial activity.
+
+    Stories are layers on top of shared reality - they don't hold money,
+    they represent planned spending/income for a specific context
+    (e.g., canada-trip, volvo, skiing-2025).
+    """
+    name: str = Field(..., min_length=1, description="Story name (e.g., canada-trip, volvo)")
+    start_date: date = Field(..., description="When this story begins")
+    end_date: Optional[date] = Field(default=None, description="When this story ends (null=ongoing)")
+    default_account_id: Optional[UUID] = Field(default=None, description="Default account for events in this story")
+    funding_mode: FundingMode = Field(default=FundingMode.PROJECTED, description="How starting balance is determined")
+    funding_amount: Optional[Decimal] = Field(default=None, description="Fixed or adjustment amount for funding")
+    goal_type: GoalType = Field(default=GoalType.NONE, description="Optional goal for this story")
+    goal_amount: Optional[Decimal] = Field(default=None, description="Target amount if goal set")
+    display_currency: str = Field(..., min_length=3, max_length=3, description="Currency for this story's view")
+
+    @field_validator('display_currency')
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        """Validate currency code is 3 uppercase letters."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+        return v
+
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        """Validate end_date is after start_date if provided."""
+        if self.end_date and self.end_date <= self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
+
+    @model_validator(mode='after')
+    def validate_funding(self):
+        """Validate funding_amount required for FIXED/PROJECTED_PLUS modes."""
+        if self.funding_mode in [FundingMode.FIXED, FundingMode.PROJECTED_PLUS]:
+            if self.funding_amount is None:
+                raise ValueError(f'funding_amount required for {self.funding_mode.value} mode')
+        return self
+
+    @model_validator(mode='after')
+    def validate_goal(self):
+        """Validate goal_amount required when goal_type is set."""
+        if self.goal_type != GoalType.NONE and self.goal_amount is None:
+            raise ValueError('goal_amount required when goal_type is set')
+        return self
 
 
 class StoryCreate(StoryBase):
-    """Model for creating a story."""
-    # TODO Phase 1.3: Add required fields for creation
+    """
+    Model for creating a story.
+
+    Story default account is used as fallback for events in this story.
+    If not set, falls back to global default account.
+    """
     pass
 
 
-class StoryUpdate(StoryBase):
-    """Model for updating a story."""
-    # TODO Phase 1.3: All fields optional for partial updates
-    pass
+class StoryUpdate(BaseModel):
+    """
+    Model for updating a story (all fields optional for partial updates).
+
+    Changing default_account_id only affects future events, not existing ones.
+    """
+    name: Optional[str] = Field(default=None, min_length=1)
+    start_date: Optional[date] = Field(default=None)
+    end_date: Optional[date] = Field(default=None)
+    default_account_id: Optional[UUID] = Field(default=None)
+    funding_mode: Optional[FundingMode] = Field(default=None)
+    funding_amount: Optional[Decimal] = Field(default=None)
+    goal_type: Optional[GoalType] = Field(default=None)
+    goal_amount: Optional[Decimal] = Field(default=None)
+    display_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+
+    @field_validator('display_currency')
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        """Validate currency code is 3 uppercase letters if provided."""
+        if v and (not v.isupper() or len(v) != 3):
+            raise ValueError('Currency code must be 3 uppercase letters')
+        return v
 
 
 class Story(StoryBase):
-    """Complete story model with all fields."""
-    # TODO Phase 1.3: Add id, created_at, created_by, updated_at, updated_by
-    pass
+    """
+    Complete story model with metadata and user tracking.
+
+    Stories can have overlapping date ranges. The system handles this
+    via gap indicators in projections.
+    """
+    id: UUID = Field(..., description="Unique story identifier")
+    created_at: datetime = Field(..., description="Story creation timestamp")
+    created_by: UUID = Field(..., description="User who created the story")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    updated_by: UUID = Field(..., description="User who last updated the story")
 
 
 # ==================== Event Models ====================
