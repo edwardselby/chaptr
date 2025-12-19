@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PUT /api/events/{id} with auto-adjustment protection
 - DELETE /api/events/{id} with auto-adjustment protection
 - EventRepository with account resolution, rate locking, and same-day ordering (date ASC, amount DESC, created_at ASC)
+- CPTR-6: GET /api/settings endpoint with singleton pattern (creates defaults if none exist)
+- PUT /api/settings endpoint for admin-only configuration updates
+- SettingsRepository with get_or_create_default and update_singleton methods
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
