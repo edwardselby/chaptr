@@ -179,22 +179,66 @@ class Event(EventBase):
 # ==================== Recurring Rule Models ====================
 
 class RecurringRuleBase(BaseModel):
-    """Base recurring rule model."""
-    # TODO Phase 1.3: Add fields per spec (recurring_rules collection)
-    # Fields: description, amount, currency, account_id, frequency, day,
-    #         start_date, end_date
-    pass
+    """
+    Base recurring rule model for generating events.
+
+    Recurring events (salary, rent, subscriptions, etc.) are stored as rules
+    and materialized as actual event rows within a generation window (±1 month).
+    """
+    description: str = Field(..., min_length=1, description="Rule description (e.g., Salary, Rent)")
+    amount: Decimal = Field(..., description="Amount (positive=income, negative=expense)")
+    currency: str = Field(..., min_length=3, max_length=3, description="Currency code (GBP, CAD, USD)")
+    account_id: UUID = Field(..., description="Account this rule applies to")
+    frequency: Frequency = Field(..., description="Recurrence frequency (weekly, monthly, annual)")
+    day: int = Field(..., ge=1, le=31, description="Day of week (1-7) or month (1-31)")
+    start_date: date = Field(..., description="First occurrence date")
+    end_date: Optional[date] = Field(default=None, description="Last occurrence date (null=ongoing)")
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        """Validate currency code is 3 uppercase letters."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+        return v
+
+    @model_validator(mode='after')
+    def validate_day_for_frequency(self):
+        """Validate day range based on frequency."""
+        if self.frequency == Frequency.WEEKLY and not (1 <= self.day <= 7):
+            raise ValueError('Weekly frequency requires day 1-7 (Monday=1, Sunday=7)')
+        if self.frequency in [Frequency.MONTHLY, Frequency.ANNUAL] and not (1 <= self.day <= 31):
+            raise ValueError('Monthly/Annual frequency requires day 1-31')
+        return self
+
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        """Validate end_date is after start_date if provided."""
+        if self.end_date and self.end_date <= self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
 
 
 class RecurringRuleCreate(RecurringRuleBase):
-    """Model for creating a recurring rule."""
+    """
+    Model for creating a recurring rule.
+
+    Events are generated as real rows within generation window (±1 month).
+    Modification affects future events only; past events unchanged.
+    """
     pass
 
 
 class RecurringRule(RecurringRuleBase):
-    """Complete recurring rule model."""
-    # TODO Phase 1.3: Add id, created_at, updated_at
-    pass
+    """
+    Complete recurring rule model with metadata.
+
+    Lifecycle: Creation generates events, modification updates future events,
+    deletion removes rule and future events (past events retained).
+    """
+    id: UUID = Field(..., description="Unique rule identifier")
+    created_at: datetime = Field(..., description="Rule creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
 
 
 # ==================== User Models ====================
