@@ -351,16 +351,16 @@ async def sample_settings(settings_repo):
         date_format="DD/MM/YYYY",
         baseline_display_months=1,
         rates={
-            "USD": Decimal("1.28"),
-            "CAD": Decimal("1.75"),
-            "EUR": Decimal("1.17")
+            "USD": 1.28,  # Use float instead of Decimal for mongomock compatibility
+            "CAD": 1.75,
+            "EUR": 1.17
         },
         server_url="",
         last_backup_date=None,
         version="1.0.0"
     )
-    # Settings is singleton - use update to initialize
-    settings = await settings_repo.update(settings_data)
+    # Settings is singleton - use update_singleton to initialize
+    settings = await settings_repo.update_singleton(settings_data)
     return settings
 
 
