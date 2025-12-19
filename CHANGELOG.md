@@ -34,3 +34,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-13: Added RecurringRuleUpdate model for partial updates with validators
 - CPTR-11: Added business logic validators to StoryUpdate model (date range, funding, goal)
 - CPTR-15: Added rate validation to SettingsUpdate model for consistency
+- CPTR-10: Account balance_updated_at changed to optional (new accounts may not have initial timestamp)
+- CPTR-14: User model extended with username and created_at for UI identity and proper user tracking
