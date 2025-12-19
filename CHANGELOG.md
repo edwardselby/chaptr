@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Phase 1.4 Foundation: Repository pattern and utilities
+  - Custom exceptions: ResourceNotFoundError, ResourceConflictError, ValidationError
+  - Database helpers: UUID conversion, timestamps, account resolution, rate locking
+  - BaseRepository with generic CRUD operations
+- CPTR-284: GET /api/accounts endpoint with include_archived query parameter
+- CPTR-283: GET /api/accounts/{id} endpoint
+- CPTR-282: POST /api/accounts with is_default enforcement (first account auto-sets default)
+- CPTR-281: PUT /api/accounts/{id} with pending_reconciliation on balance update
+- CPTR-280: DELETE /api/accounts/{id} as soft delete (archive) with default account protection
+- AccountRepository with business logic for is_default enforcement and archiving
+
 ### Planned
-- CPTR-22 to CPTR-47: CRUD endpoint implementations
+- CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
 - Phase 2: Projection engine
 - Phase 3: Sync protocol
 
