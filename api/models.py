@@ -7,6 +7,8 @@ Implementation Status: SKELETON - Phase 1.3
 TODO Phase 1.3: Add complete field definitions per spec
 """
 
+from __future__ import annotations
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 from datetime import datetime, date
@@ -221,31 +223,86 @@ class Story(StoryBase):
 # ==================== Event Models ====================
 
 class EventBase(BaseModel):
-    """Base event model with common fields."""
-    # TODO Phase 1.3: Add all fields per spec (Core Concepts > Events)
-    # Fields: date, description, amount, currency, rate_to_base, account_id,
-    #         story_id, is_baseline, is_hypothetical, is_auto_adjustment
-    pass
+    """
+    Base event model representing a point in time where money moves.
+
+    Events belong to either baseline or a story. Account resolution happens
+    at creation via hierarchy and is stored permanently.
+    """
+    event_date: date = Field(..., description="When this event occurs")
+    description: str = Field(..., min_length=1, description="Event description (e.g., Car rental, Hotel deposit)")
+    amount: Decimal = Field(..., description="Amount (positive=income, negative=expense)")
+    currency: str = Field(..., min_length=3, max_length=3, description="Native currency code (GBP, CAD, USD)")
+    rate_to_base: Decimal = Field(..., gt=0, description="Conversion rate to base currency (locked at creation)")
+    account_id: UUID = Field(..., description="Account this event affects (REQUIRED, resolved at creation)")
+    story_id: Optional[UUID] = Field(default=None, description="Story this belongs to (null=baseline)")
+    is_baseline: bool = Field(default=False, description="Is this a baseline event?")
+    is_hypothetical: bool = Field(default=False, description="Is this planned/hypothetical funding?")
+    is_auto_adjustment: bool = Field(default=False, description="Created by reconciliation system?")
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        """Validate currency code is 3 uppercase letters."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+        return v
 
 
 class EventCreate(EventBase):
-    """Model for creating an event."""
-    # TODO Phase 1.3: Add required fields for creation
-    # Note: account_id resolved via hierarchy if not provided
+    """
+    Model for creating an event.
+
+    Account resolution hierarchy (resolved at API level, stored permanently):
+    1. User specifies account_id → use it
+    2. Story's default_account_id → use it
+    3. Global default account → use it (fallback)
+
+    Currency and account are independent - a GBP event can be assigned to a CAD account.
+    """
     pass
 
 
-class EventUpdate(EventBase):
-    """Model for updating an event."""
-    # TODO Phase 1.3: All fields optional for partial updates
-    pass
+class EventUpdate(BaseModel):
+    """
+    Model for updating an event (all fields optional for partial updates).
+
+    Past events CAN be edited - users may need to correct mistakes.
+    Editing triggers recalculation of all subsequent running balances.
+    """
+    event_date: Optional[date] = Field(default=None)
+    description: Optional[str] = Field(default=None, min_length=1)
+    amount: Optional[Decimal] = Field(default=None)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    rate_to_base: Optional[Decimal] = Field(default=None, gt=0)
+    account_id: Optional[UUID] = Field(default=None)
+    story_id: Optional[UUID] = Field(default=None)
+    is_baseline: Optional[bool] = Field(default=None)
+    is_hypothetical: Optional[bool] = Field(default=None)
+    is_auto_adjustment: Optional[bool] = Field(default=None)
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        """Validate currency code is 3 uppercase letters if provided."""
+        if v and (not v.isupper() or len(v) != 3):
+            raise ValueError('Currency code must be 3 uppercase letters')
+        return v
 
 
 class Event(EventBase):
-    """Complete event model with all fields."""
-    # TODO Phase 1.3: Add id, created_at, created_by, updated_at, updated_by,
-    #                  recurring_rule_id (optional)
-    pass
+    """
+    Complete event model with metadata and user tracking.
+
+    Same-day ordering: Events on same date ordered by amount DESC (income first),
+    then created_at ASC (earlier created first) to minimize balance dips.
+    """
+    id: UUID = Field(..., description="Unique event identifier")
+    created_at: datetime = Field(..., description="Event creation timestamp (for same-day ordering)")
+    created_by: UUID = Field(..., description="User who created the event")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    updated_by: UUID = Field(..., description="User who last updated the event")
+    recurring_rule_id: Optional[UUID] = Field(default=None, description="Recurring rule that generated this event")
 
 
 # ==================== Recurring Rule Models ====================
