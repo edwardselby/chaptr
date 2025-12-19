@@ -30,6 +30,42 @@
 
 This project uses **Taskwarrior** for comprehensive task tracking across all development phases.
 
+### ⚠️ CRITICAL: Task Status Workflow
+
+**MANDATORY WORKFLOW - NO EXCEPTIONS:**
+
+When working on tasks, you MUST follow this exact sequence:
+
+1. **SELECT** task(s) to work on: `task project:chaptr.backend-api next`
+2. **START** the task BEFORE beginning work: `task <id> start`
+3. **IMPLEMENT** the task (code, test, document)
+4. **COMPLETE** the task when finished: `task <id> done`
+
+**❌ NEVER skip the START step** - The user relies on task status in their graphical UI to track progress.
+
+**Workflow Diagram:**
+```
+┌─────────────┐    task <id> start    ┌─────────────┐    Implement     ┌─────────────┐    task <id> done    ┌─────────────┐
+│   Pending   │ ──────────────────────>│  Started    │ ───────────────>│ In Progress │ ──────────────────>│  Completed  │
+│  (status)   │   REQUIRED FIRST STEP  │  (visible   │  (working on    │  (testing   │   FINAL STEP        │  (done)     │
+└─────────────┘                        │   in UI)    │     code)       │   & docs)   │                     └─────────────┘
+                                       └─────────────┘                  └─────────────┘
+```
+
+**Example:**
+```bash
+# ✅ CORRECT workflow
+task project:chaptr.backend-api next    # Find next task (e.g., task 5)
+task 5 start                            # MUST mark as started FIRST
+# ... implement the task ...
+task 5 done                             # Mark complete when finished
+
+# ❌ WRONG workflow (DO NOT DO THIS)
+task project:chaptr.backend-api next    # Find task
+# ... implement without starting ...
+task 5 done                             # Skipped the start step!
+```
+
 ### Task Structure
 
 ```
@@ -75,7 +111,70 @@ task project:chaptr summary
 
 # Count tasks in a phase
 task project:chaptr.backend-api count
+
+# Add annotation to track implementation notes
+task <id> annotate "Note text here"
+
+# View task details including annotations
+task <id> info
+
+# Remove specific annotation
+task <id> denotate "Text to match"
 ```
+
+### 📝 Task Annotations - Tracking Implementation Notes
+
+**Use annotations to track adjustments, discoveries, and implementation notes as you work.**
+
+Annotations are timestamped notes attached to tasks that help track:
+- Implementation decisions made during work
+- Issues discovered that need addressing
+- Dependencies or blockers encountered
+- Adjustments needed to the original plan
+- Technical debt or follow-up items
+
+**Adding Annotations:**
+```bash
+# Add a note about an implementation decision
+task 5 annotate "Using Pydantic validators instead of manual validation"
+
+# Track a discovered issue
+task 5 annotate "TODO: Add index on account_id field for performance"
+
+# Note a dependency
+task 5 annotate "Blocked: Waiting for MongoDB schema design in task 4"
+
+# Multiple annotations can be added to track progress
+task 5 annotate "Added basic CRUD endpoints"
+task 5 annotate "Still need to implement cascade delete logic"
+```
+
+**Reading Annotations:**
+```bash
+# View full task details with all annotations
+task 5 info
+
+# Annotations appear under the description with timestamps:
+# Description: Implement account endpoints
+#               2025-12-19 10:30:00 Using Pydantic validators
+#               2025-12-19 11:45:00 TODO: Add index on account_id
+```
+
+**Removing Annotations:**
+```bash
+# Remove a specific annotation by matching text
+task 5 denotate "Blocked: Waiting"
+
+# Or remove by partial match
+task 5 denotate "TODO"
+```
+
+**Best Practices:**
+- **Annotate during work** - Add notes as you discover issues or make decisions
+- **Be specific** - Include enough detail to understand the note later
+- **Use prefixes** - `TODO:`, `BLOCKED:`, `DECISION:`, `BUG:` for clarity
+- **Read before starting** - Check `task <id> info` for existing annotations before starting work
+- **Clean up when done** - Remove obsolete annotations when completing tasks
 
 ### Task Tags
 
@@ -216,17 +315,234 @@ Follow the **back-to-front** approach outlined in the implementation plan:
 
 ---
 
+## Changelog Standards
+
+### Format
+
+This project follows a **concise, ticket-based changelog format** to prevent excessive growth while maintaining clear release history.
+
+**File:** `CHANGELOG.md`
+
+**Structure:**
+```markdown
+# Changelog
+
+## [Unreleased]
+
+### Added
+- Description of addition (Task #XXX)
+
+### Changed
+- Description of change (Task #XXX)
+
+### Fixed
+- Description of fix (Task #XXX)
+
+### Removed
+- Description of removal (Task #XXX)
+
+## [X.Y.Z] - YYYY-MM-DD
+
+### Added
+- One line per modification (Task #XXX)
+```
+
+**Rules:**
+1. **One line per modification** - Keep entries brief and focused
+2. **Task number prefix** - Start each line with project key and task ID: `CPTR-1:`
+3. **Use categories** - Only Added, Changed, Fixed, Removed
+4. **Version format** - Semantic versioning: MAJOR.MINOR.PATCH
+5. **Date format** - ISO 8601: YYYY-MM-DD
+6. **Group related tasks** - Multiple task IDs comma-separated: `CPTR-3, CPTR-4:`
+7. **Unreleased work** - All unreleased changes go under `[Unreleased]` section until release
+
+**Project Key:** `CPTR` (CHAPTR)
+
+**Workflow:**
+- During development: Add entries under `[Unreleased]`
+- When releasing: Move `[Unreleased]` entries to new `[X.Y.Z] - YYYY-MM-DD` section
+
+**Example (Unreleased):**
+```markdown
+## [Unreleased]
+
+### Added
+- CPTR-1: Project directory structure with api, routes, core, tests
+- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-3, CPTR-4: MongoDB connection configuration and health check
+```
+
+**Example (Released):**
+```markdown
+## [0.1.0] - 2024-12-19
+
+### Added
+- CPTR-1: Project directory structure with api, routes, core, tests
+- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-3, CPTR-4: MongoDB connection configuration and health check
+- CPTR-291: Route stubs for accounts, stories, events, sync endpoints
+- CPTR-290: Core module stubs for projection and reconciliation
+```
+
+**What NOT to include:**
+- Implementation details (save for commit messages)
+- Code examples
+- Verbose descriptions
+- Internal refactoring unless user-visible
+
+**Version Numbering:**
+- **MAJOR (X.0.0)** - Breaking changes, major features
+- **MINOR (0.X.0)** - New features, backward compatible
+- **PATCH (0.0.X)** - Bug fixes, minor improvements
+
+---
+
 ## Getting Started
 
 ### For Development Sessions
 
+**⚠️ ALWAYS follow this workflow - NO EXCEPTIONS:**
+
 1. **Check task status**: `task project:chaptr summary`
 2. **Review current phase**: Check which phase you're working on
 3. **Pick next task**: `task project:chaptr.backend-api next`
-4. **Reference docs**: Open relevant spec sections
-5. **Start task**: `task <id> start`
-6. **Implement & test**: Follow spec and plan
-7. **Complete task**: `task <id> done`
+4. **Read task details**: `task <id> info` ← Check for existing annotations/notes
+5. **Reference docs**: Open relevant spec sections
+6. **🚨 START TASK FIRST**: `task <id> start` ← **MANDATORY BEFORE ANY WORK**
+7. **Implement & test**: Follow spec and plan
+   - **Add annotations** as you work: `task <id> annotate "Implementation note"`
+   - Track decisions, issues, TODOs discovered during implementation
+8. **Complete task**: `task <id> done`
+9. **After PR creation**: Check for review feedback (see PR Review Workflow below)
+
+**CRITICAL REMINDERS:**
+- Step 6 is NOT optional. You MUST run `task <id> start` before beginning implementation. This updates the user's graphical UI to show the task as "in progress".
+- Step 7: Use annotations liberally to track implementation adjustments, decisions, and follow-up items discovered during work.
+- Step 9: After creating a PR, another agent may add review comments. Always check and address feedback.
+
+### Pull Request Review Workflow
+
+**After creating a pull request, another agent reviews your code and adds detailed feedback as PR comments. You MUST check for and address this feedback.**
+
+#### Finding the Current PR
+
+```bash
+# Get PR number for current branch
+gh pr view --json number,title
+
+# Example output:
+# {"number":4,"title":"Feature/phase1.3 pydantic models"}
+```
+
+#### Viewing PR Review Comments
+
+```bash
+# View complete PR details including comments and reviews
+gh pr view --json title,body,reviews,comments
+
+# Or view in readable format
+gh pr view
+
+# For specific PR number
+gh pr view 4 --json title,body,reviews,comments
+```
+
+#### When to Check PR Comments
+
+**ALWAYS check for PR comments in these situations:**
+1. **After creating a PR** - Wait 2-5 minutes for automated review agent to comment
+2. **When user mentions PR feedback** - If user says "address the PR feedback"
+3. **Before merging** - Always review comments before merge
+4. **During task work** - If working on PR-related tasks
+
+#### Understanding PR Review Comments
+
+Review comments typically include:
+
+**Priority Levels:**
+- 🚨 **CRITICAL** - Must fix before merge (security, bugs, breaking changes)
+- ⚠️ **HIGH** - Should fix before merge (spec violations, major issues)
+- 🔍 **MEDIUM** - Should fix soon (validation gaps, missing patterns)
+- 💡 **LOW** - Consider for future (suggestions, enhancements)
+
+**Comment Structure:**
+```json
+{
+  "comments": [
+    {
+      "author": {"login": "claude"},
+      "body": "## Pull Request Review...\n### Issues Found\n#### 1. Field Name Inconsistency...",
+      "createdAt": "2025-12-19T19:26:21Z"
+    }
+  ]
+}
+```
+
+#### Addressing PR Feedback
+
+**Workflow for handling review comments:**
+
+1. **Read the full review**:
+   ```bash
+   gh pr view --json comments | jq -r '.comments[].body'
+   ```
+
+2. **Identify action items**:
+   - Note all CRITICAL and HIGH priority issues
+   - List MEDIUM priority issues for follow-up
+   - Consider LOW priority suggestions
+
+3. **Create task annotations** for each issue:
+   ```bash
+   task <current_task_id> annotate "PR FEEDBACK: Fix date vs event_date field name (HIGH)"
+   task <current_task_id> annotate "PR FEEDBACK: Add StoryUpdate validators (MEDIUM)"
+   ```
+
+4. **Fix issues** based on priority:
+   - Fix CRITICAL/HIGH issues immediately
+   - Create new tasks for MEDIUM issues if needed
+   - Note LOW suggestions in task annotations
+
+5. **Commit fixes** with clear reference to PR feedback:
+   ```bash
+   git add -A
+   git commit -m "Fix: Address PR #4 feedback - resolve date field inconsistency"
+   git push
+   ```
+
+6. **Verify fixes** by re-reading PR comments and confirming all HIGH/CRITICAL items addressed
+
+#### Example: Reading and Acting on PR Feedback
+
+```bash
+# Step 1: Check PR for current branch
+gh pr view --json number,title
+# Output: {"number":4,"title":"Feature/phase1.3 pydantic models"}
+
+# Step 2: View detailed comments
+gh pr view --json comments | jq -r '.comments[].body' | head -100
+
+# Step 3: Identify issues from review
+# Example found: "HIGH: Field Name Inconsistency: date vs event_date"
+
+# Step 4: Annotate current task
+task 12 annotate "PR #4 FEEDBACK (HIGH): Change event_date to date per spec"
+
+# Step 5: Implement fix
+# ... make code changes ...
+
+# Step 6: Commit with PR reference
+git add api/models.py
+git commit -m "Fix: Rename event_date to date field per spec (PR #4 feedback)"
+git push
+```
+
+#### Tips for Efficient PR Review Processing
+
+- **Parse JSON with jq** for easier reading: `gh pr view --json comments | jq`
+- **Search for priority keywords**: Look for "CRITICAL", "HIGH", "MEDIUM" in comments
+- **Create GitHub issues** for MEDIUM/LOW items if not addressing immediately
+- **Re-request review** after fixes: The review agent may re-check your changes
 
 ### Key Principles
 
@@ -235,6 +551,7 @@ Follow the **back-to-front** approach outlined in the implementation plan:
 - **Reference the spec** - Don't guess at business logic
 - **Follow the mockup** - UI should match the visual design
 - **Keep it simple** - Avoid over-engineering beyond spec requirements
+- **Address PR feedback** - Always check for and fix review comments before merge
 
 ---
 
@@ -309,6 +626,179 @@ curl -X POST http://localhost:8000/api/sync \
   -H "Content-Type: application/json" \
   -d '{"client_id": "client-a", "last_sync_at": "2024-12-17T00:00:00Z", "changes": []}'
 ```
+
+---
+
+## Agent Communication Guidelines
+
+### Response Format and Conciseness
+
+**When providing updates, explanations, or progress reports, keep responses focused and actionable.**
+
+#### Target Response Length
+
+- **Simple task updates**: 50-100 lines
+- **Complex implementation reports**: 150-250 lines
+- **Comprehensive explanations**: 300 lines (target), 400 lines (maximum)
+
+#### Response Structure
+
+**For implementation updates:**
+
+```markdown
+## [Task Name/Description]
+
+**Status**: ✅ Complete | 🔄 In Progress | ⚠️ Blocked
+**Files Modified**: [count] files
+**Summary**: [2-3 sentence overview of what was done]
+
+---
+
+## Changes Made
+
+### 1. [Component/Module Name]
+- **What**: [Brief description of change]
+- **Why**: [1-2 sentences explaining rationale]
+- **Location**: `path/to/file.py:123-145`
+
+### 2. [Component/Module Name]
+- **What**: [Brief description]
+- **Why**: [Brief rationale]
+- **Location**: `path/to/file.py`
+
+---
+
+## Issues Encountered
+
+*[If none, omit this section]*
+
+- **Issue**: [Description]
+- **Resolution**: [How it was fixed]
+- **Impact**: [Any implications]
+
+---
+
+## Next Steps
+
+- [ ] [Immediate next action]
+- [ ] [Follow-up task]
+- [ ] [Testing/validation needed]
+
+---
+
+**Testing**: [Brief testing status]
+**Documentation**: [Brief doc status]
+```
+
+#### Communication Principles
+
+**DO:**
+- ✅ Lead with status and summary (quick scan value)
+- ✅ Use clear section headers for scannability
+- ✅ Provide brief context where it adds value
+- ✅ Reference file locations with line numbers
+- ✅ Group related changes together
+- ✅ Include concrete next steps
+- ✅ Highlight blockers or issues clearly
+
+**DON'T:**
+- ❌ Repeat yourself - one clear explanation is enough
+- ❌ Include full code blocks unless essential (reference files instead)
+- ❌ Write verbose introductions or conclusions
+- ❌ Explain obvious or trivial changes
+- ❌ Provide multiple alternative solutions (choose the best one)
+- ❌ Include extensive background unless specifically requested
+
+#### Examples
+
+**❌ Too Verbose (200+ lines for simple task):**
+```markdown
+I've completed the implementation of the Account model. Let me explain in detail what I did...
+
+First, I started by analyzing the specification document thoroughly. The spec indicates that accounts should have the following fields: id, name, currency, current_balance... [continues for 50 lines]
+
+Then I implemented the BaseModel class. Here's the full code:
+[50 line code block]
+
+After that, I added validation. Let me explain each validator in detail...
+[continues for 100 more lines]
+```
+
+**✅ Concise and Clear (50-75 lines):**
+```markdown
+## Implemented Account Pydantic Model
+
+**Status**: ✅ Complete
+**Files**: `api/models.py` (+85 lines)
+**Summary**: Created Account model with three-tier pattern (Base/Create/Update/Full) including currency validation and spec-compliant fields.
+
+---
+
+## Changes Made
+
+### Account Models - `api/models.py:15-98`
+- **Base model**: Core fields (name, currency, current_balance, is_default, etc.)
+- **Validators**: Currency code validation (3 uppercase letters), positive balance
+- **Pattern**: Base → Create (excludes id/timestamps) → Update (all optional) → Full (includes id/timestamps)
+
+---
+
+## Validation Rules
+
+- Currency must be 3 uppercase letters (e.g., "GBP", "USD")
+- Balance can be negative (overdrafts allowed per spec)
+- Only one account can be default (enforced at API level)
+
+---
+
+## Next Steps
+
+- [ ] Implement Story model (similar pattern)
+- [ ] Add comprehensive validator tests
+
+**Spec compliance**: ✅ 100% aligned with "Core Concepts > Accounts"
+```
+
+#### Context-Specific Guidelines
+
+**For bug fixes:**
+- State the bug clearly (1-2 sentences)
+- Explain root cause briefly
+- Describe the fix
+- Note any related issues or testing done
+
+**For feature implementations:**
+- Brief overview of feature
+- Key design decisions with rationale
+- Files/components affected
+- Testing approach
+
+**For refactoring:**
+- What was changed and why
+- Impact on existing code
+- Any breaking changes
+- Migration notes if needed
+
+**For PR feedback responses:**
+- Reference PR number and issue
+- State what was changed
+- Confirm issue resolved
+- Note any follow-up items
+
+#### Special Cases: When to Be More Detailed
+
+**Allow longer responses (up to 400 lines) when:**
+- Implementing complex algorithms (projection engine, reconciliation logic)
+- Explaining architectural decisions with significant impact
+- Documenting breaking changes or migrations
+- Providing comprehensive error diagnosis
+- Responding to specific requests for detailed explanation
+
+**Even then, maintain structure:**
+- Clear sections with headers
+- Concise paragraphs (3-5 sentences max)
+- Code examples only when essential
+- Visual aids (diagrams, tables) over text when possible
 
 ---
 
