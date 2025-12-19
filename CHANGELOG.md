@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-6: GET /api/settings endpoint with singleton pattern (creates defaults if none exist)
 - PUT /api/settings endpoint for admin-only configuration updates
 - SettingsRepository with get_or_create_default and update_singleton methods
+- CPTR-256: GET /api/recurring-rules endpoint
+- CPTR-257: POST /api/recurring-rules with account validation and frequency/day relationship validation
+- CPTR-258: PUT /api/recurring-rules/{id} for partial updates (note: affects future events only per spec, event generation deferred to Phase 7)
+- CPTR-259: DELETE /api/recurring-rules/{id} (note: removes future events per spec, event generation deferred to Phase 7)
+- RecurringRuleRepository with account validation and CRUD operations (event generation ±1 month window deferred to Phase 7)
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints

@@ -105,10 +105,11 @@ async def root():
 
 
 # Register route modules
-from api.routes import accounts, stories, events, settings, sync
+from api.routes import accounts, stories, events, settings, recurring_rules, sync
 
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(stories.router, prefix="/api", tags=["stories"])
 app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
+app.include_router(recurring_rules.router, prefix="/api", tags=["recurring-rules"])
 app.include_router(sync.router, prefix="/api", tags=["sync"])

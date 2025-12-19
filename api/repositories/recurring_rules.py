@@ -1,0 +1,205 @@
+"""
+Recurring Rule repository for CHAPTR API.
+
+Provides data access layer for recurring event rules (salary, rent, subscriptions).
+
+Note: Event generation logic (±1 month window) is deferred to Phase 7.
+Phase 1.4 implements CRUD operations only - no event materialization yet.
+"""
+
+from uuid import UUID
+from typing import Optional
+
+from api.repositories.base import BaseRepository
+from api.models import RecurringRule, RecurringRuleCreate, RecurringRuleUpdate
+from api.utils.db import generate_id, utc_now, to_str
+from api.utils.errors import ValidationError
+
+
+class RecurringRuleRepository(BaseRepository[RecurringRule]):
+    """
+    Repository for managing recurring event rules.
+
+    Implements business rules:
+    - CRUD operations for rule definitions
+    - Validation of frequency and day relationships
+    - Validation of account_id existence
+
+    Note: This repository manages rule definitions only. Event generation
+    from these rules (±1 month window) is implemented in Phase 7.
+
+    :Example:
+
+    >>> repo = RecurringRuleRepository(db)
+    >>> rule = await repo.create(
+    ...     RecurringRuleCreate(
+    ...         description="Monthly Salary",
+    ...         amount=Decimal("3000"),
+    ...         currency="GBP",
+    ...         account_id=account_id,
+    ...         frequency=Frequency.MONTHLY,
+    ...         day=25,
+    ...         start_date=date(2025, 1, 1)
+    ...     )
+    ... )
+    """
+
+    def __init__(self, db):
+        """
+        Initialize recurring rule repository.
+
+        :param db: MongoDB database instance
+        :type db: AsyncIOMotorDatabase
+        """
+        super().__init__(db, "recurring_rules", RecurringRule)
+
+    async def create(
+        self,
+        data: RecurringRuleCreate,
+        created_by: Optional[UUID] = None
+    ) -> RecurringRule:
+        """
+        Create new recurring rule.
+
+        Business Rules:
+        - account_id must exist and not be archived
+        - Frequency and day validated by Pydantic
+        - No event generation yet (deferred to Phase 7)
+
+        :param data: Recurring rule creation data
+        :type data: RecurringRuleCreate
+        :param created_by: User ID creating the rule (Phase 1.5)
+        :type created_by: Optional[UUID]
+        :return: Created recurring rule
+        :rtype: RecurringRule
+        :raises ValidationError: If account_id references non-existent or archived account
+
+        :Example:
+
+        >>> rule = await repo.create(
+        ...     RecurringRuleCreate(
+        ...         description="Weekly Coffee",
+        ...         amount=Decimal("-25"),
+        ...         currency="GBP",
+        ...         account_id=account_id,
+        ...         frequency=Frequency.WEEKLY,
+        ...         day=1,  # Monday
+        ...         start_date=date(2025, 1, 6)
+        ...     )
+        ... )
+        """
+        # Validate account_id exists and not archived
+        account = await self.db['accounts'].find_one({
+            "id": to_str(data.account_id),
+            "is_archived": False
+        })
+        if not account:
+            raise ValidationError(
+                f"account_id {data.account_id} not found or archived"
+            )
+
+        # Create recurring rule with generated ID and timestamps
+        rule = RecurringRule(
+            id=generate_id(),
+            **data.model_dump(),
+            created_at=utc_now(),
+            updated_at=utc_now()
+        )
+
+        # Insert into MongoDB
+        await self.collection.insert_one(rule.model_dump(mode="json"))
+
+        return rule
+
+    async def update(
+        self,
+        rule_id: UUID,
+        data: RecurringRuleUpdate,
+        updated_by: Optional[UUID] = None
+    ) -> RecurringRule:
+        """
+        Update existing recurring rule.
+
+        Business Rules:
+        - Partial updates supported
+        - account_id must exist and not be archived if being updated
+        - Modification affects future events only (Phase 7 will implement event regeneration)
+        - Past generated events remain unchanged
+
+        :param rule_id: Recurring rule UUID to update
+        :type rule_id: UUID
+        :param data: Update data (partial)
+        :type data: RecurringRuleUpdate
+        :param updated_by: User ID updating the rule (Phase 1.5)
+        :type updated_by: Optional[UUID]
+        :return: Updated recurring rule
+        :rtype: RecurringRule
+        :raises ResourceNotFoundError: If rule not found
+        :raises ValidationError: If account_id validation fails
+
+        :Example:
+
+        >>> rule = await repo.update(
+        ...     rule_id,
+        ...     RecurringRuleUpdate(amount=Decimal("3200"))
+        ... )
+        """
+        # Get existing rule
+        existing = await self.get(rule_id)
+
+        # Prepare update dictionary
+        update_dict = data.model_dump(exclude_unset=True)
+
+        # Validate account_id if being updated
+        if 'account_id' in update_dict and update_dict['account_id']:
+            account = await self.db['accounts'].find_one({
+                "id": to_str(update_dict['account_id']),
+                "is_archived": False
+            })
+            if not account:
+                raise ValidationError(
+                    f"account_id {update_dict['account_id']} not found or archived"
+                )
+
+        # Always update timestamp
+        update_dict['updated_at'] = utc_now()
+
+        # Apply update
+        await self.collection.update_one(
+            {"id": to_str(rule_id)},
+            {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
+                      str(v) if isinstance(v, UUID) else v
+                      for k, v in update_dict.items()}}
+        )
+
+        # Return updated rule
+        return await self.get(rule_id)
+
+    async def delete(self, rule_id: UUID) -> bool:
+        """
+        Delete recurring rule.
+
+        Business Rules:
+        - Removes the rule definition
+        - Future events no longer generated (Phase 7)
+        - Past generated events retained
+        - Hard delete (permanent)
+
+        :param rule_id: Recurring rule UUID to delete
+        :type rule_id: UUID
+        :return: True if deleted successfully
+        :rtype: bool
+        :raises ResourceNotFoundError: If rule not found
+
+        :Example:
+
+        >>> await repo.delete(rule_id)
+        True
+        """
+        # Verify rule exists
+        await self.get(rule_id)
+
+        # Hard delete (no cascade in Phase 1.4 - event generation in Phase 7)
+        await self.collection.delete_one({"id": to_str(rule_id)})
+
+        return True
