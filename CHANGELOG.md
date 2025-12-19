@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- CPTR-14 to CPTR-21: Pydantic model field definitions
 - CPTR-22 to CPTR-47: CRUD endpoint implementations
 - Phase 2: Projection engine
 - Phase 3: Sync protocol
@@ -22,5 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-291: Route stubs for accounts, stories, events, sync (19 endpoints total)
 - CPTR-290: Core module stubs for projection engine and reconciliation system
 - CPTR-20: Pydantic model enums: FundingMode, GoalType, Frequency, UserRole, ConflictType
-- CPTR-14 to CPTR-19, CPTR-21: Model skeletons for Account, Story, Event, RecurringRule, User, Settings, Sync
+- CPTR-15: Settings Pydantic model with currency rates and preferences validation
+- CPTR-14: User Pydantic model with role enum validation (minimal per spec, external auth assumed)
+- CPTR-10: Account Pydantic model with three-tier pattern and field validation
+- CPTR-13: RecurringRule Pydantic model with frequency and date validation
+- CPTR-11: Story Pydantic model with funding mode and goal validation
+- CPTR-12: Event Pydantic model with complete tracking fields (event_date field to avoid type shadowing)
 - CPTR-42 to CPTR-44: Test framework stubs with pytest-asyncio
