@@ -53,29 +53,69 @@ class ConflictType(str, Enum):
 # ==================== Account Models ====================
 
 class AccountBase(BaseModel):
-    """Base account model with common fields."""
-    # TODO Phase 1.3: Add all fields per spec (Core Concepts > Accounts)
-    # Fields: name, currency, current_balance, balance_updated_at,
-    #         is_default, is_archived, pending_reconciliation
-    pass
+    """
+    Base account model representing where money actually lives.
+
+    Accounts are reference points for sanity-checking and per-account
+    balance tracking. Balances are manually updated (not synced to banks).
+    """
+    name: str = Field(..., min_length=1, description="Account name (e.g., Monzo, HSBC)")
+    currency: str = Field(..., min_length=3, max_length=3, description="Currency code (GBP, CAD, USD)")
+    current_balance: Decimal = Field(..., description="Current account balance (manually updated snapshot)")
+    balance_updated_at: datetime = Field(..., description="When balance was last updated")
+    is_default: bool = Field(default=False, description="Is this the global default spending account?")
+    is_archived: bool = Field(default=False, description="Archived accounts are hidden but retained for history")
+    pending_reconciliation: bool = Field(default=False, description="Balance updated but reconciliation not yet run?")
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        """Validate currency code is 3 uppercase letters."""
+        if not v.isupper() or len(v) != 3:
+            raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
+        return v
 
 
 class AccountCreate(AccountBase):
-    """Model for creating an account."""
-    # TODO Phase 1.3: Add required fields for creation
+    """
+    Model for creating an account.
+
+    Note: Exactly one account must have is_default=true (enforced at API level).
+    """
     pass
 
 
-class AccountUpdate(AccountBase):
-    """Model for updating an account."""
-    # TODO Phase 1.3: All fields optional for partial updates
-    pass
+class AccountUpdate(BaseModel):
+    """
+    Model for updating an account (all fields optional for partial updates).
+    """
+    name: Optional[str] = Field(default=None, min_length=1)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    current_balance: Optional[Decimal] = Field(default=None)
+    balance_updated_at: Optional[datetime] = Field(default=None)
+    is_default: Optional[bool] = Field(default=None)
+    is_archived: Optional[bool] = Field(default=None)
+    pending_reconciliation: Optional[bool] = Field(default=None)
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        """Validate currency code is 3 uppercase letters if provided."""
+        if v and (not v.isupper() or len(v) != 3):
+            raise ValueError('Currency code must be 3 uppercase letters')
+        return v
 
 
 class Account(AccountBase):
-    """Complete account model with all fields."""
-    # TODO Phase 1.3: Add id, created_at, updated_at
-    pass
+    """
+    Complete account model with metadata.
+
+    Accounts cannot be deleted, only archived. Archived accounts
+    retain historical events but are hidden from active account lists.
+    """
+    id: UUID = Field(..., description="Unique account identifier")
+    created_at: datetime = Field(..., description="Account creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
 
 
 # ==================== Story Models ====================
