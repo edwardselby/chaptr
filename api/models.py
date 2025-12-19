@@ -358,6 +358,47 @@ class RecurringRuleCreate(RecurringRuleBase):
     pass
 
 
+class RecurringRuleUpdate(BaseModel):
+    """
+    Model for updating a recurring rule (all fields optional for partial updates).
+
+    Updating a rule affects only future events; past generated events remain unchanged.
+    """
+    description: Optional[str] = Field(default=None, min_length=1)
+    amount: Optional[Decimal] = Field(default=None)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    account_id: Optional[UUID] = Field(default=None)
+    frequency: Optional[Frequency] = Field(default=None)
+    day: Optional[int] = Field(default=None, ge=1, le=31)
+    start_date: Optional[date] = Field(default=None)
+    end_date: Optional[date] = Field(default=None)
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        """Validate currency code is 3 uppercase letters if provided."""
+        if v and (not v.isupper() or len(v) != 3):
+            raise ValueError('Currency code must be 3 uppercase letters')
+        return v
+
+    @model_validator(mode='after')
+    def validate_day_for_frequency(self):
+        """Validate day range based on frequency if both provided."""
+        if self.frequency and self.day:
+            if self.frequency == Frequency.WEEKLY and not (1 <= self.day <= 7):
+                raise ValueError('Weekly frequency requires day 1-7 (Monday=1, Sunday=7)')
+            if self.frequency in [Frequency.MONTHLY, Frequency.ANNUAL] and not (1 <= self.day <= 31):
+                raise ValueError('Monthly/Annual frequency requires day 1-31')
+        return self
+
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        """Validate end_date is after start_date if both provided."""
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError('end_date must be after start_date')
+        return self
+
+
 class RecurringRule(RecurringRuleBase):
     """
     Complete recurring rule model with metadata.
