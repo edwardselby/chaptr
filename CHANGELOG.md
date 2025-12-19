@@ -24,7 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-15: Settings Pydantic model with currency rates and preferences validation
 - CPTR-14: User Pydantic model with role enum validation (minimal per spec, external auth assumed)
 - CPTR-10: Account Pydantic model with three-tier pattern and field validation
-- CPTR-13: RecurringRule Pydantic model with frequency and date validation
-- CPTR-11: Story Pydantic model with funding mode and goal validation
-- CPTR-12: Event Pydantic model with complete tracking fields (event_date field to avoid type shadowing)
+- CPTR-13: RecurringRule Pydantic model with frequency and date validation (includes RecurringRuleUpdate)
+- CPTR-11: Story Pydantic model with funding mode and goal validation (includes StoryUpdate validators)
+- CPTR-12: Event Pydantic model with Pydantic alias for spec-compliant date field
 - CPTR-42 to CPTR-44: Test framework stubs with pytest-asyncio
+
+### Changed
+- CPTR-12: Event model date field uses Pydantic alias to maintain spec compliance while avoiding type shadowing
+- CPTR-13: Added RecurringRuleUpdate model for partial updates with validators
+- CPTR-11: Added business logic validators to StoryUpdate model (date range, funding, goal)
+- CPTR-15: Added rate validation to SettingsUpdate model for consistency
