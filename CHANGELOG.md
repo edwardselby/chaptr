@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phase 2: Projection engine
 - Phase 3: Sync protocol
 
+
+
+## [0.0.1] - 2025-12-19
+
 ### Added
 - CPTR-1: Project directory structure: api, routes, core, tests
 - CPTR-2: Python virtual environment with FastAPI, Motor, Pydantic, Pytest dependencies
