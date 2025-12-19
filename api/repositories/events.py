@@ -187,6 +187,17 @@ class EventRepository(BaseRepository[Event]):
         # Prepare update dictionary
         update_dict = data.model_dump(exclude_unset=True)
 
+        # Validate account_id if being updated
+        if 'account_id' in update_dict and update_dict['account_id']:
+            account = await self.db['accounts'].find_one({
+                "id": to_str(update_dict['account_id']),
+                "is_archived": False
+            })
+            if not account:
+                raise ValidationError(
+                    f"account_id {update_dict['account_id']} not found or archived"
+                )
+
         # Always update timestamp and user
         update_dict['updated_at'] = utc_now()
         if updated_by:

@@ -41,11 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database indexes on events collection for query performance (event_date, story_id+event_date, account_id+event_date)
 
 ### Changed
-- PR#5 Review Fixes: EventCreate model - account_id and rate_to_base now optional (auto-resolved if not provided)
-- PR#5 Review Fixes: EventRepository.create() - only locks rate_to_base from settings if not explicitly provided
-- PR#5 Review Fixes: Added database index creation on startup for events.event_date and composite indexes for filtering
-- PR#5 Review Fixes: Verified RecurringRuleBase has frequency/day validation (already implemented)
-- PR#5 Review Fixes: Verified StoryRepository has default_account_id validation (already implemented)
+- PR#5 Review Fixes Round 1: EventCreate model - account_id and rate_to_base now optional (auto-resolved if not provided)
+- PR#5 Review Fixes Round 1: EventRepository.create() - only locks rate_to_base from settings if not explicitly provided
+- PR#5 Review Fixes Round 1: Added database index creation on startup for events.event_date and composite indexes for filtering
+- PR#5 Review Fixes Round 1: Verified RecurringRuleBase has frequency/day validation (already implemented)
+- PR#5 Review Fixes Round 1: Verified StoryRepository has default_account_id validation (already implemented)
+- PR#5 Review Fixes Round 2: Added account_id validation to EventRepository.update() - prevents reassigning to non-existent accounts
+- PR#5 Review Fixes Round 2: Event date field uses Pydantic aliases (alias='date', serialization_alias='date') for spec compliance
+- PR#5 Review Fixes Round 2: Rate locking behavior clarified in EventCreate docstring - auto-locks if not provided, uses explicit if provided
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
