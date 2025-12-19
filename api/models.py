@@ -9,7 +9,7 @@ TODO Phase 1.3: Add complete field definitions per spec
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from enum import Enum
 from datetime import datetime, date
 from typing import Optional
@@ -63,7 +63,7 @@ class AccountBase(BaseModel):
     """
     name: str = Field(..., min_length=1, description="Account name (e.g., Monzo, HSBC)")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency code (GBP, CAD, USD)")
-    current_balance: Decimal = Field(..., description="Current account balance (manually updated snapshot)")
+    current_balance: Decimal = Field(..., max_digits=19, decimal_places=4, description="Current account balance (manually updated snapshot)")
     balance_updated_at: Optional[datetime] = Field(default=None, description="When balance was last updated (set on manual balance updates)")
     is_default: bool = Field(default=False, description="Is this the global default spending account?")
     is_archived: bool = Field(default=False, description="Archived accounts are hidden but retained for history")
@@ -93,7 +93,7 @@ class AccountUpdate(BaseModel):
     """
     name: Optional[str] = Field(default=None, min_length=1)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
-    current_balance: Optional[Decimal] = Field(default=None)
+    current_balance: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     balance_updated_at: Optional[datetime] = Field(default=None)
     is_default: Optional[bool] = Field(default=None)
     is_archived: Optional[bool] = Field(default=None)
@@ -135,9 +135,9 @@ class StoryBase(BaseModel):
     end_date: Optional[date] = Field(default=None, description="When this story ends (null=ongoing)")
     default_account_id: Optional[UUID] = Field(default=None, description="Default account for events in this story")
     funding_mode: FundingMode = Field(default=FundingMode.PROJECTED, description="How starting balance is determined")
-    funding_amount: Optional[Decimal] = Field(default=None, description="Fixed or adjustment amount for funding")
+    funding_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4, description="Fixed or adjustment amount for funding")
     goal_type: GoalType = Field(default=GoalType.NONE, description="Optional goal for this story")
-    goal_amount: Optional[Decimal] = Field(default=None, description="Target amount if goal set")
+    goal_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4, description="Target amount if goal set")
     display_currency: str = Field(..., min_length=3, max_length=3, description="Currency for this story's view")
 
     @field_validator('display_currency')
@@ -186,15 +186,20 @@ class StoryUpdate(BaseModel):
     Model for updating a story (all fields optional for partial updates).
 
     Changing default_account_id only affects future events, not existing ones.
+
+    Note: Validators check field relationships only when both fields are provided
+    in the update. Full validation (e.g., ensuring funding_amount exists when
+    changing funding_mode to FIXED) must happen at API level by merging with
+    existing story data before applying update.
     """
     name: Optional[str] = Field(default=None, min_length=1)
     start_date: Optional[date] = Field(default=None)
     end_date: Optional[date] = Field(default=None)
     default_account_id: Optional[UUID] = Field(default=None)
     funding_mode: Optional[FundingMode] = Field(default=None)
-    funding_amount: Optional[Decimal] = Field(default=None)
+    funding_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     goal_type: Optional[GoalType] = Field(default=None)
-    goal_amount: Optional[Decimal] = Field(default=None)
+    goal_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     display_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
 
     @field_validator('display_currency')
@@ -251,11 +256,13 @@ class EventBase(BaseModel):
     Events belong to either baseline or a story. Account resolution happens
     at creation via hierarchy and is stored permanently.
     """
+    model_config = ConfigDict(populate_by_name=True)
+
     event_date: date = Field(..., alias='date', serialization_alias='date', description="When this event occurs")
     description: str = Field(..., min_length=1, description="Event description (e.g., Car rental, Hotel deposit)")
-    amount: Decimal = Field(..., description="Amount (positive=income, negative=expense)")
+    amount: Decimal = Field(..., max_digits=19, decimal_places=4, description="Amount (positive=income, negative=expense)")
     currency: str = Field(..., min_length=3, max_length=3, description="Native currency code (GBP, CAD, USD)")
-    rate_to_base: Decimal = Field(..., gt=0, description="Conversion rate to base currency (locked at creation)")
+    rate_to_base: Decimal = Field(..., gt=0, max_digits=19, decimal_places=8, description="Conversion rate to base currency (locked at creation)")
     account_id: UUID = Field(..., description="Account this event affects (REQUIRED, resolved at creation)")
     story_id: Optional[UUID] = Field(default=None, description="Story this belongs to (null=baseline)")
     is_baseline: bool = Field(default=False, description="Is this a baseline event?")
@@ -292,11 +299,13 @@ class EventUpdate(BaseModel):
     Past events CAN be edited - users may need to correct mistakes.
     Editing triggers recalculation of all subsequent running balances.
     """
+    model_config = ConfigDict(populate_by_name=True)
+
     event_date: Optional[date] = Field(default=None, alias='date', serialization_alias='date')
     description: Optional[str] = Field(default=None, min_length=1)
-    amount: Optional[Decimal] = Field(default=None)
+    amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
-    rate_to_base: Optional[Decimal] = Field(default=None, gt=0)
+    rate_to_base: Optional[Decimal] = Field(default=None, gt=0, max_digits=19, decimal_places=8)
     account_id: Optional[UUID] = Field(default=None)
     story_id: Optional[UUID] = Field(default=None)
     is_baseline: Optional[bool] = Field(default=None)
@@ -337,7 +346,7 @@ class RecurringRuleBase(BaseModel):
     and materialized as actual event rows within a generation window (±1 month).
     """
     description: str = Field(..., min_length=1, description="Rule description (e.g., Salary, Rent)")
-    amount: Decimal = Field(..., description="Amount (positive=income, negative=expense)")
+    amount: Decimal = Field(..., max_digits=19, decimal_places=4, description="Amount (positive=income, negative=expense)")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency code (GBP, CAD, USD)")
     account_id: UUID = Field(..., description="Account this rule applies to")
     frequency: Frequency = Field(..., description="Recurrence frequency (weekly, monthly, annual)")
@@ -387,7 +396,7 @@ class RecurringRuleUpdate(BaseModel):
     Updating a rule affects only future events; past generated events remain unchanged.
     """
     description: Optional[str] = Field(default=None, min_length=1)
-    amount: Optional[Decimal] = Field(default=None)
+    amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     account_id: Optional[UUID] = Field(default=None)
     frequency: Optional[Frequency] = Field(default=None)
@@ -494,7 +503,11 @@ class SettingsBase(BaseModel):
 
     @model_validator(mode='after')
     def validate_rates(self):
-        """Validate all rate values are positive."""
+        """
+        Validate all rate values are positive.
+
+        Note: Rate values should use max_digits=19, decimal_places=8 for precision.
+        """
         if self.rates:
             for currency, rate in self.rates.items():
                 if rate <= 0:
@@ -525,7 +538,11 @@ class SettingsUpdate(BaseModel):
 
     @model_validator(mode='after')
     def validate_rates(self):
-        """Validate all rate values are positive if rates provided."""
+        """
+        Validate all rate values are positive if rates provided.
+
+        Note: Rate values should use max_digits=19, decimal_places=8 for precision.
+        """
         if self.rates:
             for currency, rate in self.rates.items():
                 if rate <= 0:
