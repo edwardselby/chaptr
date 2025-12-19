@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-281: PUT /api/accounts/{id} with pending_reconciliation on balance update
 - CPTR-280: DELETE /api/accounts/{id} as soft delete (archive) with default account protection
 - AccountRepository with business logic for is_default enforcement and archiving
+- CPTR-278: GET /api/stories endpoint with sort by start_date DESC
+- CPTR-277: GET /api/stories/{id} endpoint
+- CPTR-276: POST /api/stories with funding/goal validation and default_account_id verification
+- CPTR-275: PUT /api/stories/{id} with merge-then-validate pattern for cross-field validation
+- DELETE /api/stories/{id} with CASCADE delete to events (destructive, permanent)
+- StoryRepository with merge-then-validate for partial updates and cascade delete
 
 ### Planned
 - CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
