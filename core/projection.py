@@ -64,7 +64,7 @@ async def calculate_global_projection(
     # Filter events by date range and hypothetical flag
     events = [
         event for event in all_events
-        if start_date <= event.get("event_date") <= end_date
+        if start_date <= event.get("date") <= end_date
         and (include_hypothetical or not event.get("is_hypothetical", False))
     ]
 
@@ -72,7 +72,7 @@ async def calculate_global_projection(
     # Sort by: date ASC, amount DESC (income first), created_at ASC (tie-breaker)
     events.sort(
         key=lambda e: (
-            e.get("event_date"),
+            e.get("date"),
             -e.get("amount", Decimal("0")),  # Negative for DESC (larger positive first)
             e.get("created_at")
         )

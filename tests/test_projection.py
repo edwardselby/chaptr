@@ -63,7 +63,7 @@ def test_events():
         # Dec 20: Car rental (canada-trip)
         {
             "_id": uuid4(),
-            "event_date": date(2024, 12, 20),
+            "date": date(2024, 12, 20),
             "description": "car rental",
             "amount": Decimal("-320.00"),
             "currency": "GBP",
@@ -78,7 +78,7 @@ def test_events():
         # Dec 22: New tyres (volvo)
         {
             "_id": uuid4(),
-            "event_date": date(2024, 12, 22),
+            "date": date(2024, 12, 22),
             "description": "new tyres",
             "amount": Decimal("-380.00"),
             "currency": "GBP",
@@ -93,7 +93,7 @@ def test_events():
         # Dec 28: Salary (baseline)
         {
             "_id": uuid4(),
-            "event_date": date(2024, 12, 28),
+            "date": date(2024, 12, 28),
             "description": "salary",
             "amount": Decimal("3000.00"),
             "currency": "GBP",
@@ -108,7 +108,7 @@ def test_events():
         # Dec 28: Rent (baseline) - same day as salary, should process AFTER
         {
             "_id": uuid4(),
-            "event_date": date(2024, 12, 28),
+            "date": date(2024, 12, 28),
             "description": "rent",
             "amount": Decimal("-1200.00"),
             "currency": "GBP",
@@ -123,7 +123,7 @@ def test_events():
         # Jan 01: Bills (baseline)
         {
             "_id": uuid4(),
-            "event_date": date(2025, 1, 1),
+            "date": date(2025, 1, 1),
             "description": "bills",
             "amount": Decimal("-100.00"),
             "currency": "GBP",
@@ -291,7 +291,7 @@ async def test_exclude_hypothetical_from_all_view(mock_db):
     # Add a hypothetical event to test data
     hypothetical_event = {
         "_id": uuid4(),
-        "event_date": date(2024, 12, 25),
+        "date": date(2024, 12, 25),
         "description": "hypothetical funding",
         "amount": Decimal("500.00"),
         "currency": "GBP",
