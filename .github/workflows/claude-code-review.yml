@@ -71,11 +71,6 @@ jobs:
             ## 🔒 Security & Performance Notes
             Brief combined section (only if relevant findings)
 
-            ## 📋 Required Actions
-            **Before merge**: [checklist]
-            **Follow-up**: [checklist]
-            **Testing**: [brief checklist]
-
             GUIDELINES:
             - Keep explanations concise but provide context where it adds value
             - Use brief inline examples when they clarify the fix (avoid large code blocks)
