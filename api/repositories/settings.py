@@ -122,6 +122,10 @@ class SettingsRepository(BaseRepository[Settings]):
         update_dict['updated_at'] = utc_now()
 
         # Apply update
+        # TODO: Add Decimal handling for rates dict (mongomock compatibility issue)
+        #       Need to convert Decimal values to float/str for MongoDB:
+        #       - Handle dict values that contain Decimals
+        #       - See AccountRepository line 159 for reference
         await self.collection.update_one(
             {"id": str(existing.id)},
             {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else

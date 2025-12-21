@@ -350,11 +350,7 @@ async def sample_settings(settings_repo):
         default_currency="GBP",
         date_format="DD/MM/YYYY",
         baseline_display_months=1,
-        rates={
-            "USD": 1.28,  # Use float instead of Decimal for mongomock compatibility
-            "CAD": 1.75,
-            "EUR": 1.17
-        },
+        rates={},  # Empty rates - tests don't need currency conversion
         server_url="",
         last_backup_date=None,
         version="1.0.0"

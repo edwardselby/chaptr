@@ -371,18 +371,21 @@ class TestStoryDelete:
     ):
         """Deleting story removes associated events."""
         # Create event associated with story
+        # NOTE: story_id is a QUERY PARAMETER, not in JSON body!
         event_payload = {
             "event_date": "2024-12-15",
             "description": "Story Event",
             "amount": -100.00,
             "currency": "GBP",
             "account_id": str(sample_account.id),
-            "story_id": str(sample_story.id),
             "is_baseline": False,
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
-        event_response = await async_client.post("/api/events", json=event_payload)
+        event_response = await async_client.post(
+            f"/api/events?story_id={sample_story.id}",  # Query parameter!
+            json=event_payload
+        )
         assert event_response.status_code == 201
         event_id = event_response.json()["id"]
 
@@ -400,19 +403,20 @@ class TestStoryDelete:
     ):
         """Deleting story preserves baseline events (story_id=null)."""
         # Create baseline event (not associated with story)
+        # NOTE: story_id omitted from query params = baseline event
         baseline_event_payload = {
             "event_date": "2024-12-10",
             "description": "Baseline Event",
             "amount": -50.00,
             "currency": "GBP",
             "account_id": str(sample_account.id),
-            "story_id": None,
             "is_baseline": True,
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
         baseline_response = await async_client.post(
-            "/api/events", json=baseline_event_payload
+            "/api/events",  # No story_id query param = baseline
+            json=baseline_event_payload
         )
         assert baseline_response.status_code == 201
         baseline_id = baseline_response.json()["id"]
