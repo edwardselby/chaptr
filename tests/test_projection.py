@@ -211,10 +211,23 @@ def mock_db(test_accounts, test_events):
             # Simplified mock - extend as needed
             return None
 
+    class MockSettings:
+        """Mock settings collection."""
+        async def find_one(self, query=None):
+            """Return mock settings document."""
+            return {
+                "base_currency": "GBP",
+                "rates": {
+                    "CAD": Decimal("0.58"),  # 1 CAD = 0.58 GBP
+                    "USD": Decimal("0.79"),  # 1 USD = 0.79 GBP
+                }
+            }
+
     class MockDB:
         def __init__(self):
             self.accounts = MockCollection(test_accounts)
             self.events = MockCollection(test_events)
+            self.settings = MockSettings()
 
     return MockDB()
 
@@ -588,6 +601,180 @@ async def test_story_projection_projected_plus_funding_mode(mock_db):
         # Clean up
         for event in mock_db.events.data:
             if event["description"] == "new tyres":
+                event["story_id"] = None
+
+
+@pytest.mark.asyncio
+async def test_hidden_events_affect_balance(mock_db):
+    """
+    CRITICAL TEST: Verify hidden story events affect running balance.
+
+    This test validates the core architectural requirement from spec line 485:
+    "running_balance += ALL events (including hidden stories)"
+
+    Scenario:
+    - Canada story (Dec 19-Jan 10) with car rental on Dec 20
+    - Volvo story (Dec 22 onwards) with tyres on Dec 22
+    - When viewing Canada story: tyres should be HIDDEN but affect balance
+    """
+    # Create Canada story
+    canada_story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "funding_mode": "projected",
+        "display_currency": "CAD",
+    }
+
+    # Create Volvo story
+    volvo_story = {
+        "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "name": "volvo",
+        "start_date": date(2024, 12, 22),
+        "funding_mode": "projected",
+        "display_currency": "GBP",
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story, volvo_story])
+
+    # Assign car rental to Canada story, tyres to Volvo story
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story["_id"]
+        elif event["description"] == "new tyres":
+            event["story_id"] = volvo_story["_id"]
+
+    try:
+        # View Canada story projection
+        result = await calculate_story_projection(
+            story_id=str(canada_story["_id"]),
+            start_date=date(2024, 12, 19),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Verify: tyres (Volvo story) should NOT be in results
+        descriptions = [e["description"] for e in result]
+        assert "new tyres" not in descriptions, \
+            "Tyres (Volvo story) should be hidden in Canada story view"
+
+        # Verify: car rental (Canada story) SHOULD be in results
+        assert "car rental" in descriptions, \
+            "Car rental (Canada story) should be visible"
+
+        # CRITICAL: Verify running balance includes tyres even though hidden
+        # Timeline:
+        # - Dec 20: car rental -£320 → balance = £13,210 - £320 = £12,890
+        # - Dec 22: tyres -£380 (HIDDEN) → balance = £12,890 - £380 = £12,510
+        # - Dec 28: salary +£3000 → balance = £12,510 + £3000 = £15,510
+
+        car_rental = next(e for e in result if e["description"] == "car rental")
+        salary = next(e for e in result if e["description"] == "salary")
+
+        assert car_rental["running_balance"] == Decimal("12890.00"), \
+            "After car rental: £13,210 - £320 = £12,890"
+
+        # This is the key assertion: salary balance should reflect hidden tyres event
+        assert salary["running_balance"] == Decimal("15510.00"), \
+            "After hidden tyres (-£380) and salary (+£3000): £12,890 - £380 + £3000 = £15,510"
+
+        # If we were NOT including hidden events, salary balance would be £15,890
+        # (£12,890 + £3000), which would be WRONG
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] in ["car rental", "new tyres"]:
+                event["story_id"] = None
+
+
+@pytest.mark.asyncio
+async def test_multi_currency_story_projection(mock_db):
+    """
+    Test story projection with multi-currency funding and events.
+
+    Validates:
+    - Funding event in CAD converted to base currency (GBP)
+    - Mixed currency events in story projection
+    - Running balance calculated in base currency
+    """
+    # Create a story with CAD as display currency
+    canada_story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "funding_mode": "fixed",
+        "funding_amount": Decimal("1000.00"),  # $1000 CAD
+        "display_currency": "CAD",
+        "default_account_id": UUID("11111111-1111-1111-1111-111111111111"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story])
+
+    # Assign car rental to Canada story
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story["_id"]
+            break
+
+    try:
+        result = await calculate_story_projection(
+            story_id=str(canada_story["_id"]),
+            start_date=date(2024, 12, 19),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Should have funding event + car rental + baseline events
+        assert len(result) >= 2, "Should have at least funding + car rental"
+
+        # Verify funding event
+        funding = result[0]
+        assert funding["description"] == "Story funding: canada-trip"
+        assert funding["amount"] == Decimal("1000.00")  # $1000 CAD
+        assert funding["currency"] == "CAD"
+        assert funding["rate_to_base"] == Decimal("0.58")  # 1 CAD = 0.58 GBP
+
+        # CRITICAL: Verify funding base_amount is correct
+        # $1000 CAD × 0.58 = £580 GBP
+        assert funding["base_amount"] == Decimal("580.00"), \
+            "$1000 CAD × 0.58 = £580 GBP"
+
+        # Verify running balance uses base currency
+        # Starting: 0 (fixed mode)
+        # After funding: +£580
+        assert funding["running_balance"] == Decimal("580.00"), \
+            "Fixed mode starts at 0, funding adds £580 (converted from CAD)"
+
+        # Verify subsequent events also use correct currency
+        car_rental = next((e for e in result if e["description"] == "car rental"), None)
+        if car_rental:
+            # Car rental: -£320 GBP
+            # Running balance: £580 - £320 = £260
+            assert car_rental["running_balance"] == Decimal("260.00"), \
+                "After £580 funding and -£320 car rental = £260"
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] == "car rental":
                 event["story_id"] = None
 
 
