@@ -166,6 +166,9 @@ class StoryRepository(BaseRepository[Story]):
             update_dict['updated_by'] = updated_by
 
         # Apply update
+        # TODO: Add Decimal handling like AccountRepository does (line 159)
+        #       Should convert Decimal to str for MongoDB compatibility:
+        #       str(v) if isinstance(v, (UUID, Decimal)) else v
         await self.collection.update_one(
             {"id": to_str(story_id)},
             {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
