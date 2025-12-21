@@ -171,12 +171,36 @@ def mock_db(test_accounts, test_events):
                     if not (start <= item_date <= end):
                         continue
 
-                # Handle hypothetical filtering
+                # Handle $or queries (for story filtering and hypothetical filtering)
                 if "$or" in query:
-                    # Check if is_hypothetical is False or doesn't exist
-                    is_hyp = item.get("is_hypothetical", False)
-                    if is_hyp:  # Skip hypothetical events
-                        continue
+                    or_conditions = query["$or"]
+
+                    # Check if it's hypothetical filtering (old pattern)
+                    if any("is_hypothetical" in cond for cond in or_conditions):
+                        # Check if is_hypothetical is False or doesn't exist
+                        is_hyp = item.get("is_hypothetical", False)
+                        if is_hyp:  # Skip hypothetical events
+                            continue
+
+                    # Check if it's story filtering (story_id based)
+                    elif any("story_id" in cond for cond in or_conditions):
+                        # Need to match at least one condition
+                        match_found = False
+                        for condition in or_conditions:
+                            if "story_id" in condition:
+                                expected_story_id = condition["story_id"]
+                                item_story_id = item.get("story_id")
+
+                                if expected_story_id == item_story_id:
+                                    match_found = True
+                                    break
+                            elif "is_baseline" in condition:
+                                if item.get("is_baseline") == condition["is_baseline"]:
+                                    match_found = True
+                                    break
+
+                        if not match_found:
+                            continue
 
                 filtered_data.append(item)
 
@@ -362,13 +386,274 @@ async def test_empty_events_projection(mock_db):
     assert len(result) == 0, "Should return empty list when no events in range"
 
 
-# ==================== Placeholder for Future Phases ====================
+# ==================== Phase 2.3: Story Projection Tests ====================
 
 @pytest.mark.asyncio
-async def test_placeholder_story_projection():
-    """Placeholder for Phase 2.3: Story projection tests."""
-    # Will implement in Phase 2.3
-    pass
+async def test_story_projection_projected_funding_mode(mock_db):
+    """
+    Test story projection with 'projected' funding mode.
+
+    Projected mode: Starting balance = projected balance on story.start_date
+
+    Canada trip story:
+    - start_date: Dec 19, 2024
+    - funding_mode: "projected"
+    - Expected starting balance: £13,210 (multi-currency starting balance)
+
+    Events in story:
+    - Dec 20: car rental -£320
+    """
+    # Create canada-trip story
+    canada_story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "end_date": date(2025, 1, 10),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "CAD",
+        "default_account_id": UUID("33333333-3333-3333-3333-333333333333"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    # Add story to mock DB
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story])
+
+    # Update car rental event to belong to canada-trip story
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story["_id"]
+            break
+
+    try:
+        result = await calculate_story_projection(
+            story_id=str(canada_story["_id"]),
+            start_date=date(2024, 12, 19),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Should have 4 events: car rental (story) + salary, rent, bills (baseline)
+        assert len(result) == 4, "Should have car rental + 3 baseline events"
+
+        # Events should be: car rental, salary, rent, bills
+        descriptions = [e["description"] for e in result]
+        assert "car rental" in descriptions
+        assert "salary" in descriptions
+        assert "rent" in descriptions
+        assert "bills" in descriptions
+
+        # Verify starting balance (projected mode) and running balance
+        car_rental = next(e for e in result if e["description"] == "car rental")
+        assert car_rental["running_balance"] == Decimal("12890.00"), \
+            "Projected funding: starts at £13,210, car rental -£320 = £12,890"
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] == "car rental":
+                event["story_id"] = None
+
+
+@pytest.mark.asyncio
+async def test_story_projection_fixed_funding_mode(mock_db):
+    """
+    Test story projection with 'fixed' funding mode.
+
+    Fixed mode: Starting balance = story.funding_amount (hypothetical)
+    Creates a hypothetical funding event at story start.
+
+    Skiing story:
+    - start_date: Dec 23, 2024
+    - funding_mode: "fixed"
+    - funding_amount: £500
+    - Expected starting balance: £500 (hypothetical funding)
+    """
+    # Create skiing story
+    skiing_story = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "skiing-2025",
+        "start_date": date(2024, 12, 23),
+        "end_date": date(2024, 12, 30),
+        "funding_mode": "fixed",
+        "funding_amount": Decimal("500.00"),
+        "display_currency": "GBP",
+        "default_account_id": UUID("11111111-1111-1111-1111-111111111111"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([skiing_story])
+
+    result = await calculate_story_projection(
+        story_id=str(skiing_story["_id"]),
+        start_date=date(2024, 12, 23),
+        end_date=date(2024, 12, 30),
+        db=mock_db
+    )
+
+    # Should have 1 event (hypothetical funding)
+    assert len(result) >= 1, "Should have at least hypothetical funding event"
+
+    # First event should be hypothetical funding
+    funding_event = result[0]
+    assert funding_event["description"] == "Story funding: skiing-2025"
+    assert funding_event["amount"] == Decimal("500.00")
+    assert funding_event["is_hypothetical"] is True
+    assert funding_event["running_balance"] == Decimal("500.00"), \
+        "Fixed funding starts with £500"
+
+
+@pytest.mark.asyncio
+async def test_story_projection_projected_plus_funding_mode(mock_db):
+    """
+    Test story projection with 'projected_plus' funding mode.
+
+    Projected_plus mode: Starting balance = projected + funding_amount
+    """
+    # Create volvo story
+    volvo_story = {
+        "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "name": "volvo",
+        "start_date": date(2024, 12, 22),
+        "end_date": None,  # Ongoing
+        "funding_mode": "projected_plus",
+        "funding_amount": Decimal("1000.00"),
+        "display_currency": "GBP",
+        "default_account_id": UUID("22222222-2222-2222-2222-222222222222"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([volvo_story])
+
+    # Add tyres event to volvo story
+    for event in mock_db.events.data:
+        if event["description"] == "new tyres":
+            event["story_id"] = volvo_story["_id"]
+            break
+
+    try:
+        result = await calculate_story_projection(
+            story_id=str(volvo_story["_id"]),
+            start_date=date(2024, 12, 22),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Should have 2 events: funding + tyres
+        assert len(result) >= 2, "Should have funding event + tyres"
+
+        # First event should be hypothetical funding
+        funding_event = result[0]
+        assert funding_event["description"] == "Story funding: volvo"
+        assert funding_event["amount"] == Decimal("1000.00")
+        assert funding_event["is_hypothetical"] is True
+
+        # Verify projected_plus calculation
+        # Projected on Dec 22 = £12,890 (after car rental on Dec 20)
+        # Plus funding: +£1,000 = £13,890
+        assert funding_event["running_balance"] == Decimal("13890.00"), \
+            "Projected_plus: £12,890 + £1,000 = £13,890"
+
+        # Second event should be tyres
+        tyres_event = result[1]
+        assert tyres_event["description"] == "new tyres"
+        assert tyres_event["running_balance"] == Decimal("13510.00"), \
+            "After tyres: £13,890 - £380 = £13,510"
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] == "new tyres":
+                event["story_id"] = None
+
+
+@pytest.mark.asyncio
+async def test_story_filtered_events_only(mock_db):
+    """
+    Test that story projection only includes baseline + story events.
+
+    Should filter out events from other stories.
+    """
+    # Create two stories
+    canada_story_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    volvo_story_id = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+    canada_story = {
+        "_id": canada_story_id,
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "end_date": date(2025, 1, 10),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "CAD",
+        "default_account_id": UUID("33333333-3333-3333-3333-333333333333"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story])
+
+    # Assign events to different stories
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story_id
+        elif event["description"] == "new tyres":
+            event["story_id"] = volvo_story_id
+        # salary, rent, bills remain baseline (story_id = None)
+
+    try:
+        result = await calculate_story_projection(
+            story_id=str(canada_story_id),
+            start_date=date(2024, 12, 18),
+            end_date=date(2025, 1, 18),
+            db=mock_db
+        )
+
+        # Should include: car rental (canada) + baseline events
+        # Should exclude: tyres (volvo story)
+        descriptions = [e["description"] for e in result]
+
+        assert "car rental" in descriptions, "Should include canada-trip event"
+        assert "salary" in descriptions, "Should include baseline events"
+        assert "rent" in descriptions, "Should include baseline events"
+        assert "bills" in descriptions, "Should include baseline events"
+        assert "new tyres" not in descriptions, "Should exclude other story events"
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            event["story_id"] = None
 
 
 @pytest.mark.asyncio

@@ -201,6 +201,80 @@ async def calculate_global_projection(
     return results
 
 
+async def calculate_story_starting_balance(
+    story: Dict,
+    db
+) -> Decimal:
+    """
+    Calculate starting balance for story based on funding mode.
+
+    Three modes:
+    - projected: Calculate projected balance on story.start_date
+    - fixed: Use story.funding_amount
+    - projected_plus: Projected + story.funding_amount
+
+    Args:
+        story: Story document with funding_mode, funding_amount, start_date
+        db: MongoDB database instance
+
+    Returns:
+        Starting balance for story projection
+
+    See spec: Stories > Funding Modes
+    """
+    funding_mode = story.get("funding_mode", "projected")
+
+    if funding_mode == "projected":
+        # Calculate projected balance on story start date
+        # Uses global projection to include ALL events (baseline + story events)
+        # This gives the real projected balance at that point in time
+        from datetime import timedelta
+
+        # Use a date far in the past to ensure we capture all events
+        # This handles both future story dates (normal) and past dates (testing)
+        early_date = story.get("start_date") - timedelta(days=365*5)
+
+        # Calculate global projection up to DAY BEFORE story start
+        # We want the balance at the START of the story date, not after events on that date
+        day_before_story = story.get("start_date") - timedelta(days=1)
+
+        projection = await calculate_global_projection(
+            start_date=early_date,
+            end_date=day_before_story,
+            include_hypothetical=False,  # Don't include hypothetical events
+            db=db
+        )
+
+        # Return final balance if events exist
+        if projection:
+            return projection[-1]["running_balance"]
+        else:
+            # No events before story start, return sum of account balances
+            accounts = await db.accounts.find({"is_archived": False}).to_list()
+            return sum(
+                convert_to_base_currency(
+                    acc.get("current_balance", Decimal("0")),
+                    acc.get("rate_to_base", Decimal("1"))
+                )
+                for acc in accounts
+            )
+
+    elif funding_mode == "fixed":
+        # Fixed mode: Start at 0, funding event will add the money
+        return Decimal("0")
+
+    elif funding_mode == "projected_plus":
+        # Projected_plus mode: Start at projected balance, funding event adds adjustment
+        # Recursively calculate projected mode (without the funding adjustment)
+        projected_story = {**story, "funding_mode": "projected"}
+        projected_balance = await calculate_story_starting_balance(projected_story, db)
+        return projected_balance
+
+    else:
+        # Default to projected mode
+        return Decimal("0")
+
+
 async def calculate_story_projection(
     story_id: str,
     start_date: date,
@@ -220,10 +294,12 @@ async def calculate_story_projection(
         4. Calculate running balance (includes hidden story events)
         5. Generate gap indicators for hidden events
 
-    TODO Phase 2:
-    - Implement all three funding modes
-    - Calculate gap indicators
-    - Convert amounts to story.display_currency
+    Phase 2.3 Implementation:
+    - ✅ All three funding modes
+    - ✅ Story-filtered events (baseline + this story only)
+    - ✅ Hypothetical funding event creation
+    - TODO Phase 2.4: Gap indicators
+    - TODO Phase 2.4: Convert to display_currency
 
     Args:
         story_id: Story UUID
@@ -236,8 +312,90 @@ async def calculate_story_projection(
 
     See spec: Projection Engine > Filtered Calculation
     """
-    # STUB: Returns empty list until Phase 2
-    return []
+    from uuid import UUID
+
+    # Step 1: Get story
+    story = await db.stories.find_one({"_id": UUID(story_id)})
+    if not story:
+        return []
+
+    # Step 2: Calculate starting balance based on funding mode
+    starting_balance = await calculate_story_starting_balance(story, db)
+
+    # Step 3: Create hypothetical funding event if needed
+    funding_mode = story.get("funding_mode", "projected")
+    events_list = []
+
+    if funding_mode in ("fixed", "projected_plus"):
+        # Create hypothetical funding event at story start
+        funding_event = {
+            "_id": UUID(int=0),  # Placeholder ID for synthetic event
+            "date": story.get("start_date"),
+            "description": f"Story funding: {story.get('name')}",
+            "amount": story.get("funding_amount", Decimal("0")),
+            "currency": story.get("display_currency", "GBP"),
+            "rate_to_base": Decimal("1"),  # Assume base currency for funding
+            "account_id": story.get("default_account_id"),
+            "story_id": UUID(story_id),
+            "is_baseline": False,
+            "is_hypothetical": True,
+            "is_auto_adjustment": False,
+            "created_at": story.get("created_at"),
+            "base_amount": story.get("funding_amount", Decimal("0"))
+        }
+        events_list.append(funding_event)
+
+    # Step 4: Fetch events (baseline + this story only)
+    # Filter at database level
+    query_filter = {
+        "date": {"$gte": start_date, "$lte": end_date},
+        "$or": [
+            {"story_id": UUID(story_id)},  # Events in this story
+            {"is_baseline": True}  # Baseline events
+        ]
+    }
+
+    story_events = await db.events.find(query_filter).to_list()
+
+    # Convert events to base currency and add base_amount field
+    for event in story_events:
+        amount = event.get("amount", Decimal("0"))
+        rate_to_base = event.get("rate_to_base", Decimal("1"))
+        base_amount = convert_to_base_currency(amount, rate_to_base)
+        event["base_amount"] = base_amount
+
+    # Combine funding event (if any) with story events
+    all_events = events_list + story_events
+
+    # Step 5: Apply same-day ordering
+    all_events.sort(
+        key=lambda e: (
+            e.get("date"),
+            -e.get("base_amount", Decimal("0")),
+            e.get("created_at")
+        )
+    )
+
+    # Step 6: Calculate running balance
+    running_balance = starting_balance
+    results = []
+
+    for event in all_events:
+        # For projected mode, adjust starting balance for first event
+        if funding_mode == "projected" and len(results) == 0:
+            # Starting balance already includes projected balance
+            # Just add event amount
+            pass
+
+        # Add event base_amount to running balance
+        base_amount = event.get("base_amount", Decimal("0"))
+        running_balance += base_amount
+
+        # Create result event
+        result_event = {**event, "running_balance": running_balance}
+        results.append(result_event)
+
+    return results
 
 
 async def calculate_account_projection(
