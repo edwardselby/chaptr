@@ -13,7 +13,7 @@ Security:
 
 from fastapi import APIRouter, Depends
 
-from api.database import MongoDB
+from api.config import MongoDB
 from api.models import LoginRequest, LoginResponse
 from api.repositories.users import UserRepository
 from api.utils.auth import create_access_token, get_current_user

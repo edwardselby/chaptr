@@ -112,7 +112,7 @@ class StoryRepository(BaseRepository[Story]):
         self,
         story_id: UUID,
         data: StoryUpdate,
-        updated_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> Story:
         """
         Update existing story with partial update validation.
@@ -126,8 +126,8 @@ class StoryRepository(BaseRepository[Story]):
         :type story_id: UUID
         :param data: Update data (partial)
         :type data: StoryUpdate
-        :param updated_by: User ID updating the story (Phase 1.5)
-        :type updated_by: Optional[UUID]
+        :param current_user: Current authenticated user (auto-populated by route)
+        :type current_user: Optional[dict]
         :return: Updated story
         :rtype: Story
         :raises ResourceNotFoundError: If story not found

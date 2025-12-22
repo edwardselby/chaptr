@@ -13,7 +13,7 @@ from api.models import User, UserCreate
 from api.repositories.base import BaseRepository
 from api.utils.auth import hash_password, verify_password
 from api.utils.db import generate_id, utc_now
-from api.utils.errors import ResourceConflictError
+from api.utils.errors import ResourceConflictError, ResourceNotFoundError
 
 
 class UserRepository(BaseRepository[User]):
@@ -197,10 +197,10 @@ class UserRepository(BaseRepository[User]):
         ResourceConflictError: Cannot delete last admin user
         """
         # Get user to check role
-        user = await self.get(user_id)
-
-        # User not found
-        if not user:
+        try:
+            user = await self.get(user_id)
+        except ResourceNotFoundError:
+            # User not found
             return False
 
         # Check if admin and if last admin
