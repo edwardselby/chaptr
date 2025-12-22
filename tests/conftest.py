@@ -466,8 +466,8 @@ async def sample_regular_user(user_repo):
     return user
 
 
-@pytest.fixture
-def auth_headers(sample_user):
+@pytest_asyncio.fixture
+async def auth_headers(sample_user):
     """
     Generate Authorization headers with admin JWT token.
 
@@ -486,8 +486,8 @@ def auth_headers(sample_user):
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture
-def regular_user_auth_headers(sample_regular_user):
+@pytest_asyncio.fixture
+async def regular_user_auth_headers(sample_regular_user):
     """
     Generate Authorization headers with regular user JWT token.
 
