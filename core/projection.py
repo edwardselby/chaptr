@@ -336,8 +336,14 @@ async def calculate_story_projection(
     if funding_mode in ("fixed", "projected_plus"):
         # Get settings to determine rate_to_base for funding currency
         settings = await db.settings.find_one()
-        base_currency = settings.get("base_currency", "GBP") if settings else "GBP"
-        rates = settings.get("rates", {}) if settings else {}
+        if not settings:
+            raise ValueError(
+                "Settings document not found. Database may not be initialized. "
+                "Run setup to create settings with base_currency and rates."
+            )
+
+        base_currency = settings.get("base_currency", "GBP")
+        rates = settings.get("rates", {})
 
         funding_currency = story.get("display_currency", base_currency)
         funding_amount = story.get("funding_amount", Decimal("0"))
@@ -353,8 +359,12 @@ async def calculate_story_projection(
         base_amount = convert_to_base_currency(funding_amount, rate_to_base)
 
         # Create hypothetical funding event at story start
+        # Use deterministic UUID based on story_id for consistent identification
+        from uuid import uuid5, NAMESPACE_DNS
+        funding_event_id = uuid5(NAMESPACE_DNS, f"funding-{story_id}")
+
         funding_event = {
-            "_id": UUID(int=0),  # Placeholder ID for synthetic event
+            "_id": funding_event_id,
             "date": story.get("start_date"),
             "description": f"Story funding: {story.get('name')}",
             "amount": funding_amount,
