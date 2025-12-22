@@ -339,7 +339,7 @@ async def test_script_rejects_invalid_password():
 
 @pytest.mark.asyncio
 async def test_script_handles_database_connection_failure():
-    """Script propagates MongoDB connection failures."""
+    """Script handles MongoDB connection failures with user-friendly error."""
     from scripts.create_first_user import create_admin_user
 
     with patch('scripts.create_first_user.MongoDB') as mock_mongodb, \
@@ -348,11 +348,11 @@ async def test_script_handles_database_connection_failure():
         # Simulate connection failure
         mock_mongodb.connect.side_effect = Exception("Connection refused")
 
-        # Script doesn't catch connection errors, they propagate
-        with pytest.raises(Exception) as exc_info:
+        # Script catches connection errors and exits with code 3
+        with pytest.raises(SystemExit) as exc_info:
             await create_admin_user("TestAdmin", "ValidPass123")
 
-        assert "Connection refused" in str(exc_info.value)
+        assert exc_info.value.code == 3
 
 
 @pytest.mark.asyncio

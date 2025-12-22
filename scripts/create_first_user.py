@@ -107,8 +107,20 @@ async def create_admin_user(username: str, password: str) -> None:
         ResourceConflictError: If admin already exists
     """
     # Initialize MongoDB
-    MongoDB.connect()
-    db = MongoDB.get_database()
+    try:
+        MongoDB.connect()
+        db = MongoDB.get_database()
+    except Exception as e:
+        print(f"❌ Failed to connect to MongoDB")
+        print(f"   Error: {e}")
+        print(f"\nConnection Details:")
+        print(f"   MongoDB URL: {settings.mongodb_url}")
+        print(f"   Database: {settings.mongodb_db_name}")
+        print(f"\nTroubleshooting:")
+        print(f"   - Verify MongoDB is running")
+        print(f"   - Check connection string in .env file")
+        print(f"   - Ensure network connectivity to database")
+        sys.exit(3)
 
     try:
         # Create repository
@@ -166,9 +178,12 @@ Examples:
   # Interactive mode
   python scripts/create_first_user.py --confirm
 
-  # Docker environment mode
-  ADMIN_USERNAME=admin ADMIN_PASSWORD=SecurePass123 \\
-      python scripts/create_first_user.py --confirm
+  # Docker environment mode (single line)
+  ADMIN_USERNAME=admin ADMIN_PASSWORD=SecurePass123 python scripts/create_first_user.py --confirm
+
+  # Or using .env file
+  # Set ADMIN_USERNAME and ADMIN_PASSWORD in .env, then:
+  python scripts/create_first_user.py --confirm
 
 Password Requirements:
   - Minimum 8 characters
