@@ -1496,6 +1496,436 @@ async def test_story_goal_none_no_warnings():
         f"Expected no warnings for goal_type='none', got {len(warnings)}"
 
 
+# ==================== Comprehensive Warning Detection Tests (Task 5) ====================
+
+
+@pytest.mark.asyncio
+async def test_global_negative_warning_boundary_zero():
+    """
+    Balance exactly £0.00 should NOT trigger warning.
+
+    Boundary case: Zero balance is not negative, no warning expected.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("100.00")
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "final expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("0.00")  # Exactly zero
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # No warnings for zero balance
+    assert len(warnings) == 0, \
+        f"Expected no warnings for £0.00 balance, got {len(warnings)}"
+
+
+@pytest.mark.asyncio
+async def test_global_negative_warning_boundary_negative_penny():
+    """
+    Balance of -£0.01 should trigger warning.
+
+    Boundary case: Even smallest negative balance should warn.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("99.99")
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "small expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("-0.01")  # Tiny negative
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning for -£0.01, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "negative_balance"
+    assert warning["severity"] == "critical"
+    assert warning["amount"] == Decimal("-0.01")
+    assert "negative" in warning["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_global_negative_then_recovery():
+    """
+    Balance goes negative then recovers to positive.
+
+    Expected: Warning only for the event that caused negative balance.
+    Recovery event should not have warning.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "large expense",
+            "amount": Decimal("-1000.00"),
+            "running_balance": Decimal("-500.00")  # NEGATIVE
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "income",
+            "amount": Decimal("700.00"),
+            "running_balance": Decimal("200.00")  # Recovered to positive
+        },
+        {
+            "date": date(2024, 12, 28),
+            "description": "small expense",
+            "amount": Decimal("-50.00"),
+            "running_balance": Decimal("150.00")  # Still positive
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 1 warning only for the negative event
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["date"] == date(2024, 12, 20), \
+        "Warning should be for the event that went negative"
+    assert warning["amount"] == Decimal("-500.00")
+
+
+@pytest.mark.asyncio
+async def test_multiple_negative_warnings_in_projection():
+    """
+    Multiple events cause negative balance at different points.
+
+    Expected: Separate warnings for each negative balance event.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense 1",
+            "amount": Decimal("-200.00"),
+            "running_balance": Decimal("-100.00")  # WARNING 1
+        },
+        {
+            "date": date(2024, 12, 22),
+            "description": "small income",
+            "amount": Decimal("50.00"),
+            "running_balance": Decimal("-50.00")  # Still negative, WARNING 2
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "expense 2",
+            "amount": Decimal("-200.00"),
+            "running_balance": Decimal("-250.00")  # Even more negative, WARNING 3
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 3 warnings (all events have negative balance)
+    assert len(warnings) == 3, f"Expected 3 warnings, got {len(warnings)}"
+
+    # Verify each warning has different date
+    warning_dates = [w["date"] for w in warnings]
+    assert warning_dates == [date(2024, 12, 20), date(2024, 12, 22), date(2024, 12, 25)]
+
+    # All should be critical severity
+    for warning in warnings:
+        assert warning["severity"] == "critical"
+
+
+@pytest.mark.asyncio
+async def test_warning_message_includes_currency_and_amount():
+    """
+    Warning messages include currency symbol and formatted amount.
+
+    Validates that warning messages are user-friendly with proper formatting.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 25),
+            "description": "large expense",
+            "amount": Decimal("-2000.00"),
+            "running_balance": Decimal("-1234.56")
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    assert len(warnings) == 1
+
+    warning = warnings[0]
+    message = warning["message"]
+
+    # Message should include "negative" keyword
+    assert "negative" in message.lower(), \
+        f"Message should mention 'negative', got: {message}"
+
+    # Message should include the amount (verify it contains the number)
+    assert "1234" in message or "1,234" in message, \
+        f"Message should include formatted amount, got: {message}"
+
+    # Verify warning structure
+    assert warning["amount"] == Decimal("-1234.56")
+    assert warning["date"] == date(2024, 12, 25)
+
+
+@pytest.mark.asyncio
+async def test_story_goal_warning_message_includes_shortfall():
+    """
+    Story goal warnings show exact shortfall/overspend amount in message.
+
+    Tests both spend_up_to (overspend) and end_with_at_least (shortfall).
+    """
+    from core.projection import detect_story_goal_warnings
+
+    # Test 1: spend_up_to overspent by £234
+    story_spend = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "goal_type": "spend_up_to",
+        "goal_amount": Decimal("1000.00"),
+        "end_date": date(2025, 1, 5)
+    }
+
+    projection_spend = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense",
+            "amount": Decimal("-1234.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("12000.00")
+        }
+    ]
+
+    warnings_spend = detect_story_goal_warnings(story_spend, projection_spend)
+
+    assert len(warnings_spend) == 1
+    assert "over budget" in warnings_spend[0]["message"]
+    assert warnings_spend[0]["amount"] == Decimal("1234.00")
+    assert warnings_spend[0]["threshold"] == Decimal("1000.00")
+
+    # Test 2: end_with_at_least short by £500
+    story_savings = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "savings",
+        "goal_type": "end_with_at_least",
+        "goal_amount": Decimal("3000.00"),
+        "end_date": date(2025, 1, 31)
+    }
+
+    projection_savings = [
+        {
+            "date": date(2025, 1, 31),
+            "description": "final",
+            "amount": Decimal("0.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("2500.00")
+        }
+    ]
+
+    warnings_savings = detect_story_goal_warnings(story_savings, projection_savings)
+
+    assert len(warnings_savings) == 1
+    assert "short of goal" in warnings_savings[0]["message"]
+    assert "500" in warnings_savings[0]["message"], \
+        "Message should include £500 shortfall"
+
+
+@pytest.mark.asyncio
+async def test_warning_on_first_event():
+    """
+    First event in projection causes negative balance.
+
+    Edge case: Warning should appear even on first event.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "large expense",
+            "amount": Decimal("-500.00"),
+            "running_balance": Decimal("-400.00")  # First event goes negative
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "income",
+            "amount": Decimal("500.00"),
+            "running_balance": Decimal("100.00")
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 1 warning on first event
+    assert len(warnings) == 1
+    assert warnings[0]["date"] == date(2024, 12, 20), \
+        "Warning should be for first event"
+    assert warnings[0]["amount"] == Decimal("-400.00")
+
+
+@pytest.mark.asyncio
+async def test_warning_on_last_event():
+    """
+    Last event in projection causes negative balance.
+
+    Edge case: Warning should appear even on last event.
+    """
+    from core.projection import detect_global_negative_warnings
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "income",
+            "amount": Decimal("100.00"),
+            "running_balance": Decimal("100.00")
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "small expense",
+            "amount": Decimal("-50.00"),
+            "running_balance": Decimal("50.00")
+        },
+        {
+            "date": date(2024, 12, 28),
+            "description": "another expense",
+            "amount": Decimal("-30.00"),
+            "running_balance": Decimal("20.00")
+        },
+        {
+            "date": date(2024, 12, 31),
+            "description": "final large expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("-80.00")  # Last event goes negative
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 1 warning on last event only
+    assert len(warnings) == 1
+    assert warnings[0]["date"] == date(2024, 12, 31), \
+        "Warning should be for last event"
+    assert warnings[0]["amount"] == Decimal("-80.00")
+
+
+@pytest.mark.asyncio
+async def test_story_goal_with_baseline_events_excluded():
+    """
+    spend_up_to goal excludes baseline events from spend calculation.
+
+    Critical test: Baseline events should NOT count toward story spend.
+    """
+    from core.projection import detect_story_goal_warnings
+
+    story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "goal_type": "spend_up_to",
+        "goal_amount": Decimal("1000.00"),
+        "end_date": date(2025, 1, 5)
+    }
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "car rental",
+            "amount": Decimal("-300.00"),
+            "is_baseline": False,  # Story event
+            "running_balance": Decimal("12700.00")
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "gifts",
+            "amount": Decimal("-150.00"),
+            "is_baseline": False,  # Story event
+            "running_balance": Decimal("12550.00")
+        },
+        {
+            "date": date(2024, 12, 28),
+            "description": "salary",
+            "amount": Decimal("3000.00"),
+            "is_baseline": True,  # BASELINE - should be EXCLUDED
+            "running_balance": Decimal("15550.00")
+        },
+        {
+            "date": date(2024, 12, 30),
+            "description": "rent",
+            "amount": Decimal("-1500.00"),
+            "is_baseline": True,  # BASELINE - should be EXCLUDED
+            "running_balance": Decimal("14050.00")
+        }
+    ]
+
+    warnings = detect_story_goal_warnings(story, projection_result)
+
+    # Total story spend: £300 + £150 = £450 (baseline excluded)
+    # Goal: £1,000
+    # Should have NO warning (£450 < £1,000)
+    assert len(warnings) == 0, \
+        f"Expected no warning (spend £450 < goal £1,000), got {len(warnings)} warnings"
+
+
+@pytest.mark.asyncio
+async def test_story_goal_zero_amount():
+    """
+    Story with goal_amount = £0.00 edge case.
+
+    Any expense should trigger warning when goal is zero.
+    """
+    from core.projection import detect_story_goal_warnings
+
+    story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "no-spend",
+        "goal_type": "spend_up_to",
+        "goal_amount": Decimal("0.00"),  # Zero budget
+        "end_date": date(2025, 1, 5)
+    }
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "tiny expense",
+            "amount": Decimal("-0.01"),
+            "is_baseline": False,
+            "running_balance": Decimal("12999.99")
+        }
+    ]
+
+    warnings = detect_story_goal_warnings(story, projection_result)
+
+    # Should have warning (any spend > £0)
+    assert len(warnings) == 1, \
+        "Expected warning for any expense when goal is £0.00"
+
+    warning = warnings[0]
+    assert warning["type"] == "goal_exceeded"
+    assert warning["amount"] == Decimal("0.01")  # Spent 1 penny
+    assert warning["threshold"] == Decimal("0.00")
+
+
 # ==================== Gap Indicators Integration Tests ====================
 # Phase 2.4 - Tasks 2, 3, 4
 

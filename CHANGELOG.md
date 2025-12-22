@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-e94133dc: Currency conversion for gap deltas to story display_currency using current rates
 - CPTR-c289e6e8: Gap metadata includes delta amounts, date range, hidden event count, and full event details for frontend expansion
 - CPTR-c289e6e8: Trailing gap support for hidden events after last visible event (before_event_id = None)
+- CPTR-6c1c33b5: Comprehensive warning detection tests (boundary cases, recovery scenarios, message validation, multi-warnings, first/last event edge cases, baseline exclusion)
 
 
 ## [0.0.4] - 2025-12-22
