@@ -29,8 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phase 1.5: Recurring rule endpoints (POST, PUT) integrate user tracking via get_current_user dependency
 - Phase 1.5: All repositories accept current_user parameter instead of created_by/updated_by UUIDs
 - Phase 1.5: Repository methods extract user_id from current_user dict for backward compatibility
+- Phase 1.5: RecurringRule model extended with created_by/updated_by fields for consistency
+- Phase 1.5: Role-based token expiration (admin: 7 days, user: 24 hours)
 
 ### Fixed
+- Phase 1.5: Added SECRET_KEY validation at startup (fails if using default key in production)
+- Phase 1.5: Password strength validation (requires uppercase, lowercase, and digit)
+- Phase 1.5: Unique index on users.username for performance and uniqueness enforcement
 
 
 ## [0.0.2] - 2025-12-21
