@@ -8,56 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Phase 1.4 Foundation: Repository pattern and utilities
-  - Custom exceptions: ResourceNotFoundError, ResourceConflictError, ValidationError
-  - Database helpers: UUID conversion, timestamps, account resolution, rate locking
-  - BaseRepository with generic CRUD operations
-- CPTR-284: GET /api/accounts endpoint with include_archived query parameter
-- CPTR-283: GET /api/accounts/{id} endpoint
-- CPTR-282: POST /api/accounts with is_default enforcement (first account auto-sets default)
-- CPTR-281: PUT /api/accounts/{id} with pending_reconciliation on balance update
-- CPTR-280: DELETE /api/accounts/{id} as soft delete (archive) with default account protection
-- AccountRepository with business logic for is_default enforcement and archiving
-- CPTR-278: GET /api/stories endpoint with sort by start_date DESC
-- CPTR-277: GET /api/stories/{id} endpoint
-- CPTR-276: POST /api/stories with funding/goal validation and default_account_id verification
-- CPTR-275: PUT /api/stories/{id} with merge-then-validate pattern for cross-field validation
-- DELETE /api/stories/{id} with CASCADE delete to events (destructive, permanent)
-- StoryRepository with merge-then-validate for partial updates and cascade delete
-- GET /api/events endpoint with filtering (story_id, account_id, date_from, date_to) and same-day ordering
-- GET /api/events/{id} endpoint
-- POST /api/events with 3-level account resolution hierarchy and currency rate locking
-- PUT /api/events/{id} with auto-adjustment protection
-- DELETE /api/events/{id} with auto-adjustment protection
-- EventRepository with account resolution, rate locking, and same-day ordering (date ASC, amount DESC, created_at ASC)
-- CPTR-6: GET /api/settings endpoint with singleton pattern (creates defaults if none exist)
-- PUT /api/settings endpoint for admin-only configuration updates
-- SettingsRepository with get_or_create_default and update_singleton methods
-- CPTR-256: GET /api/recurring-rules endpoint
-- CPTR-257: POST /api/recurring-rules with account validation and frequency/day relationship validation
-- CPTR-258: PUT /api/recurring-rules/{id} for partial updates (note: affects future events only per spec, event generation deferred to Phase 7)
-- CPTR-259: DELETE /api/recurring-rules/{id} (note: removes future events per spec, event generation deferred to Phase 7)
-- RecurringRuleRepository with account validation and CRUD operations (event generation ±1 month window deferred to Phase 7)
-- Database indexes on events collection for query performance (event_date, story_id+event_date, account_id+event_date)
+- CPTR-21, CPTR-47: Core projection foundation with global balance calculation and same-day event ordering
+- CPTR-31, CPTR-32, CPTR-33, CPTR-44, CPTR-255, CPTR-257: Multi-currency conversion with locked rates and database query optimization
+- CPTR-23, CPTR-24, CPTR-25: Story projections with three funding modes (projected, fixed, projected_plus) and hypothetical events
+- CPTR-1: Project directory structure with api, routes, core, tests
+- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-3, CPTR-4: MongoDB connection configuration and health check endpoint
+- CPTR-291: Route stubs for accounts, stories, events, sync endpoints (19 total)
+- CPTR-290: Core module stubs for projection and reconciliation
+- CPTR-10 to CPTR-15: Pydantic models for Account, Story, Event, RecurringRule, Settings, User with validation
+- CPTR-20: Model enums for FundingMode, GoalType, Frequency, UserRole, ConflictType
+- CPTR-42 to CPTR-44: Test framework with pytest-asyncio
+- CPTR-280 to CPTR-284: Account CRUD endpoints with is_default enforcement and soft delete
+- CPTR-275 to CPTR-278: Story CRUD endpoints with cascade delete and validation
+- CPTR-6: Settings singleton endpoints with get_or_create_default pattern
+- CPTR-256 to CPTR-259: Recurring rules CRUD endpoints (event generation deferred to Phase 7)
+- Event CRUD endpoints with 3-level account resolution and rate locking
+- Repository pattern with BaseRepository and entity-specific repositories
+- Database indexes on events collection for query performance
+- Verification script for funding event architecture (scripts/verify_funding_logic.py)
 
 ### Changed
-- PR#5 Review Fixes Round 1: EventCreate model - account_id and rate_to_base now optional (auto-resolved if not provided)
-- PR#5 Review Fixes Round 1: EventRepository.create() - only locks rate_to_base from settings if not explicitly provided
-- PR#5 Review Fixes Round 1: Added database index creation on startup for events.event_date and composite indexes for filtering
-- PR#5 Review Fixes Round 1: Verified RecurringRuleBase has frequency/day validation (already implemented)
-- PR#5 Review Fixes Round 1: Verified StoryRepository has default_account_id validation (already implemented)
-- PR#5 Review Fixes Round 2: Added account_id validation to EventRepository.update() - prevents reassigning to non-existent accounts
-- PR#5 Review Fixes Round 2: Event date field uses Pydantic aliases (alias='date', serialization_alias='date') for spec compliance
-- PR#5 Review Fixes Round 2: Rate locking behavior clarified in EventCreate docstring - auto-locks if not provided, uses explicit if provided
-- PR#5 Review Fixes Round 3: Fixed missing ValidationError import in EventRepository (critical bug fix)
-- PR#5 Review Fixes Round 3: Clarified same-day ordering documentation - event_date ASC for projection iteration, amount DESC + created_at ASC for same-day ordering
-- PR#5 Review Fixes Round 3: Documented account resolution fallback behavior - archived story default_account_id falls through to global default
+- CPTR-21, CPTR-47: Spec documentation - funding event architecture as single source of truth (lines 163-197, 488-507)
+- CPTR-21, CPTR-47: Story projection uses earliest event query instead of hardcoded 5-year lookback
+- CPTR-10: EventCreate model - account_id and rate_to_base optional (auto-resolved if not provided)
+- CPTR-10: Event date field uses Pydantic aliases for spec compliance (alias='date')
+- CPTR-11, CPTR-13: StoryUpdate and RecurringRuleUpdate models with cross-field validators
+- CPTR-15: Settings.rates validator enforces precision (8 decimal places) and currency code format
+- CPTR-10: Account balance_updated_at changed to optional for new accounts
+- CPTR-14: User model extended with username and created_at fields
+- CPTR-10 to CPTR-15: All Decimal fields add precision constraints (max_digits=19, decimal_places=4/8)
 
-### Planned
-- CPTR-22 to CPTR-47: Stories, Events, Settings, Recurring Rules CRUD endpoints
-- Phase 2: Projection engine
-- Phase 3: Sync protocol
-
+### Fixed
+- CPTR-23, CPTR-24, CPTR-25: ValueError for unknown funding modes (fail-fast validation)
+- CPTR-21, CPTR-47: Decimal encoding for JSON serialization in test suite
+- CPTR-23, CPTR-24, CPTR-25: UUID string handling in story projection queries
+- CPTR-23, CPTR-24, CPTR-25: Settings document validation (requires base_currency and rates)
+- CPTR-23, CPTR-24, CPTR-25: Restored funding event creation per spec lines 163-182
+- CPTR-23, CPTR-24, CPTR-25: Story filtering alignment with spec (visible vs hidden events)
+- CPTR-31, CPTR-32, CPTR-33: Test assertions for multi-currency conversion accuracy
+- CPTR-12: Missing ValidationError import in EventRepository
 
 
 ## [0.0.1] - 2025-12-19
