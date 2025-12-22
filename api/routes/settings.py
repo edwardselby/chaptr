@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from api.config import MongoDB
 from api.models import Settings, SettingsUpdate
 from api.repositories.settings import SettingsRepository
+from api.utils.auth import get_current_admin_user
 
 router = APIRouter()
 
@@ -56,12 +57,14 @@ async def get_settings(
 @router.put("/settings", response_model=Settings)
 async def update_settings(
     data: SettingsUpdate,
+    current_user: dict = Depends(get_current_admin_user),
     repo: SettingsRepository = Depends(get_settings_repo)
 ):
     """
-    Update application settings.
+    Update application settings (admin-only).
 
     Supports partial updates - only provided fields are updated.
+    Requires admin role - non-admin users receive 403 Forbidden.
 
     Business Rules:
     - Only one settings document exists (singleton)

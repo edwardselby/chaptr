@@ -8,8 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Phase 1.5: JWT authentication system with HS256 algorithm and 24-hour token expiration
+- Phase 1.5: User authentication endpoints (POST /auth/login, GET /auth/me)
+- Phase 1.5: Password hashing with bcrypt via passlib
+- Phase 1.5: Role-based authorization with admin/user roles
+- Phase 1.5: User tracking auto-population (created_by/updated_by) from JWT tokens
+- Phase 1.5: UserRepository with authenticate() method and admin deletion protection
+- Phase 1.5: Authentication error classes (AuthenticationError 401, AuthorizationError 403)
+- Phase 1.5: LoginRequest and LoginResponse models for authentication flow
+- Phase 1.5: api/utils/auth.py with password hashing and JWT utilities
+- Phase 1.5: api/repositories/users.py with user CRUD and authentication
+- Phase 1.5: api/routes/auth.py with login and current user endpoints
 
 ### Changed
+- Phase 1.5: User model extended with password_hash and updated_at fields
+- Phase 1.5: Token expiration increased from 30 to 1440 minutes (24 hours) per spec v3.0
+- Phase 1.5: Settings PUT endpoint protected with admin-only authorization
+- Phase 1.5: Event endpoints (POST, PUT) integrate user tracking via get_current_user dependency
+- Phase 1.5: Story endpoints (POST, PUT) integrate user tracking via get_current_user dependency
+- Phase 1.5: Recurring rule endpoints (POST, PUT) integrate user tracking via get_current_user dependency
+- Phase 1.5: All repositories accept current_user parameter instead of created_by/updated_by UUIDs
+- Phase 1.5: Repository methods extract user_id from current_user dict for backward compatibility
 
 ### Fixed
 
