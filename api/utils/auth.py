@@ -93,9 +93,8 @@ def create_access_token(
 
     Token is signed with SECRET_KEY using HS256 algorithm.
 
-    Role-based expiration (Phase 1.5 enhancement):
-    - Admin users: 7 days (10080 minutes) for convenience
-    - Regular users: 24 hours (1440 minutes) default
+    Token expiration (spec v3.0):
+    - All users: 24 hours (1440 minutes) default
     - Can be overridden with expires_delta parameter
 
     :param user_id: Unique user identifier
@@ -104,7 +103,7 @@ def create_access_token(
     :type username: str
     :param role: User role (admin or user)
     :type role: str
-    :param expires_delta: Optional custom expiration timedelta (defaults to role-based)
+    :param expires_delta: Optional custom expiration timedelta (defaults to 24 hours)
     :type expires_delta: Optional[timedelta]
     :return: Encoded JWT token
     :rtype: str
@@ -114,19 +113,14 @@ def create_access_token(
     >>> from uuid import uuid4
     >>> user_id = uuid4()
     >>> token = create_access_token(user_id, "Edward", "admin")
-    >>> # Admin gets 7-day token
-    >>> token = create_access_token(user_id, "User", "user")
-    >>> # Regular user gets 24-hour token
+    >>> # All users get 24-hour tokens per spec v3.0
     """
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        # Role-based token expiration
-        # Admin: 7 days (convenient for home use)
-        # User: 24 hours (standard session)
-        expiration_minutes = 10080 if role == "admin" else settings.access_token_expire_minutes
+        # Standard 24-hour expiration for all users (spec v3.0)
         expire = datetime.now(timezone.utc) + timedelta(
-            minutes=expiration_minutes
+            minutes=settings.access_token_expire_minutes
         )
 
     to_encode = {
