@@ -30,6 +30,21 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("Starting CHAPTR API...")
+
+    # Validate SECRET_KEY in production
+    if settings.environment == "production" and settings.secret_key == "dev-secret-key-change-in-production":
+        logger.critical("❌ CRITICAL: Using default SECRET_KEY in production environment!")
+        logger.critical("   Set SECRET_KEY environment variable with secure random value")
+        logger.critical("   Generate with: openssl rand -hex 32")
+        raise RuntimeError(
+            "Cannot start in production with default SECRET_KEY. "
+            "Set SECRET_KEY environment variable with secure random value."
+        )
+
+    if settings.secret_key == "dev-secret-key-change-in-production":
+        logger.warning("⚠️  WARNING: Using default SECRET_KEY in development")
+        logger.warning("   This is acceptable for development but NEVER for production")
+
     MongoDB.connect()
 
     if await MongoDB.ping():
@@ -48,6 +63,10 @@ async def lifespan(app: FastAPI):
 
             await db.events.create_index([("account_id", 1), ("event_date", 1)])
             logger.info("✓ Created composite index on events (account_id, event_date)")
+
+            # Unique index on username for authentication performance + uniqueness enforcement
+            await db.users.create_index([("username", 1)], unique=True)
+            logger.info("✓ Created unique index on users.username")
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
@@ -121,9 +140,10 @@ async def root():
 
 
 # Register route modules
-from api.routes import accounts, stories, events, sync, recurring_rules
+from api.routes import accounts, stories, events, sync, recurring_rules, auth
 from api.routes import settings as settings_routes
 
+app.include_router(auth.router, prefix="/api", tags=["authentication"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(stories.router, prefix="/api", tags=["stories"])
 app.include_router(events.router, prefix="/api", tags=["events"])

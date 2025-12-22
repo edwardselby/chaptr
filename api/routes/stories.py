@@ -10,6 +10,7 @@ from uuid import UUID
 from api.config import MongoDB
 from api.models import Story, StoryCreate, StoryUpdate
 from api.repositories.stories import StoryRepository
+from api.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -76,6 +77,7 @@ async def get_story(
 @router.post("/stories", response_model=Story, status_code=201)
 async def create_story(
     data: StoryCreate,
+    current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
@@ -125,13 +127,14 @@ async def create_story(
       }'
     ```
     """
-    return await repo.create(data)
+    return await repo.create(data, current_user=current_user)
 
 
 @router.put("/stories/{story_id}", response_model=Story)
 async def update_story(
     story_id: UUID,
     data: StoryUpdate,
+    current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
@@ -176,7 +179,7 @@ async def update_story(
       }'
     ```
     """
-    return await repo.update(story_id, data)
+    return await repo.update(story_id, data, current_user=current_user)
 
 
 @router.delete("/stories/{story_id}", status_code=204)

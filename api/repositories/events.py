@@ -54,7 +54,7 @@ class EventRepository(BaseRepository[Event]):
         self,
         data: EventCreate,
         story_id: Optional[UUID] = None,
-        created_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> Event:
         """
         Create new event with account resolution and rate locking.
@@ -67,13 +67,14 @@ class EventRepository(BaseRepository[Event]):
           4. No account → ERROR
         - Lock rate_to_base from current settings (immutable unless event edited)
         - created_at used for same-day ordering
+        - Auto-populates created_by/updated_by if user authenticated
 
         :param data: Event creation data
         :type data: EventCreate
         :param story_id: Optional story UUID this event belongs to
         :type story_id: Optional[UUID]
-        :param created_by: User ID creating the event (Phase 1.5)
-        :type created_by: Optional[UUID]
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
         :return: Created event
         :rtype: Event
         :raises ValidationError: If no account could be resolved
@@ -118,6 +119,9 @@ class EventRepository(BaseRepository[Event]):
         else:
             rate = data.rate_to_base
 
+        # Extract user ID from current_user if authenticated
+        user_id = UUID(current_user["id"]) if current_user else None
+
         # Create event with resolved account and locked rate
         event = Event(
             id=generate_id(),
@@ -132,9 +136,9 @@ class EventRepository(BaseRepository[Event]):
             is_hypothetical=data.is_hypothetical,
             is_auto_adjustment=False,  # Only reconciliation creates auto-adjustments
             created_at=utc_now(),
-            created_by=created_by,
+            created_by=user_id,
             updated_at=utc_now(),
-            updated_by=created_by,
+            updated_by=user_id,
             recurring_rule_id=None  # Set by recurring rule generator
         )
 
@@ -147,7 +151,7 @@ class EventRepository(BaseRepository[Event]):
         self,
         event_id: UUID,
         data: EventUpdate,
-        updated_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> Event:
         """
         Update existing event.
@@ -155,14 +159,14 @@ class EventRepository(BaseRepository[Event]):
         Business Rules:
         - Cannot edit is_auto_adjustment events (created by reconciliation system)
         - If currency changed, can optionally update rate_to_base
-        - Always update timestamp and user
+        - Always update timestamp and updated_by (if user authenticated)
 
         :param event_id: Event UUID to update
         :type event_id: UUID
         :param data: Update data (partial)
         :type data: EventUpdate
-        :param updated_by: User ID updating the event (Phase 1.5)
-        :type updated_by: Optional[UUID]
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
         :return: Updated event
         :rtype: Event
         :raises ResourceNotFoundError: If event not found
@@ -201,8 +205,8 @@ class EventRepository(BaseRepository[Event]):
 
         # Always update timestamp and user
         update_dict['updated_at'] = utc_now()
-        if updated_by:
-            update_dict['updated_by'] = updated_by
+        if current_user:
+            update_dict['updated_by'] = UUID(current_user["id"])
 
         # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(

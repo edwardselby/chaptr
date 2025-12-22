@@ -57,7 +57,7 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
     async def create(
         self,
         data: RecurringRuleCreate,
-        created_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> RecurringRule:
         """
         Create new recurring rule.
@@ -66,11 +66,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         - account_id must exist and not be archived
         - Frequency and day validated by Pydantic
         - No event generation yet (deferred to Phase 7)
+        - Auto-populates created_by/updated_by if user authenticated
 
         :param data: Recurring rule creation data
         :type data: RecurringRuleCreate
-        :param created_by: User ID creating the rule (Phase 1.5)
-        :type created_by: Optional[UUID]
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
         :return: Created recurring rule
         :rtype: RecurringRule
         :raises ValidationError: If account_id references non-existent or archived account
@@ -99,12 +100,17 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
                 f"account_id {data.account_id} not found or archived"
             )
 
+        # Extract user ID from current_user if authenticated
+        user_id = UUID(current_user["id"]) if current_user else None
+
         # Create recurring rule with generated ID and timestamps
         rule = RecurringRule(
             id=generate_id(),
             **data.model_dump(),
             created_at=utc_now(),
-            updated_at=utc_now()
+            created_by=user_id,
+            updated_at=utc_now(),
+            updated_by=user_id
         )
 
         # Insert into MongoDB
@@ -116,7 +122,7 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         self,
         rule_id: UUID,
         data: RecurringRuleUpdate,
-        updated_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> RecurringRule:
         """
         Update existing recurring rule.
@@ -126,13 +132,14 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         - account_id must exist and not be archived if being updated
         - Modification affects future events only (Phase 7 will implement event regeneration)
         - Past generated events remain unchanged
+        - Always update timestamp and updated_by (if user authenticated)
 
         :param rule_id: Recurring rule UUID to update
         :type rule_id: UUID
         :param data: Update data (partial)
         :type data: RecurringRuleUpdate
-        :param updated_by: User ID updating the rule (Phase 1.5)
-        :type updated_by: Optional[UUID]
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
         :return: Updated recurring rule
         :rtype: RecurringRule
         :raises ResourceNotFoundError: If rule not found
@@ -162,8 +169,10 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
                     f"account_id {update_dict['account_id']} not found or archived"
                 )
 
-        # Always update timestamp
+        # Always update timestamp and user
         update_dict['updated_at'] = utc_now()
+        if current_user:
+            update_dict['updated_by'] = UUID(current_user["id"])
 
         # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(

@@ -50,7 +50,7 @@ class StoryRepository(BaseRepository[Story]):
     async def create(
         self,
         data: StoryCreate,
-        created_by: Optional[UUID] = None
+        current_user: Optional[dict] = None
     ) -> Story:
         """
         Create new story.
@@ -59,11 +59,12 @@ class StoryRepository(BaseRepository[Story]):
         - default_account_id must exist and not be archived
         - Funding mode and amount relationship validated by Pydantic
         - Goal type and amount relationship validated by Pydantic
+        - Auto-populates created_by/updated_by if user authenticated
 
         :param data: Story creation data
         :type data: StoryCreate
-        :param created_by: User ID creating the story (Phase 1.5)
-        :type created_by: Optional[UUID]
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
         :return: Created story
         :rtype: Story
         :raises ValidationError: If default_account_id references non-existent or archived account
@@ -89,14 +90,17 @@ class StoryRepository(BaseRepository[Story]):
                     f"default_account_id {data.default_account_id} not found or archived"
                 )
 
+        # Extract user ID from current_user if authenticated
+        user_id = UUID(current_user["id"]) if current_user else None
+
         # Create story with generated ID and timestamps
         story = Story(
             id=generate_id(),
             **data.model_dump(),
             created_at=utc_now(),
-            created_by=created_by,
+            created_by=user_id,
             updated_at=utc_now(),
-            updated_by=created_by
+            updated_by=user_id
         )
 
         # Insert into MongoDB
@@ -163,8 +167,8 @@ class StoryRepository(BaseRepository[Story]):
 
         # Always update timestamp and user
         update_dict['updated_at'] = utc_now()
-        if updated_by:
-            update_dict['updated_by'] = updated_by
+        if current_user:
+            update_dict['updated_by'] = UUID(current_user["id"])
 
         # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(
