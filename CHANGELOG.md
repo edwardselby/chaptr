@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- CPTR-10c5f82a: Admin user initialization CLI command for production deployment
+- CPTR-10c5f82a: First user initialization CLI command (scripts/create_first_user.py) for production deployment
 
 
 ## [0.0.4] - 2025-12-22

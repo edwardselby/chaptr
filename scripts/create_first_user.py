@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Admin user initialization CLI command.
+First user initialization CLI command.
 
 Creates the first admin user for CHAPTR deployment.
 Solves the authentication bootstrap problem.
 
 Usage:
     # Interactive mode
-    python scripts/create_admin.py --confirm
+    python scripts/create_first_user.py --confirm
 
     # Environment variables mode (Docker)
     ADMIN_USERNAME=admin ADMIN_PASSWORD=SecurePass123 \\
-        python scripts/create_admin.py --confirm
+        python scripts/create_first_user.py --confirm
 
 Requirements:
     - Must use --confirm flag (safety mechanism)
     - Password must meet strength requirements (8+ chars, uppercase, lowercase, digit)
-    - Only works if no admin exists (prevents duplicates)
+    - Only works if NO users exist (prevents account hijacking)
 """
 
 import asyncio
@@ -35,14 +35,18 @@ from api.utils.errors import ResourceConflictError
 from pydantic import ValidationError
 
 
-async def check_existing_admin(repo: UserRepository) -> bool:
+async def check_existing_users(repo: UserRepository) -> bool:
     """
-    Check if admin user already exists.
+    Check if any users already exist.
 
-    Returns True if admin exists, False otherwise.
+    Security: Only allows first user creation if database is empty.
+    This prevents account hijacking - attacker would need to delete
+    all users (requires admin access) before creating new admin.
+
+    Returns True if any users exist, False otherwise.
     """
-    admin_count = await repo.count(filters={"role": "admin"})
-    return admin_count > 0
+    user_count = await repo.count()
+    return user_count > 0
 
 
 async def get_credentials() -> tuple[str, str]:
@@ -110,10 +114,10 @@ async def create_admin_user(username: str, password: str) -> None:
         # Create repository
         repo = UserRepository(db)
 
-        # Check if admin already exists
-        if await check_existing_admin(repo):
-            print("❌ Admin user already exists")
-            print("   Only one admin user is allowed")
+        # Check if any users exist (security measure)
+        if await check_existing_users(repo):
+            print("❌ Users already exist in the system")
+            print("   This script only creates the FIRST user")
             print("   Use the API to manage additional users")
             sys.exit(1)
 
@@ -160,11 +164,11 @@ def main():
         epilog="""
 Examples:
   # Interactive mode
-  python scripts/create_admin.py --confirm
+  python scripts/create_first_user.py --confirm
 
   # Docker environment mode
   ADMIN_USERNAME=admin ADMIN_PASSWORD=SecurePass123 \\
-      python scripts/create_admin.py --confirm
+      python scripts/create_first_user.py --confirm
 
 Password Requirements:
   - Minimum 8 characters
@@ -173,7 +177,7 @@ Password Requirements:
   - At least one digit
 
 Notes:
-  - Only one admin user allowed (prevents lockout)
+  - Only works if NO users exist (security measure)
   - Password is hashed using bcrypt before storage
   - Requires --confirm flag to prevent accidents
         """
