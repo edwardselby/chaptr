@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CPTR-10c5f82a: First user initialization CLI command (scripts/create_first_user.py) for production deployment
+- CPTR-b0aa0ce, CPTR-08f102b: Projection API endpoint (GET /api/projection) with view/date/warnings parameters and ProjectionResponse model
 - CPTR-c289e6e8, CPTR-35bdc365, CPTR-e94133dc: Gap indicators for story projections showing hidden events between visible events
 - CPTR-c289e6e8: Gap detection algorithm (O(n) single-pass) identifies hidden events between consecutive visible events
 - CPTR-35bdc365: Cumulative delta calculation from hidden events with zero-delta skip logic
