@@ -9,6 +9,7 @@ Phase 1.4 implements CRUD operations only - no event materialization yet.
 
 from uuid import UUID
 from typing import Optional
+from decimal import Decimal
 
 from api.repositories.base import BaseRepository
 from api.models import RecurringRule, RecurringRuleCreate, RecurringRuleUpdate
@@ -164,11 +165,11 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Always update timestamp
         update_dict['updated_at'] = utc_now()
 
-        # Apply update
+        # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(
             {"id": to_str(rule_id)},
             {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, UUID) else v
+                      str(v) if isinstance(v, (UUID, Decimal)) else v
                       for k, v in update_dict.items()}}
         )
 

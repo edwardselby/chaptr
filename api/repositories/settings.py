@@ -7,6 +7,7 @@ Settings are global (not per-user) and admin-only for modification.
 
 from uuid import UUID
 from typing import Optional
+from decimal import Decimal
 
 from api.repositories.base import BaseRepository
 from api.models import Settings, SettingsUpdate
@@ -121,16 +122,27 @@ class SettingsRepository(BaseRepository[Settings]):
         # Always update timestamp
         update_dict['updated_at'] = utc_now()
 
-        # Apply update
-        # TODO: Add Decimal handling for rates dict (mongomock compatibility issue)
-        #       Need to convert Decimal values to float/str for MongoDB:
-        #       - Handle dict values that contain Decimals
-        #       - See AccountRepository line 159 for reference
+        # Convert Decimals to strings (for mongomock compatibility)
+        # This handles both top-level Decimals and nested Decimals in dicts (rates)
+        def convert_decimals(value):
+            """Recursively convert Decimals to strings in nested structures."""
+            if isinstance(value, Decimal):
+                return str(value)
+            elif isinstance(value, dict):
+                return {k: convert_decimals(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [convert_decimals(item) for item in value]
+            elif hasattr(value, 'isoformat'):
+                return value.isoformat()
+            elif isinstance(value, UUID):
+                return str(value)
+            else:
+                return value
+
+        # Apply update with Decimal handling
         await self.collection.update_one(
             {"id": str(existing.id)},
-            {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, UUID) else v
-                      for k, v in update_dict.items()}}
+            {"$set": {k: convert_decimals(v) for k, v in update_dict.items()}}
         )
 
         # Return updated settings

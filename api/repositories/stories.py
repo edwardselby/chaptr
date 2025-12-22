@@ -7,6 +7,7 @@ with business logic for funding modes, goals, and cascade delete.
 
 from uuid import UUID
 from typing import Optional
+from decimal import Decimal
 
 from api.repositories.base import BaseRepository
 from api.models import Story, StoryCreate, StoryUpdate, StoryBase
@@ -165,14 +166,11 @@ class StoryRepository(BaseRepository[Story]):
         if updated_by:
             update_dict['updated_by'] = updated_by
 
-        # Apply update
-        # TODO: Add Decimal handling like AccountRepository does (line 159)
-        #       Should convert Decimal to str for MongoDB compatibility:
-        #       str(v) if isinstance(v, (UUID, Decimal)) else v
+        # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(
             {"id": to_str(story_id)},
             {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, UUID) else v
+                      str(v) if isinstance(v, (UUID, Decimal)) else v
                       for k, v in update_dict.items()}}
         )
 

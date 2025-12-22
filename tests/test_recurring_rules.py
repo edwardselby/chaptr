@@ -200,6 +200,136 @@ class TestRecurringRuleCreate:
         data = response.json()
         assert "detail" in data
 
+    @pytest.mark.asyncio
+    async def test_create_monthly_rule_validates_day_range_upper_bound(
+        self, async_client, sample_account
+    ):
+        """Monthly rule day must be 1-31 (test upper bound)."""
+        payload = {
+            "description": "Test Rule",
+            "amount": -100.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "monthly",
+            "day": 32,  # Invalid: > 31
+            "start_date": "2025-01-01"
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_monthly_rule_validates_day_range_lower_bound(
+        self, async_client, sample_account
+    ):
+        """Monthly rule day must be 1-31 (test lower bound)."""
+        payload = {
+            "description": "Test Rule",
+            "amount": -100.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "monthly",
+            "day": 0,  # Invalid: < 1
+            "start_date": "2025-01-01"
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_weekly_rule_validates_day_range_upper_bound(
+        self, async_client, sample_account
+    ):
+        """Weekly rule day must be 1-7 (test upper bound)."""
+        payload = {
+            "description": "Test Rule",
+            "amount": -50.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "weekly",
+            "day": 8,  # Invalid: > 7 (1=Monday, 7=Sunday)
+            "start_date": "2025-01-06"
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_weekly_rule_validates_day_range_lower_bound(
+        self, async_client, sample_account
+    ):
+        """Weekly rule day must be 1-7 (test lower bound)."""
+        payload = {
+            "description": "Test Rule",
+            "amount": -50.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "weekly",
+            "day": 0,  # Invalid: < 1
+            "start_date": "2025-01-06"
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_recurring_rule_validates_end_date_after_start_date(
+        self, async_client, sample_account
+    ):
+        """end_date must be after start_date (422 if invalid)."""
+        payload = {
+            "description": "Test Rule",
+            "amount": -100.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "monthly",
+            "day": 15,
+            "start_date": "2025-06-01",
+            "end_date": "2025-05-31"  # Invalid: before start_date
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_recurring_rule_accepts_same_start_and_end_date(
+        self, async_client, sample_account
+    ):
+        """end_date can equal start_date (single occurrence)."""
+        payload = {
+            "description": "One-time Rule",
+            "amount": -100.00,
+            "currency": "GBP",
+            "account_id": str(sample_account.id),
+            "frequency": "monthly",
+            "day": 15,
+            "start_date": "2025-06-15",
+            "end_date": "2025-06-15"  # Same as start: single occurrence
+        }
+
+        response = await async_client.post("/api/recurring-rules", json=payload)
+
+        # Should succeed (edge case: single occurrence)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["start_date"] == "2025-06-15"
+        assert data["end_date"] == "2025-06-15"
+
 
 # ============================================================================
 # PUT /api/recurring-rules/{id} - Update Recurring Rule
@@ -225,19 +355,11 @@ class TestRecurringRuleUpdate:
         assert data["description"] == "Updated Rent"
         assert data["id"] == str(sample_recurring_rule.id)
 
-    @pytest.mark.skip(reason="mongomock can't encode Decimal in updates - API is correct, test limitation")
     @pytest.mark.asyncio
     async def test_update_recurring_rule_amount_success(
         self, async_client, sample_recurring_rule
     ):
-        """Update recurring rule amount.
-
-        SKIPPED: This test fails with mongomock's Decimal encoding limitation.
-        The API implementation is correct (RecurringRuleRepository handles Decimals properly),
-        but mongomock can't encode Decimal values in update operations.
-
-        TODO: Add Decimal handling in RecurringRuleRepository.update() similar to AccountRepository
-        """
+        """Update recurring rule amount."""
         payload = {
             "description": "Monthly Rent",
             "amount": -1600.00,  # Changed from -1500.00
@@ -256,7 +378,7 @@ class TestRecurringRuleUpdate:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["amount"] == "-1600.00"
+        assert data["amount"] == "-1600.0"  # Single trailing zero (Decimal formatting)
 
     @pytest.mark.asyncio
     async def test_update_recurring_rule_not_found(self, async_client):
