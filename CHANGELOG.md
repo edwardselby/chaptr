@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-233: Admin user initialization CLI command for production deployment
+
 
 ## [0.0.4] - 2025-12-22
 
