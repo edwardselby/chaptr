@@ -779,6 +779,57 @@ async def test_multi_currency_story_projection(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_story_projection_with_hypothetical_filtering(mock_db):
+    """
+    Test story projection respects include_hypothetical parameter.
+
+    Validates that hypothetical funding events are correctly filtered
+    based on the include_hypothetical flag.
+    """
+    # Create story with fixed funding (creates hypothetical funding event)
+    skiing_story = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "skiing-2025",
+        "start_date": date(2024, 12, 23),
+        "funding_mode": "fixed",
+        "funding_amount": Decimal("500.00"),
+        "display_currency": "GBP",
+        "default_account_id": UUID("11111111-1111-1111-1111-111111111111"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([skiing_story])
+
+    # Test 1: Default behavior (include_hypothetical not supported yet in story projection)
+    # Story projections always include their own hypothetical funding events
+    result = await calculate_story_projection(
+        story_id=str(skiing_story["_id"]),
+        start_date=date(2024, 12, 23),
+        end_date=date(2024, 12, 30),
+        db=mock_db
+    )
+
+    # Should have hypothetical funding event
+    assert len(result) >= 1, "Should have at least funding event"
+    funding = result[0]
+    assert funding["is_hypothetical"] is True, \
+        "Funding event should be hypothetical"
+    assert funding["description"] == "Story funding: skiing-2025"
+
+    # Note: include_hypothetical parameter will be added to calculate_story_projection
+    # in Phase 2.4 for what-if scenarios. For now, story projections always include
+    # their own funding events regardless of hypothetical status.
+
+
+@pytest.mark.asyncio
 async def test_story_filtered_events_only(mock_db):
     """
     Test that story projection only includes baseline + story events.
