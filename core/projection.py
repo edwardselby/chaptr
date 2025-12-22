@@ -460,8 +460,7 @@ async def calculate_story_projection(
     # Detect gaps between visible events (Task 2)
     gaps = detect_gaps_between_visible_events(
         all_events_sorted=all_events_with_funding,
-        visible_event_ids=visible_event_ids,
-        story_id=UUID(story_id)
+        visible_event_ids=visible_event_ids
     )
 
     # Step 8: Attach gap metadata to visible events
@@ -619,8 +618,7 @@ def calculate_gap_indicators(
 
 def detect_gaps_between_visible_events(
     all_events_sorted: List[Dict],
-    visible_event_ids: set,
-    story_id: UUID
+    visible_event_ids: set
 ) -> List[Dict]:
     """
     Identify gaps where hidden events affect running balance.
@@ -629,7 +627,7 @@ def detect_gaps_between_visible_events(
     that caused a net balance change.
 
     Algorithm:
-    1. Iterate through ALL events (sorted by date, amount, created_at)
+    1. Iterate through ALL events (sorted by date, amount DESC, created_at)
     2. Track last visible event and accumulate hidden events
     3. When hitting next visible event, calculate delta from hidden events
     4. Create gap metadata if delta != 0
@@ -637,20 +635,32 @@ def detect_gaps_between_visible_events(
     Args:
         all_events_sorted: ALL events sorted by date, amount DESC, created_at
         visible_event_ids: Set of event IDs that are visible (baseline OR this story)
-        story_id: Current story UUID (for filtering)
 
     Returns:
         List of gap metadata dicts with structure:
         {
             "type": "gap_indicator",
-            "after_event_id": UUID,
-            "before_event_id": UUID or None,
-            "hidden_event_count": int,
-            "hidden_events": List[Dict],
-            "delta_base": Decimal,
-            "start_date": date,
-            "end_date": date
+            "after_event_id": UUID,           # Event preceding the gap
+            "before_event_id": UUID or None,  # Event following the gap (None if trailing)
+            "hidden_event_count": int,        # Number of hidden events in gap
+            "hidden_events": List[Dict],      # Full event details for expansion
+            "delta_base": Decimal,            # Net change in base currency
+            "start_date": date,               # Date of first hidden event
+            "end_date": date                  # Date of last hidden event
         }
+
+    Example:
+        >>> visible_ids = {car_rental_id, gifts_id}
+        >>> all_events = [
+        ...     {"_id": car_rental_id, "date": date(2024, 12, 20), "base_amount": Decimal("-320")},
+        ...     {"_id": parts_id, "date": date(2024, 12, 22), "base_amount": Decimal("-180")},
+        ...     {"_id": gifts_id, "date": date(2024, 12, 25), "base_amount": Decimal("-150")}
+        ... ]
+        >>> gaps = detect_gaps_between_visible_events(all_events, visible_ids)
+        >>> len(gaps)
+        1
+        >>> gaps[0]["delta_base"]
+        Decimal('-180.00')
 
     See spec: Projection Engine > Gap Indicators (lines 490-510)
     """
@@ -679,7 +689,7 @@ def detect_gaps_between_visible_events(
                         "after_event_id": last_visible_event["_id"],
                         "before_event_id": event_id,
                         "hidden_event_count": len(hidden_events_accumulator),
-                        "hidden_events": hidden_events_accumulator.copy(),
+                        "hidden_events": list(hidden_events_accumulator),
                         "delta_base": delta_base,
                         "start_date": hidden_events_accumulator[0]["date"],
                         "end_date": hidden_events_accumulator[-1]["date"]
@@ -703,7 +713,7 @@ def detect_gaps_between_visible_events(
                 "after_event_id": last_visible_event["_id"],
                 "before_event_id": None,  # No next visible event
                 "hidden_event_count": len(hidden_events_accumulator),
-                "hidden_events": hidden_events_accumulator.copy(),
+                "hidden_events": list(hidden_events_accumulator),
                 "delta_base": delta_base,
                 "start_date": hidden_events_accumulator[0]["date"],
                 "end_date": hidden_events_accumulator[-1]["date"]

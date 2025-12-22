@@ -56,8 +56,7 @@ class TestDetectGapsBetweenVisibleEvents:
 
         gaps = detect_gaps_between_visible_events(
             all_events,
-            visible_ids,
-            uuid4()
+            visible_ids
         )
 
         # Assert: One gap created
@@ -88,7 +87,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": gifts_id, "date": date(2024, 12, 25), "base_amount": Decimal("-150.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: One gap with cumulative delta
         assert len(gaps) == 1
@@ -113,7 +112,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: No gap (delta = 0)
         assert len(gaps) == 0
@@ -132,7 +131,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": hidden2_id, "date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: Trailing gap with before_event_id = None
         assert len(gaps) == 1
@@ -155,7 +154,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": event3_id, "date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: No gaps
         assert len(gaps) == 0
@@ -172,7 +171,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": hidden2_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: No gaps (no visible events to attach metadata to)
         assert len(gaps) == 0
@@ -182,7 +181,7 @@ class TestDetectGapsBetweenVisibleEvents:
         visible_ids = {uuid4()}
         all_events = []
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: No gaps
         assert len(gaps) == 0
@@ -201,7 +200,7 @@ class TestDetectGapsBetweenVisibleEvents:
             {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: Gap with positive delta
         assert len(gaps) == 1
@@ -294,7 +293,7 @@ class TestGapDetectionEdgeCases:
             {"_id": hidden_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: Trailing gap attached to single visible event
         assert len(gaps) == 1
@@ -312,7 +311,7 @@ class TestGapDetectionEdgeCases:
             {"_id": visible2_id, "date": date(2024, 12, 21), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: No gaps
         assert len(gaps) == 0
@@ -330,7 +329,7 @@ class TestGapDetectionEdgeCases:
             {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
-        gaps = detect_gaps_between_visible_events(all_events, visible_ids, uuid4())
+        gaps = detect_gaps_between_visible_events(all_events, visible_ids)
 
         # Assert: Large delta handled correctly
         assert len(gaps) == 1
