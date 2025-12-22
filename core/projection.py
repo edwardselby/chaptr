@@ -13,6 +13,7 @@ See spec: Projection Engine
 from typing import List, Dict, Optional
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from uuid import UUID
 
 
 def convert_to_base_currency(amount: Decimal, rate_to_base: Decimal) -> Decimal:
@@ -423,6 +424,7 @@ async def calculate_story_projection(
     # Hidden events: other stories (not baseline, not this story)
     running_balance = starting_balance
     results = []
+    visible_event_ids = set()
 
     for event in all_events_with_funding:
         # Add event to running balance (ALL events affect balance)
@@ -440,7 +442,57 @@ async def calculate_story_projection(
         if is_visible:
             result_event = {**event, "running_balance": running_balance}
             results.append(result_event)
-        # TODO Phase 2.4: Track hidden events for gap indicators
+            visible_event_ids.add(event["_id"])
+
+    # Step 7: Add gap indicators (Phase 2.4 - Tasks 2, 3, 4)
+    # Get settings for currency conversion
+    settings = await db.settings.find_one()
+    if not settings:
+        raise ValueError(
+            "Settings document not found. Database may not be initialized. "
+            "Run setup to create settings with base_currency and rates."
+        )
+
+    base_currency = settings.get("base_currency", "GBP")
+    rates = settings.get("rates", {})
+    story_display_currency = story.get("display_currency", base_currency)
+
+    # Detect gaps between visible events (Task 2)
+    gaps = detect_gaps_between_visible_events(
+        all_events_sorted=all_events_with_funding,
+        visible_event_ids=visible_event_ids,
+        story_id=UUID(story_id)
+    )
+
+    # Step 8: Attach gap metadata to visible events
+    # Build index of visible events by ID for fast lookup
+    visible_events_by_id = {e["_id"]: e for e in results}
+
+    for gap in gaps:
+        after_event_id = gap["after_event_id"]
+        if after_event_id in visible_events_by_id:
+            # Convert delta from base currency to display currency (Task 4)
+            delta_display = convert_from_base_currency(
+                gap["delta_base"],
+                story_display_currency,
+                base_currency,
+                rates
+            )
+
+            # Attach gap indicator metadata to visible event
+            visible_events_by_id[after_event_id]["gap_indicator"] = {
+                "type": "gap",
+                "delta_base": gap["delta_base"],
+                "delta_display": delta_display,
+                "display_currency": story_display_currency,
+                "hidden_event_count": gap["hidden_event_count"],
+                "date_range": {
+                    "start": gap["start_date"],
+                    "end": gap["end_date"]
+                },
+                # Include hidden events for frontend expansion
+                "hidden_events": gap["hidden_events"]
+            }
 
     return results
 
@@ -563,6 +615,101 @@ def calculate_gap_indicators(
     """
     # STUB: Returns events unchanged until Phase 2
     return visible_events
+
+
+def detect_gaps_between_visible_events(
+    all_events_sorted: List[Dict],
+    visible_event_ids: set,
+    story_id: UUID
+) -> List[Dict]:
+    """
+    Identify gaps where hidden events affect running balance.
+
+    A gap exists when consecutive visible events have hidden events between them
+    that caused a net balance change.
+
+    Algorithm:
+    1. Iterate through ALL events (sorted by date, amount, created_at)
+    2. Track last visible event and accumulate hidden events
+    3. When hitting next visible event, calculate delta from hidden events
+    4. Create gap metadata if delta != 0
+
+    Args:
+        all_events_sorted: ALL events sorted by date, amount DESC, created_at
+        visible_event_ids: Set of event IDs that are visible (baseline OR this story)
+        story_id: Current story UUID (for filtering)
+
+    Returns:
+        List of gap metadata dicts with structure:
+        {
+            "type": "gap_indicator",
+            "after_event_id": UUID,
+            "before_event_id": UUID or None,
+            "hidden_event_count": int,
+            "hidden_events": List[Dict],
+            "delta_base": Decimal,
+            "start_date": date,
+            "end_date": date
+        }
+
+    See spec: Projection Engine > Gap Indicators (lines 490-510)
+    """
+    gaps = []
+
+    # Track state as we iterate through ALL events
+    last_visible_event = None
+    hidden_events_accumulator = []
+
+    for event in all_events_sorted:
+        event_id = event["_id"]
+        is_visible = event_id in visible_event_ids
+
+        if is_visible:
+            # We've hit a visible event
+            # Check if we accumulated hidden events since last visible event
+            if last_visible_event is not None and hidden_events_accumulator:
+                # Calculate net delta from hidden events (in base currency)
+                delta_base = sum(e["base_amount"] for e in hidden_events_accumulator)
+
+                # Only create gap if delta != 0 (meaningful change)
+                if delta_base != Decimal("0"):
+                    # Record gap metadata
+                    gaps.append({
+                        "type": "gap_indicator",
+                        "after_event_id": last_visible_event["_id"],
+                        "before_event_id": event_id,
+                        "hidden_event_count": len(hidden_events_accumulator),
+                        "hidden_events": hidden_events_accumulator.copy(),
+                        "delta_base": delta_base,
+                        "start_date": hidden_events_accumulator[0]["date"],
+                        "end_date": hidden_events_accumulator[-1]["date"]
+                    })
+
+                # Reset accumulator
+                hidden_events_accumulator = []
+
+            # Update last visible event
+            last_visible_event = event
+        else:
+            # Hidden event - accumulate it
+            hidden_events_accumulator.append(event)
+
+    # Handle trailing hidden events after last visible event
+    if last_visible_event is not None and hidden_events_accumulator:
+        delta_base = sum(e["base_amount"] for e in hidden_events_accumulator)
+        if delta_base != Decimal("0"):
+            gaps.append({
+                "type": "gap_indicator",
+                "after_event_id": last_visible_event["_id"],
+                "before_event_id": None,  # No next visible event
+                "hidden_event_count": len(hidden_events_accumulator),
+                "hidden_events": hidden_events_accumulator.copy(),
+                "delta_base": delta_base,
+                "start_date": hidden_events_accumulator[0]["date"],
+                "end_date": hidden_events_accumulator[-1]["date"]
+            })
+
+    return gaps
 
 
 # Warning Detection Functions (Phase 2.5)

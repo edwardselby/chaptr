@@ -1494,3 +1494,333 @@ async def test_story_goal_none_no_warnings():
     # Should have no warnings
     assert len(warnings) == 0, \
         f"Expected no warnings for goal_type='none', got {len(warnings)}"
+
+
+# ==================== Gap Indicators Integration Tests ====================
+# Phase 2.4 - Tasks 2, 3, 4
+
+
+@pytest.mark.asyncio
+async def test_story_projection_includes_gap_indicators(mock_db):
+    """
+    Integration test: Story projection includes gap indicators for hidden events.
+
+    Scenario:
+    - Canada trip story (display_currency: CAD)
+    - Volvo story with parts event -£180 on Dec 22 (hidden from canada view)
+    - Expected: car rental event has gap_indicator showing -$309.60 CAD delta
+
+    See spec: Projection Engine > Gap Indicators
+    """
+    # Create canada-trip story
+    canada_story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "end_date": date(2025, 1, 10),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "CAD",
+        "default_account_id": UUID("33333333-3333-3333-3333-333333333333"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    # Create volvo story
+    volvo_story = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "volvo",
+        "start_date": date(2024, 12, 15),
+        "end_date": date(2025, 1, 15),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "GBP",
+        "default_account_id": UUID("22222222-2222-2222-2222-222222222222"),  # HSBC
+        "created_at": datetime(2024, 12, 18, 9, 0, 0)
+    }
+
+    # Add stories to mock DB
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story, volvo_story])
+
+    # Override settings with correct rate format for convert_from_base_currency
+    # Rates should be "1 base = X display" (not "1 display = X base")
+    class MockSettingsOverride:
+        async def find_one(self, query=None):
+            return {
+                "base_currency": "GBP",
+                "rates": {
+                    "CAD": Decimal("1.72"),  # 1 GBP = 1.72 CAD (inverse of 0.58)
+                    "USD": Decimal("1.27")
+                }
+            }
+
+    mock_db.settings = MockSettingsOverride()
+
+    # Update events:
+    # - car rental -> canada-trip
+    # - new tyres -> volvo (will be hidden when viewing canada-trip)
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story["_id"]
+        elif event["description"] == "new tyres":
+            event["story_id"] = volvo_story["_id"]
+            event["description"] = "parts [volvo]"  # Rename for clarity
+            event["amount"] = Decimal("-180.00")  # Simplify amount
+
+    try:
+        # Calculate canada-trip projection
+        result = await calculate_story_projection(
+            story_id=str(canada_story["_id"]),
+            start_date=date(2024, 12, 19),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Visible events: car rental (canada-trip) + salary, rent, bills (baseline)
+        # Hidden events: parts (volvo) on Dec 22
+        descriptions = [e["description"] for e in result]
+        assert "car rental" in descriptions, "car rental should be visible (canada-trip story)"
+        assert "salary" in descriptions, "salary should be visible (baseline)"
+        assert "parts [volvo]" not in descriptions, "parts should be hidden (volvo story)"
+
+        # Find car rental event
+        car_rental = next(e for e in result if e["description"] == "car rental")
+
+        # Verify gap indicator exists
+        assert "gap_indicator" in car_rental, \
+            "car rental should have gap_indicator (hidden volvo parts event between car rental and salary)"
+
+        gap = car_rental["gap_indicator"]
+
+        # Verify gap structure
+        assert gap["type"] == "gap", "gap type should be 'gap'"
+        assert gap["delta_base"] == Decimal("-180.00"), \
+            "delta_base should be -£180 (parts event)"
+
+        # Verify currency conversion: -£180 * 1.72 = -$309.60 CAD
+        # Settings has CAD rate: 1.72 (1 GBP = 1.72 CAD)
+        # So conversion from GBP to CAD: -180 * 1.72 = -309.60
+        expected_delta_cad = Decimal("-180.00") * Decimal("1.72")
+
+        assert gap["delta_display"] == expected_delta_cad, \
+            f"delta_display should be {expected_delta_cad} CAD (converted from -£180)"
+
+        assert gap["display_currency"] == "CAD", \
+            "display_currency should match story's display_currency"
+
+        assert gap["hidden_event_count"] == 1, \
+            "Should show 1 hidden event (parts)"
+
+        # Verify date range
+        assert gap["date_range"]["start"] == date(2024, 12, 22), \
+            "Gap start date should be Dec 22 (parts event date)"
+        assert gap["date_range"]["end"] == date(2024, 12, 22), \
+            "Gap end date should be Dec 22 (single event)"
+
+        # Verify hidden events included for frontend expansion
+        assert len(gap["hidden_events"]) == 1, \
+            "Should include 1 hidden event for expansion"
+        assert gap["hidden_events"][0]["description"] == "parts [volvo]", \
+            "Hidden event should be parts event"
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] == "car rental":
+                event["story_id"] = None
+            elif event["description"] == "parts [volvo]":
+                event["story_id"] = None
+                event["description"] = "new tyres"
+                event["amount"] = Decimal("-380.00")
+
+
+@pytest.mark.asyncio
+async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
+    """
+    Integration test: Multiple hidden stories create cumulative gap delta.
+
+    Scenario:
+    - Canada trip story viewing
+    - Volvo parts on Dec 22: -£180
+    - Home improvement on Dec 23: -£150
+    - Expected: car rental has gap with cumulative delta -£330
+
+    Tests Task 3: Calculate delta amount (cumulative)
+    """
+    # Create stories
+    canada_story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "start_date": date(2024, 12, 19),
+        "end_date": date(2025, 1, 10),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "GBP",
+        "default_account_id": UUID("11111111-1111-1111-1111-111111111111"),
+        "created_at": datetime(2024, 12, 18, 8, 0, 0)
+    }
+
+    volvo_story = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "volvo",
+        "start_date": date(2024, 12, 15),
+        "end_date": date(2025, 1, 15),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "GBP",
+        "default_account_id": UUID("22222222-2222-2222-2222-222222222222"),
+        "created_at": datetime(2024, 12, 18, 9, 0, 0)
+    }
+
+    home_story = {
+        "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "name": "home-improvement",
+        "start_date": date(2024, 12, 15),
+        "end_date": date(2025, 1, 15),
+        "funding_mode": "projected",
+        "funding_amount": None,
+        "display_currency": "GBP",
+        "default_account_id": UUID("22222222-2222-2222-2222-222222222222"),
+        "created_at": datetime(2024, 12, 18, 10, 0, 0)
+    }
+
+    class MockStories:
+        def __init__(self, stories):
+            self.data = stories
+
+        async def find_one(self, query):
+            story_id = query.get("_id")
+            return next((s for s in self.data if s["_id"] == story_id), None)
+
+    mock_db.stories = MockStories([canada_story, volvo_story, home_story])
+
+    # Add a new home-improvement event
+    home_event = {
+        "_id": uuid4(),
+        "date": date(2024, 12, 23),
+        "description": "paint supplies",
+        "amount": Decimal("-150.00"),
+        "currency": "GBP",
+        "rate_to_base": Decimal("1.0"),
+        "account_id": UUID("22222222-2222-2222-2222-222222222222"),
+        "story_id": home_story["_id"],
+        "is_baseline": False,
+        "is_hypothetical": False,
+        "is_auto_adjustment": False,
+        "created_at": datetime(2024, 12, 18, 13, 0, 0)
+    }
+
+    mock_db.events.data.append(home_event)
+
+    # Update existing events
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story["_id"]
+        elif event["description"] == "new tyres":
+            event["story_id"] = volvo_story["_id"]
+            event["description"] = "parts [volvo]"
+            event["amount"] = Decimal("-180.00")
+
+    try:
+        result = await calculate_story_projection(
+            story_id=str(canada_story["_id"]),
+            start_date=date(2024, 12, 19),
+            end_date=date(2025, 1, 10),
+            db=mock_db
+        )
+
+        # Find car rental event
+        car_rental = next(e for e in result if e["description"] == "car rental")
+
+        # Verify gap indicator
+        assert "gap_indicator" in car_rental, \
+            "car rental should have gap_indicator"
+
+        gap = car_rental["gap_indicator"]
+
+        # Verify cumulative delta: -£180 (volvo) + -£150 (home) = -£330
+        assert gap["delta_base"] == Decimal("-330.00"), \
+            "delta_base should be cumulative: -£180 + -£150 = -£330"
+
+        assert gap["hidden_event_count"] == 2, \
+            "Should show 2 hidden events (volvo parts + home paint)"
+
+        # Verify date range spans both events
+        assert gap["date_range"]["start"] == date(2024, 12, 22), \
+            "Gap start should be Dec 22 (first hidden event)"
+        assert gap["date_range"]["end"] == date(2024, 12, 23), \
+            "Gap end should be Dec 23 (last hidden event)"
+
+        # Verify both hidden events included
+        assert len(gap["hidden_events"]) == 2, \
+            "Should include 2 hidden events"
+
+        hidden_descriptions = [e["description"] for e in gap["hidden_events"]]
+        assert "parts [volvo]" in hidden_descriptions
+        assert "paint supplies" in hidden_descriptions
+
+    finally:
+        # Clean up
+        mock_db.events.data = [e for e in mock_db.events.data if e["_id"] != home_event["_id"]]
+        for event in mock_db.events.data:
+            if event["description"] == "car rental":
+                event["story_id"] = None
+            elif event["description"] == "parts [volvo]":
+                event["story_id"] = None
+                event["description"] = "new tyres"
+                event["amount"] = Decimal("-380.00")
+
+
+@pytest.mark.asyncio
+async def test_global_projection_no_gaps(mock_db):
+    """
+    Integration test: Global (ALL) projection has no gap indicators.
+
+    Gap indicators only appear in story-filtered views.
+    In ALL view, all events are visible, so no gaps exist.
+
+    Tests: Gap detection logic correctly identifies when all events are visible
+    """
+    # Add stories to events (but we're viewing ALL)
+    canada_story_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    volvo_story_id = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+    for event in mock_db.events.data:
+        if event["description"] == "car rental":
+            event["story_id"] = canada_story_id
+        elif event["description"] == "new tyres":
+            event["story_id"] = volvo_story_id
+
+    try:
+        # Calculate global projection (ALL view)
+        result = await calculate_global_projection(
+            start_date=date(2024, 12, 18),
+            end_date=date(2025, 1, 18),
+            db=mock_db
+        )
+
+        # Verify no gap indicators in ANY event
+        for event in result:
+            assert "gap_indicator" not in event, \
+                f"Global projection should have NO gap indicators, but {event['description']} has one"
+
+        # Verify all events are present (no hidden events)
+        descriptions = [e["description"] for e in result]
+        assert "car rental" in descriptions
+        assert "new tyres" in descriptions
+        assert "salary" in descriptions
+        assert "rent" in descriptions
+        assert "bills" in descriptions
+
+    finally:
+        # Clean up
+        for event in mock_db.events.data:
+            if event["description"] in ["car rental", "new tyres"]:
+                event["story_id"] = None
