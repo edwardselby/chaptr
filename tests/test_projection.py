@@ -206,9 +206,17 @@ def mock_db(test_accounts, test_events):
 
             return MockCursor(filtered_data)
 
-        async def find_one(self, query):
-            """Find single document."""
-            # Simplified mock - extend as needed
+        async def find_one(self, query=None, sort=None):
+            """Find single document with optional sort."""
+            # If sort is provided, sort the data and return first item
+            if sort:
+                sorted_data = sorted(
+                    self.data,
+                    key=lambda item: item.get(sort[0][0])
+                )
+                return sorted_data[0] if sorted_data else None
+
+            # Otherwise return None (simplified mock)
             return None
 
     class MockSettings:

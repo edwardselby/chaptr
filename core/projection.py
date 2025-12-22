@@ -230,9 +230,17 @@ async def calculate_story_starting_balance(
         # This gives the real projected balance at that point in time
         from datetime import timedelta
 
-        # Use a date far in the past to ensure we capture all events
-        # This handles both future story dates (normal) and past dates (testing)
-        early_date = story.get("start_date") - timedelta(days=365*5)
+        # Query for earliest event to ensure we capture all historical data
+        # Handles accounts with events spanning decades
+        earliest_event = await db.events.find_one(
+            sort=[("date", 1)]  # Ascending by date
+        )
+
+        if earliest_event:
+            early_date = earliest_event["date"]
+        else:
+            # No events exist, use story start date
+            early_date = story.get("start_date")
 
         # Calculate global projection up to DAY BEFORE story start
         # We want the balance at the START of the story date, not after events on that date
