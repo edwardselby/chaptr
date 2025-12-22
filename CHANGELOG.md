@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.0.5] - 2025-12-22
+
 ### Added
 - CPTR-10c5f82a: First user initialization CLI command (scripts/create_first_user.py) for production deployment
 - CPTR-b0aa0ce, CPTR-08f102b, CPTR-43c55d2: Projection API endpoint (GET /api/projection) with view/date/warnings parameters and ProjectionResponse model
