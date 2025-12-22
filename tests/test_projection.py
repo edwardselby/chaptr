@@ -163,6 +163,11 @@ def mock_db(test_accounts, test_events):
 
             filtered_data = []
             for item in self.data:
+                # Handle account_id queries (exact match)
+                if "account_id" in query:
+                    if item.get("account_id") != query["account_id"]:
+                        continue
+
                 # Handle date range queries
                 if "date" in query and "$gte" in query["date"]:
                     item_date = item.get("date")
@@ -215,6 +220,14 @@ def mock_db(test_accounts, test_events):
                     key=lambda item: item.get(sort[0][0])
                 )
                 return sorted_data[0] if sorted_data else None
+
+            # Handle _id query (exact match)
+            if query and "_id" in query:
+                target_id = query["_id"]
+                for item in self.data:
+                    if item.get("_id") == target_id:
+                        return item
+                return None
 
             # Otherwise return None (simplified mock)
             return None
@@ -1116,3 +1129,368 @@ async def test_base_to_display_currency_conversion(mock_db):
 
     finally:
         mock_db.events.data.remove(ski_event)
+
+
+# ==================== Phase 2: Account Projection Tests (Task 4) ====================
+
+@pytest.mark.asyncio
+async def test_account_projection_basic(mock_db):
+    """
+    Test basic per-account projection with multiple events.
+
+    Setup:
+    - Account: Monzo (GBP), balance £2,500
+    - Events: car rental -£320 (Dec 20), salary +£3,000 (Dec 28), rent -£1,200 (Dec 28)
+    - Expected: running_balance calculated correctly for Monzo account only
+    """
+    monzo_id = "11111111-1111-1111-1111-111111111111"
+
+    result = await calculate_account_projection(
+        account_id=monzo_id,
+        start_date=date(2024, 12, 18),
+        end_date=date(2024, 12, 31),
+        db=mock_db
+    )
+
+    # Should have 3 events for Monzo account
+    assert len(result) == 3, f"Expected 3 events for Monzo, got {len(result)}"
+
+    # Verify events are ordered correctly
+    assert result[0]["description"] == "car rental"
+    assert result[1]["description"] == "salary"  # Same day as rent, but income first
+    assert result[2]["description"] == "rent"
+
+    # Verify running balances
+    # Starting: £2,500
+    # After car rental (-£320): £2,180
+    # After salary (+£3,000): £5,180
+    # After rent (-£1,200): £3,980
+    assert result[0]["running_balance"] == Decimal("2180.00"), \
+        f"After car rental: expected £2,180, got {result[0]['running_balance']}"
+    assert result[1]["running_balance"] == Decimal("5180.00"), \
+        f"After salary: expected £5,180, got {result[1]['running_balance']}"
+    assert result[2]["running_balance"] == Decimal("3980.00"), \
+        f"After rent: expected £3,980, got {result[2]['running_balance']}"
+
+
+@pytest.mark.asyncio
+async def test_account_projection_multi_currency(mock_db):
+    """
+    Test account projection with events in different currencies.
+
+    Setup:
+    - Account: Kat Credit (CAD), balance -$500, rate_to_base 0.58
+    - Events: None in test data for Kat Credit (all go to Monzo/HSBC)
+    - Expected: empty result (no events for this account)
+    """
+    kat_credit_id = "33333333-3333-3333-3333-333333333333"
+
+    result = await calculate_account_projection(
+        account_id=kat_credit_id,
+        start_date=date(2024, 12, 18),
+        end_date=date(2024, 12, 31),
+        db=mock_db
+    )
+
+    # No events assigned to Kat Credit in test data
+    assert len(result) == 0, \
+        f"Expected no events for Kat Credit, got {len(result)}"
+
+
+@pytest.mark.asyncio
+async def test_account_projection_no_events(mock_db):
+    """
+    Test account projection with no events in date range.
+
+    Expected: empty list returned
+    """
+    hsbc_id = "22222222-2222-2222-2222-222222222222"
+
+    # Query future date range where no events exist
+    result = await calculate_account_projection(
+        account_id=hsbc_id,
+        start_date=date(2025, 3, 1),
+        end_date=date(2025, 3, 31),
+        db=mock_db
+    )
+
+    assert len(result) == 0, \
+        f"Expected no events in March 2025, got {len(result)}"
+
+
+@pytest.mark.asyncio
+async def test_account_projection_same_day_ordering(mock_db):
+    """
+    Test same-day event ordering (income first).
+
+    Setup:
+    - Multiple events on Dec 28: salary +£3,000, rent -£1,200
+    - Expected: salary applied first (amount DESC)
+    """
+    monzo_id = "11111111-1111-1111-1111-111111111111"
+
+    result = await calculate_account_projection(
+        account_id=monzo_id,
+        start_date=date(2024, 12, 28),
+        end_date=date(2024, 12, 28),
+        db=mock_db
+    )
+
+    # Should have 2 events on Dec 28
+    assert len(result) == 2, f"Expected 2 events on Dec 28, got {len(result)}"
+
+    # Verify order: salary before rent (income first per spec)
+    assert result[0]["description"] == "salary", \
+        "First event should be salary (positive amount first)"
+    assert result[1]["description"] == "rent", \
+        "Second event should be rent"
+
+    # Verify amounts show income processed first
+    assert result[0]["amount"] > 0, "Salary should be positive"
+    assert result[1]["amount"] < 0, "Rent should be negative"
+
+
+# ==================== Phase 2.5: Warning Detection Tests (Tasks 9-12) ====================
+
+@pytest.mark.asyncio
+async def test_global_negative_warning():
+    """
+    Test detection of global balance going negative.
+
+    Setup:
+    - Projection result with negative running_balance
+    - Expected: warning with date, amount, severity=critical
+    """
+    from core.projection import detect_global_negative_warnings
+
+    # Create test projection with negative balance
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "car rental",
+            "amount": Decimal("-320.00"),
+            "running_balance": Decimal("2180.00")  # Positive
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "large expense",
+            "amount": Decimal("-3000.00"),
+            "running_balance": Decimal("-820.00")  # NEGATIVE
+        }
+    ]
+
+    warnings = detect_global_negative_warnings(projection_result)
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "negative_balance"
+    assert warning["severity"] == "critical"
+    assert warning["date"] == date(2024, 12, 25)
+    assert warning["amount"] == Decimal("-820.00")
+    assert warning["threshold"] == Decimal("0")
+    assert "negative" in warning["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_account_negative_warning():
+    """
+    Test detection of account balance going negative.
+
+    Setup:
+    - Account: Monzo with projection going negative
+    - Expected: account warning with name, date, amount
+    """
+    from core.projection import detect_account_negative_warnings
+
+    account_id = "11111111-1111-1111-1111-111111111111"
+    account_name = "Monzo"
+
+    # Create test projection with negative balance
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "small expense",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("400.00")  # Positive
+        },
+        {
+            "date": date(2024, 12, 22),
+            "description": "large expense",
+            "amount": Decimal("-800.00"),
+            "running_balance": Decimal("-400.00")  # NEGATIVE
+        }
+    ]
+
+    warnings = detect_account_negative_warnings(
+        account_id=account_id,
+        account_name=account_name,
+        projection_result=projection_result
+    )
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "account_negative"
+    assert warning["severity"] == "critical"
+    assert warning["date"] == date(2024, 12, 22)
+    assert warning["amount"] == Decimal("-400.00")
+    assert warning["account_name"] == "Monzo"
+    assert str(warning["account_id"]) == account_id
+    assert "Monzo" in warning["message"]
+    assert "negative" in warning["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_story_spend_up_to_exceeded():
+    """
+    Test story exceeds spend_up_to goal.
+
+    Setup:
+    - Story: canada-trip, goal_type=spend_up_to, goal_amount=£1,000
+    - Events: -£320 rental, -£150 gifts, -£600 hotel (total £1,070)
+    - Expected: warning with £70 overspent
+    """
+    from core.projection import detect_story_goal_warnings
+
+    story = {
+        "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "name": "canada-trip",
+        "goal_type": "spend_up_to",
+        "goal_amount": Decimal("1000.00"),
+        "end_date": date(2025, 1, 5)
+    }
+
+    # Projection result with expenses totaling £1,070
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "car rental",
+            "amount": Decimal("-320.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("12680.00")
+        },
+        {
+            "date": date(2024, 12, 25),
+            "description": "gifts",
+            "amount": Decimal("-150.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("12530.00")
+        },
+        {
+            "date": date(2024, 12, 28),
+            "description": "salary",
+            "amount": Decimal("3000.00"),
+            "is_baseline": True,  # Baseline - excluded from spend calculation
+            "running_balance": Decimal("15530.00")
+        },
+        {
+            "date": date(2025, 1, 1),
+            "description": "hotel",
+            "amount": Decimal("-600.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("14930.00")
+        }
+    ]
+
+    warnings = detect_story_goal_warnings(story, projection_result)
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "goal_exceeded"
+    assert warning["severity"] == "warning"
+    assert warning["amount"] == Decimal("1070.00"), \
+        f"Total spend should be £1,070 (320+150+600), got {warning['amount']}"
+    assert warning["threshold"] == Decimal("1000.00")
+    assert warning["story_name"] == "canada-trip"
+    assert "over budget" in warning["message"]
+
+
+@pytest.mark.asyncio
+async def test_story_end_with_at_least_missed():
+    """
+    Test story misses end_with_at_least goal.
+
+    Setup:
+    - Story: savings, goal_type=end_with_at_least, goal_amount=£3,000
+    - Final balance: £2,500
+    - Expected: warning with £500 shortfall
+    """
+    from core.projection import detect_story_goal_warnings
+
+    story = {
+        "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "name": "savings",
+        "goal_type": "end_with_at_least",
+        "goal_amount": Decimal("3000.00"),
+        "end_date": date(2025, 1, 31)
+    }
+
+    # Projection result with final balance £2,500
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense",
+            "amount": Decimal("-500.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("12500.00")
+        },
+        {
+            "date": date(2025, 1, 31),
+            "description": "final event",
+            "amount": Decimal("0.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("2500.00")  # Below goal
+        }
+    ]
+
+    warnings = detect_story_goal_warnings(story, projection_result)
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "goal_missed"
+    assert warning["severity"] == "warning"
+    assert warning["amount"] == Decimal("2500.00")
+    assert warning["threshold"] == Decimal("3000.00")
+    assert warning["story_name"] == "savings"
+    assert "short of goal" in warning["message"]
+    assert "500.00" in warning["message"]  # Verify shortfall amount shown
+
+
+@pytest.mark.asyncio
+async def test_story_goal_none_no_warnings():
+    """
+    Test that stories with goal_type='none' produce no warnings.
+
+    Expected: empty warnings list
+    """
+    from core.projection import detect_story_goal_warnings
+
+    story = {
+        "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "name": "volvo",
+        "goal_type": "none",  # No goal set
+        "goal_amount": Decimal("0.00")
+    }
+
+    projection_result = [
+        {
+            "date": date(2024, 12, 20),
+            "description": "expense",
+            "amount": Decimal("-500.00"),
+            "is_baseline": False,
+            "running_balance": Decimal("12000.00")
+        }
+    ]
+
+    warnings = detect_story_goal_warnings(story, projection_result)
+
+    # Should have no warnings
+    assert len(warnings) == 0, \
+        f"Expected no warnings for goal_type='none', got {len(warnings)}"

@@ -454,14 +454,15 @@ async def calculate_account_projection(
     """
     Calculate per-account projection.
 
-    Algorithm:
-        1. Start with account.current_balance
-        2. Fetch events assigned to this account
-        3. Calculate running balance
-
-    TODO Phase 2:
-    - Query events by account_id
-    - Calculate running balance
+    Algorithm (Phase 2.1 Implementation):
+        1. Query account by account_id
+        2. Get current_balance and rate_to_base
+        3. Convert balance to base currency (starting point)
+        4. Query events WHERE account_id == target AND date in range
+        5. Add base_amount to each event (amount × rate_to_base)
+        6. Sort by: date ASC, base_amount DESC, created_at ASC
+        7. Calculate running_balance accumulation
+        8. Return events with running_balance
 
     Args:
         account_id: Account UUID
@@ -472,10 +473,63 @@ async def calculate_account_projection(
     Returns:
         List of events with running_balance for this account
 
-    See spec: Account-Level Projection
+    See spec: Account-Level Projection (lines 281-323)
     """
-    # STUB: Returns empty list until Phase 2
-    return []
+    from uuid import UUID
+
+    # Step 1: Get account
+    account = await db.accounts.find_one({"_id": UUID(account_id)})
+    if not account:
+        return []
+
+    # Step 2: Starting balance (convert to base currency)
+    starting_balance = convert_to_base_currency(
+        account.get("current_balance", Decimal("0")),
+        account.get("rate_to_base", Decimal("1"))
+    )
+
+    # Step 3: Query events assigned to this account
+    events = await db.events.find({
+        "account_id": UUID(account_id),
+        "date": {"$gte": start_date, "$lte": end_date}
+    }).to_list()
+
+    # Step 4: Convert to base currency and add base_amount field
+    events_with_base = []
+    for event in events:
+        amount = event.get("amount", Decimal("0"))
+        rate_to_base = event.get("rate_to_base", Decimal("1"))
+        base_amount = convert_to_base_currency(amount, rate_to_base)
+
+        events_with_base.append({
+            **event,
+            "base_amount": base_amount
+        })
+
+    # Step 5: Apply same-day ordering per spec
+    # Sort by: date ASC, base_amount DESC (income first), created_at ASC (tie-breaker)
+    events_with_base.sort(
+        key=lambda e: (
+            e.get("date"),
+            -e.get("base_amount", Decimal("0")),  # Negative for DESC
+            e.get("created_at")
+        )
+    )
+
+    # Step 6: Calculate running balance for each event
+    running_balance = starting_balance
+    results = []
+
+    for event in events_with_base:
+        # Add event base_amount to running balance
+        base_amount = event.get("base_amount", Decimal("0"))
+        running_balance += base_amount
+
+        # Create result dict with running_balance
+        result_event = {**event, "running_balance": running_balance}
+        results.append(result_event)
+
+    return results
 
 
 def calculate_gap_indicators(
@@ -509,3 +563,166 @@ def calculate_gap_indicators(
     """
     # STUB: Returns events unchanged until Phase 2
     return visible_events
+
+
+# Warning Detection Functions (Phase 2.5)
+
+
+def detect_global_negative_warnings(projection_result: List[Dict]) -> List[Dict]:
+    """
+    Scan projection for negative running_balance.
+
+    Task 9: Detect when global balance goes negative.
+
+    Args:
+        projection_result: List of events with running_balance (in base currency)
+
+    Returns:
+        List of warning dicts for negative balances
+
+    Note:
+        running_balance is always in base currency (from settings.base_currency).
+        Warning amounts reflect base currency values.
+
+    See spec: Warning System (lines 620-643)
+    """
+    warnings = []
+
+    for event in projection_result:
+        balance = event.get("running_balance", Decimal("0"))
+        if balance < 0:
+            warnings.append({
+                "type": "negative_balance",
+                "severity": "critical",
+                "date": event.get("date"),
+                "amount": balance,
+                "threshold": Decimal("0"),
+                "account_id": None,
+                "account_name": None,
+                "story_id": None,
+                "story_name": None,
+                "message": f"Global balance goes negative: {balance} on {event['date']}"
+            })
+
+    return warnings
+
+
+def detect_account_negative_warnings(
+    account_id: str,
+    account_name: str,
+    projection_result: List[Dict]
+) -> List[Dict]:
+    """
+    Scan account projection for negative running_balance.
+
+    Task 10: Detect when per-account balance goes negative.
+
+    Args:
+        account_id: Account UUID string
+        account_name: Account name for display
+        projection_result: List of events with running_balance
+
+    Returns:
+        List of warning dicts for account negative balances
+
+    See spec: Warning System (lines 620-643)
+    """
+    from uuid import UUID
+
+    warnings = []
+
+    for event in projection_result:
+        balance = event.get("running_balance", Decimal("0"))
+        if balance < 0:
+            warnings.append({
+                "type": "account_negative",
+                "severity": "critical",
+                "date": event.get("date"),
+                "amount": balance,
+                "threshold": Decimal("0"),
+                "account_id": UUID(account_id),
+                "account_name": account_name,
+                "story_id": None,
+                "story_name": None,
+                "message": f"{account_name} will go negative: {balance} on {event['date']}"
+            })
+
+    return warnings
+
+
+def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> List[Dict]:
+    """
+    Check if story violates goal (spend_up_to or end_with_at_least).
+
+    Tasks 11 & 12:
+    - Task 11: Detect story exceeds spend_up_to goal
+    - Task 12: Detect story misses end_with_at_least goal
+
+    Args:
+        story: Story document with goal_type and goal_amount
+        projection_result: List of events with running_balance
+
+    Returns:
+        List of warning dicts for goal violations
+
+    See spec: Warning System (lines 620-643)
+    """
+    warnings = []
+
+    goal_type = story.get("goal_type")
+    if not goal_type or goal_type == "none":
+        return []
+
+    goal_amount = story.get("goal_amount", Decimal("0"))
+
+    # Task 11: spend_up_to - check cumulative spend
+    if goal_type == "spend_up_to":
+        # Calculate total spend (negative amounts only, exclude baseline)
+        total_spend = Decimal("0")
+        for event in projection_result:
+            # Skip baseline events
+            if event.get("is_baseline", False):
+                continue
+            # Only count expenses (negative amounts)
+            amount = event.get("amount", Decimal("0"))
+            if amount < 0:
+                total_spend += abs(amount)
+
+        # Check if exceeded goal
+        if total_spend > goal_amount:
+            overspent = total_spend - goal_amount
+            currency = story.get("display_currency", "GBP")
+            warnings.append({
+                "type": "goal_exceeded",
+                "severity": "warning",
+                "date": story.get("end_date") or (projection_result[-1]["date"] if projection_result else None),
+                "amount": total_spend,
+                "threshold": goal_amount,
+                "account_id": None,
+                "account_name": None,
+                "story_id": story.get("_id"),
+                "story_name": story.get("name"),
+                "message": f"{story['name']}: {currency} {overspent:.2f} over budget (spent {total_spend:.2f}, goal {goal_amount:.2f})"
+            })
+
+    # Task 12: end_with_at_least - check final balance
+    elif goal_type == "end_with_at_least":
+        if projection_result:
+            final_balance = projection_result[-1].get("running_balance", Decimal("0"))
+            if final_balance < goal_amount:
+                shortfall = goal_amount - final_balance
+                currency = story.get("display_currency", "GBP")
+                warnings.append({
+                    "type": "goal_missed",
+                    "severity": "warning",
+                    "date": story.get("end_date") or projection_result[-1]["date"],
+                    "amount": final_balance,
+                    "threshold": goal_amount,
+                    "account_id": None,
+                    "account_name": None,
+                    "story_id": story.get("_id"),
+                    "story_name": story.get("name"),
+                    "message": f"{story['name']}: {currency} {shortfall:.2f} short of goal (projected {final_balance:.2f}, goal {goal_amount:.2f})"
+                })
+
+    return warnings
