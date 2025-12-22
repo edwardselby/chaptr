@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CPTR-10c5f82a: First user initialization CLI command (scripts/create_first_user.py) for production deployment
+- CPTR-c289e6e8, CPTR-35bdc365, CPTR-e94133dc: Gap indicators for story projections showing hidden events between visible events
+- CPTR-c289e6e8: Gap detection algorithm (O(n) single-pass) identifies hidden events between consecutive visible events
+- CPTR-35bdc365: Cumulative delta calculation from hidden events with zero-delta skip logic
+- CPTR-e94133dc: Currency conversion for gap deltas to story display_currency using current rates
+- CPTR-c289e6e8: Gap metadata includes delta amounts, date range, hidden event count, and full event details for frontend expansion
+- CPTR-c289e6e8: Trailing gap support for hidden events after last visible event (before_event_id = None)
 
 
 ## [0.0.4] - 2025-12-22
