@@ -8,12 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+
+## [0.0.3] - 2025-12-22
+
+### Added
 - CPTR-234: Account projection calculation with per-account running balance
 - CPTR-5: Global balance negative warning detection (critical severity)
 - CPTR-9: Per-account balance negative warning detection with account context
 - CPTR-10, CPTR-11: Story goal warning detection (spend_up_to exceeded, end_with_at_least missed)
 
 ### Changed
+- Warning messages now use story display_currency instead of hardcoded currency symbols
+- Warning messages include detailed context (overspent/shortfall amounts with full breakdown)
 
 ### Fixed
 - MockDB test fixture to support account_id filtering and _id lookups for account projection tests
