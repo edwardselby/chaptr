@@ -7,28 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- CPTR-backend-api: JWT authentication with HS256, bcrypt password hashing, 24-hour token expiration
-- CPTR-backend-api: User authentication endpoints (POST /auth/login, GET /auth/me)
-- CPTR-backend-api: Role-based authorization (admin/user) with get_current_user and get_current_admin_user dependencies
-- CPTR-backend-api: User tracking (created_by/updated_by) auto-populated from JWT tokens
-- CPTR-backend-api: AuthenticationError (401) and AuthorizationError (403) exception classes
-- CPTR-backend-api: ChangeLogEntry model with EntityType and ChangeAction enums for sync protocol
-- CPTR-backend-api: Authentication required for 13 GET/DELETE endpoints (accounts, stories, events, recurring-rules, settings)
-
-### Changed
-- CPTR-backend-api: User model extended with password_hash and updated_at fields
-- CPTR-backend-api: Settings PUT endpoint protected with admin-only authorization
-- CPTR-backend-api: Event, Story, and RecurringRule endpoints integrate user tracking via current_user dependency
-- CPTR-backend-api: All repositories accept current_user dict parameter for backward compatibility
-- CPTR-backend-api: RecurringRule model extended with created_by/updated_by fields
-
-### Fixed
-- CPTR-backend-api: SECRET_KEY validation at startup prevents production deployment with default key
-- CPTR-backend-api: Password strength validation requires uppercase, lowercase, and digit
-- CPTR-backend-api: Unique index on users.username enforces uniqueness and improves login performance
-- CPTR-backend-api: ChangeLogEntry.changed_by_client uses UUID type per spec v3.0 (was string)
-
 
 ## [0.0.3] - 2025-12-22
 
@@ -37,13 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-5: Global balance negative warning detection (critical severity)
 - CPTR-9: Per-account balance negative warning detection with account context
 - CPTR-10, CPTR-11: Story goal warning detection (spend_up_to exceeded, end_with_at_least missed)
+- CPTR-b51e353d, CPTR-12cbb670: User authentication endpoints (POST /auth/login, GET /auth/me)
+- CPTR-eb629103: Role-based authorization (admin/user) with get_current_user and get_current_admin_user dependencies
+- CPTR-eb629103: Authentication required for 13 GET/DELETE endpoints (accounts, stories, events, recurring-rules, settings)
+- CPTR-9f154e89: ChangeLogEntry model with EntityType and ChangeAction enums for sync protocol
+- CPTR-b51e353d: JWT authentication with HS256, bcrypt password hashing, 24-hour token expiration
+- CPTR-b51e353d: AuthenticationError (401) and AuthorizationError (403) exception classes
+- CPTR-eb629103: User tracking (created_by/updated_by) auto-populated from JWT tokens
 
 ### Changed
 - Warning messages now use story display_currency instead of hardcoded currency symbols
 - Warning messages include detailed context (overspent/shortfall amounts with full breakdown)
+- CPTR-b51e353d: User model extended with password_hash and updated_at fields
+- CPTR-eb629103: Settings PUT endpoint protected with admin-only authorization
+- CPTR-eb629103: Event, Story, and RecurringRule endpoints integrate user tracking via current_user dependency
+- CPTR-eb629103: All repositories accept current_user dict parameter for backward compatibility
+- CPTR-eb629103: RecurringRule model extended with created_by/updated_by fields
 
 ### Fixed
 - MockDB test fixture to support account_id filtering and _id lookups for account projection tests
+- CPTR-b51e353d: SECRET_KEY validation at startup prevents production deployment with default key
+- CPTR-b51e353d: Password strength validation requires uppercase, lowercase, and digit
+- CPTR-b51e353d: Unique index on users.username enforces uniqueness and improves login performance
+- CPTR-9f154e89: ChangeLogEntry.changed_by_client uses UUID type per spec v3.0 (was string)
 
 
 ## [0.0.2] - 2025-12-21
