@@ -21,13 +21,15 @@ from api.main import app
 from api.config import MongoDB
 from api.models import (
     AccountCreate, StoryCreate, EventCreate, RecurringRuleCreate,
-    SettingsBase, FundingMode, GoalType, Frequency
+    SettingsBase, FundingMode, GoalType, Frequency, UserCreate
 )
 from api.repositories.accounts import AccountRepository
 from api.repositories.stories import StoryRepository
 from api.repositories.events import EventRepository
 from api.repositories.recurring_rules import RecurringRuleRepository
 from api.repositories.settings import SettingsRepository
+from api.repositories.users import UserRepository
+from api.utils.auth import create_access_token
 
 # Enable pytest-asyncio
 pytest_plugins = ("pytest_asyncio",)
@@ -142,6 +144,12 @@ def recurring_rule_repo(clean_database):
 def settings_repo(clean_database):
     """SettingsRepository instance for testing."""
     return SettingsRepository(clean_database)
+
+
+@pytest.fixture
+def user_repo(clean_database):
+    """UserRepository instance for testing."""
+    return UserRepository(clean_database)
 
 
 # ============================================================================
@@ -275,7 +283,7 @@ async def sample_event(event_repo, sample_account, sample_settings):
 
 
 @pytest_asyncio.fixture
-async def sample_baseline_event(event_repo, sample_account):
+async def sample_baseline_event(event_repo, sample_account, sample_settings):
     """
     Baseline event (no story_id).
 
@@ -416,3 +424,78 @@ def valid_event_data(sample_account):
         "is_hypothetical": False,
         "is_auto_adjustment": False
     }
+
+
+# ============================================================================
+# Authentication Fixtures (Phase 1.5)
+# ============================================================================
+
+@pytest_asyncio.fixture
+async def sample_user(user_repo):
+    """
+    Pre-created admin user for authentication testing.
+
+    Username: Edward
+    Password: TestPass123
+    Role: admin
+    """
+    user_data = UserCreate(
+        username="Edward",
+        password="TestPass123",  # Meets strength requirements
+        role="admin"
+    )
+    user = await user_repo.create(user_data)
+    return user
+
+
+@pytest_asyncio.fixture
+async def sample_regular_user(user_repo):
+    """
+    Pre-created regular (non-admin) user for authorization testing.
+
+    Username: RegularUser
+    Password: TestPass456
+    Role: user
+    """
+    user_data = UserCreate(
+        username="RegularUser",
+        password="TestPass456",  # Meets strength requirements
+        role="user"
+    )
+    user = await user_repo.create(user_data)
+    return user
+
+
+@pytest_asyncio.fixture
+async def auth_headers(sample_user):
+    """
+    Generate Authorization headers with admin JWT token.
+
+    Creates valid JWT token for sample_user and returns headers dict
+    ready to use with async_client requests.
+
+    :Example:
+
+    >>> response = await async_client.post("/api/events", headers=auth_headers, json=event_data)
+    """
+    token = create_access_token(
+        user_id=sample_user.id,
+        username=sample_user.username,
+        role=sample_user.role
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def regular_user_auth_headers(sample_regular_user):
+    """
+    Generate Authorization headers with regular user JWT token.
+
+    Used for testing authorization (non-admin access).
+    """
+    token = create_access_token(
+        user_id=sample_regular_user.id,
+        username=sample_regular_user.username,
+        role=sample_regular_user.role
+    )
+    return {"Authorization": f"Bearer {token}"}

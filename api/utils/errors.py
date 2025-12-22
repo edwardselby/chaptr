@@ -72,3 +72,49 @@ class ValidationError(HTTPException):
         :type detail: str
         """
         super().__init__(status_code=422, detail=detail)
+
+
+class AuthenticationError(HTTPException):
+    """
+    Raised when authentication fails (invalid credentials or missing token).
+
+    Maps to HTTP 401 Unauthorized.
+    Used for failed login attempts, invalid JWT tokens, or missing authentication.
+
+    :Example:
+
+    >>> raise AuthenticationError("Invalid credentials")
+    >>> raise AuthenticationError("Token has expired")
+    """
+
+    def __init__(self, detail: str = "Authentication failed"):
+        """
+        Initialize AuthenticationError.
+
+        :param detail: Error message describing authentication failure
+        :type detail: str
+        """
+        super().__init__(status_code=401, detail=detail)
+
+
+class AuthorizationError(HTTPException):
+    """
+    Raised when user lacks permission for requested action.
+
+    Maps to HTTP 403 Forbidden.
+    Used for role-based access control violations (e.g., non-admin accessing admin endpoints).
+
+    :Example:
+
+    >>> raise AuthorizationError("Admin access required")
+    >>> raise AuthorizationError("Insufficient permissions")
+    """
+
+    def __init__(self, detail: str = "Insufficient permissions"):
+        """
+        Initialize AuthorizationError.
+
+        :param detail: Error message describing authorization failure
+        :type detail: str
+        """
+        super().__init__(status_code=403, detail=detail)

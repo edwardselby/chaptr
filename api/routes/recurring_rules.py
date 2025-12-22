@@ -13,6 +13,7 @@ from uuid import UUID
 from api.config import MongoDB
 from api.models import RecurringRule, RecurringRuleCreate, RecurringRuleUpdate
 from api.repositories.recurring_rules import RecurringRuleRepository
+from api.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ def get_recurring_rule_repo() -> RecurringRuleRepository:
 
 @router.get("/recurring-rules", response_model=list[RecurringRule])
 async def list_recurring_rules(
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -58,6 +60,7 @@ async def list_recurring_rules(
 @router.get("/recurring-rules/{rule_id}", response_model=RecurringRule)
 async def get_recurring_rule(
     rule_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -83,6 +86,7 @@ async def get_recurring_rule(
 @router.post("/recurring-rules", response_model=RecurringRule, status_code=201)
 async def create_recurring_rule(
     data: RecurringRuleCreate,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -136,13 +140,14 @@ async def create_recurring_rule(
       }'
     ```
     """
-    return await repo.create(data)
+    return await repo.create(data, current_user=current_user)
 
 
 @router.put("/recurring-rules/{rule_id}", response_model=RecurringRule)
 async def update_recurring_rule(
     rule_id: UUID,
     data: RecurringRuleUpdate,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -186,12 +191,13 @@ async def update_recurring_rule(
       }'
     ```
     """
-    return await repo.update(rule_id, data)
+    return await repo.update(rule_id, data, current_user=current_user)
 
 
 @router.delete("/recurring-rules/{rule_id}", status_code=204)
 async def delete_recurring_rule(
     rule_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """

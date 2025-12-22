@@ -13,6 +13,7 @@ from datetime import date
 from api.config import MongoDB
 from api.models import Event, EventCreate, EventUpdate
 from api.repositories.events import EventRepository
+from api.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ def get_event_repo() -> EventRepository:
 
 @router.get("/events", response_model=list[Event])
 async def list_events(
+    current_user: dict = Depends(get_current_user),
     story_id: Annotated[Optional[UUID], Query(
         description="Filter by story UUID"
     )] = None,
@@ -107,6 +109,7 @@ async def list_events(
 @router.get("/events/{event_id}", response_model=Event)
 async def get_event(
     event_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: EventRepository = Depends(get_event_repo)
 ):
     """
@@ -132,6 +135,7 @@ async def get_event(
 @router.post("/events", response_model=Event, status_code=201)
 async def create_event(
     data: EventCreate,
+    current_user: dict = Depends(get_current_user),
     story_id: Annotated[Optional[UUID], Query(
         description="Story UUID this event belongs to (null = baseline)"
     )] = None,
@@ -196,13 +200,14 @@ async def create_event(
       }'
     ```
     """
-    return await repo.create(data, story_id=story_id)
+    return await repo.create(data, story_id=story_id, current_user=current_user)
 
 
 @router.put("/events/{event_id}", response_model=Event)
 async def update_event(
     event_id: UUID,
     data: EventUpdate,
+    current_user: dict = Depends(get_current_user),
     repo: EventRepository = Depends(get_event_repo)
 ):
     """
@@ -240,12 +245,13 @@ async def update_event(
       -d '{"event_date": "2025-06-12"}'
     ```
     """
-    return await repo.update(event_id, data)
+    return await repo.update(event_id, data, current_user=current_user)
 
 
 @router.delete("/events/{event_id}", status_code=204)
 async def delete_event(
     event_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: EventRepository = Depends(get_event_repo)
 ):
     """
