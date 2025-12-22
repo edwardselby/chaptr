@@ -8,20 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+
+## [0.0.2] - 2025-12-21
+
+### Added
 - CPTR-21, CPTR-47: Core projection foundation with global balance calculation and same-day event ordering
 - CPTR-31, CPTR-32, CPTR-33, CPTR-44, CPTR-255, CPTR-257: Multi-currency conversion with locked rates and database query optimization
 - CPTR-23, CPTR-24, CPTR-25: Story projections with three funding modes (projected, fixed, projected_plus) and hypothetical events
-- CPTR-1: Project directory structure with api, routes, core, tests
-- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
-- CPTR-3, CPTR-4: MongoDB connection configuration and health check endpoint
-- CPTR-291: Route stubs for accounts, stories, events, sync endpoints (19 total)
-- CPTR-290: Core module stubs for projection and reconciliation
-- CPTR-10 to CPTR-15: Pydantic models for Account, Story, Event, RecurringRule, Settings, User with validation
-- CPTR-20: Model enums for FundingMode, GoalType, Frequency, UserRole, ConflictType
-- CPTR-42 to CPTR-44: Test framework with pytest-asyncio
 - CPTR-280 to CPTR-284: Account CRUD endpoints with is_default enforcement and soft delete
 - CPTR-275 to CPTR-278: Story CRUD endpoints with cascade delete and validation
-- CPTR-6: Settings singleton endpoints with get_or_create_default pattern
 - CPTR-256 to CPTR-259: Recurring rules CRUD endpoints (event generation deferred to Phase 7)
 - Event CRUD endpoints with 3-level account resolution and rate locking
 - Repository pattern with BaseRepository and entity-specific repositories
