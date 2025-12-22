@@ -16,6 +16,7 @@ from api.models import ProjectionResponse
 from api.utils.auth import get_current_user
 from core.projection import (
     calculate_global_projection,
+    calculate_story_projection,
     detect_global_negative_warnings,
     detect_account_negative_warnings,
     detect_story_goal_warnings
@@ -136,16 +137,27 @@ async def get_projection(
                 detail="Currency must be 3 uppercase letters (e.g., GBP, USD)"
             )
 
-    # Call core projection function
+    # Call appropriate core projection function based on view
     try:
-        projection_result = await calculate_global_projection(
-            view=view,
-            story_id=str(story_id) if story_id else None,
-            start_date=start,
-            end_date=end,
-            display_currency=display_currency,
-            db=db
-        )
+        if story_id:
+            # Story projection (filtered view)
+            projection_result = await calculate_story_projection(
+                story_id=str(story_id),
+                start_date=start,
+                end_date=end,
+                db=db
+            )
+        else:
+            # Global projection (all or all_what_if view)
+            include_hypothetical = (view == "all_what_if")
+            projection_result = await calculate_global_projection(
+                start_date=start,
+                end_date=end,
+                view=view,
+                include_hypothetical=include_hypothetical,
+                display_currency=display_currency,
+                db=db
+            )
     except Exception as e:
         # Handle projection calculation errors
         raise HTTPException(
