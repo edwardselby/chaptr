@@ -53,46 +53,65 @@ jobs:
 
             Review this PR and provide STRUCTURED, CONCISE feedback using the format below.
 
-            **TARGET: 300 lines, MAX: 400 lines**
+            **TARGET: 100-150 lines, MAX: 200 lines**
+
+            CRITICAL SECTION RULES:
+            - OMIT any priority section (Critical/High/Medium/Low) with zero issues
+            - OMIT Security & Performance section if no findings
+            - DO NOT include filler text like "None identified" or "Great job"
+            - Empty sections waste space - only include sections with actual content
 
             Use this EXACT format:
 
             ## PR Review: [Title] (#[number])
-            **Status**: ✅ Approve | ⚠️ Approve with Changes | ❌ Request Changes
-            **Summary**: [2-3 sentences overall assessment]
-            **Issues**: [X] Critical | [X] High | [X] Medium | [X] Low
-            **Previous Review**: First review | Follow-up (note fixes applied)
+            **Status**: ✅ Approve | ⚠️ Changes Needed | ❌ Blocked
+            **Summary**: [1 sentence max - what is this PR doing?]
+            **Issues**: [X] High | [X] Medium | [X] Low
+            **Previous Review**: First | Follow-up
 
             ---
 
-            ## 🚨 Critical Issues (Must fix before merge)
-            For each: Problem + Why it matters (1-2 sentences) + Fix + Reference
+            [OMIT sections below if zero issues]
 
-            ## ⚠️ High Priority (Should fix before merge)
-            For each: Problem + Why it matters (1-2 sentences) + Fix + Reference
+            ## ⚠️ High Priority (must fix)
+            **1. Issue title** - Problem description (file:line) - Fix in one line
 
-            ## 💡 Medium Priority (Address in follow-up)
-            For each: Problem + Why it matters (brief) + Fix
+            ## 💡 Medium Priority (should fix)
+            **1. Issue title** - Problem (file:line) - Fix
 
-            ## 📝 Low Priority (Nice to have)
-            Brief bullets with context
+            ## 📝 Low Priority (nice to have)
+            - Bullet point format for minor suggestions
 
-            ## ✅ Strengths
-            4-5 concise bullets highlighting what's done well
+            ## ✅ Strengths (3-4 bullets max)
+            - What's done well
 
-            ## 🔒 Security & Performance Notes
-            Brief combined section (only if relevant findings)
+            ## 🔒 Security/Performance (only if findings exist)
+            - Brief bullets only
 
-            GUIDELINES:
-            - Keep explanations concise but provide context where it adds value
-            - Use brief inline examples when they clarify the fix (avoid large code blocks)
-            - Focus on actionable feedback with file:line references
-            - Reference spec/docs instead of explaining known concepts
-            - Group related issues to save space
-            - TARGET 300 lines, allow up to 400 if necessary for clarity
+            BREVITY GUIDELINES (ruthlessly concise):
+            - Every word must add value - no filler text
+            - File references: `path/file.py:line` format only
+            - Code examples: ONLY when fix is unclear from description
+            - One line per issue when possible: Problem → Fix
+            - "Why it matters": MAX 10-15 words, omit if obvious
+            - No congratulations, "great job", "none identified" text
+            - Omit spec references unless non-obvious
             - CHECK previous review comments first to avoid contradictions
             - Acknowledge fixes made since last review
             - Only flag NEW or UNRESOLVED issues, not already-addressed ones
+            - TARGET 100-150 lines total, MAX 200 lines
+
+            EXAMPLE - TOO VERBOSE (❌):
+            ## ⚠️ High Priority
+            ### 1. Deprecated datetime.utcnow() Usage Risk
+            **Issue**: Uses datetime.now() throughout but comments reference utcnow()
+            **Why it matters**: datetime.utcnow() is deprecated in Python 3.12+ and will be removed. While current code uses datetime.now(), the comment suggests this was a recent change and indicates potential timezone handling confusion. CHAPTR spec doesn't define timezone requirements, but consistency is critical for sync protocol and conflict resolution.
+            **Fix**: Decide on timezone strategy: naive local time OR timezone-aware UTC. If UTC (recommended), use datetime.now(timezone.utc) everywhere. Document in spec.
+            **Reference**: See spec "Sync Protocol"
+
+            EXAMPLE - CONCISE (✅):
+            ## ⚠️ High Priority
+            **1. Timezone-naive timestamps** - `populate_test_data.py:119` breaks sync conflict detection - Use `datetime.now(timezone.utc)`
 
             CRITICAL: Write the COMPLETE review (all sections above) as ONE SINGLE comment.
             Use `gh pr comment` with your Bash tool to post the ENTIRE review as a SINGLE comment.
