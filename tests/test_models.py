@@ -19,7 +19,7 @@ from api.models import (
     # Enums
     FundingMode, GoalType, Frequency, UserRole,
     # Settings
-    SettingsBase, SettingsCreate, SettingsUpdate, Settings,
+    SettingsBase, SettingsUpdate, Settings,
     # User
     UserBase, UserCreate, User,
     # Account
@@ -47,21 +47,21 @@ class TestSettingsModel:
             "default_currency": "GBP",
             "rates": {"CAD": Decimal("1.75"), "USD": Decimal("1.28")}
         }
-        settings = SettingsCreate(**settings_data)
+        settings = SettingsBase(**settings_data)
         assert settings.base_currency == "GBP"
         assert settings.default_currency == "GBP"
         assert settings.rates["CAD"] == Decimal("1.75")
 
     def test_settings_currency_code_validation(self):
         """Test currency codes must be 3 uppercase letters."""
-        # Invalid base_currency
+        # Invalid base_currency (too short - Field constraint)
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(base_currency="gb", default_currency="GBP")
-        assert "Currency code must be 3 uppercase letters" in str(exc_info.value)
+            SettingsBase(base_currency="gb", default_currency="GBP")
+        assert "String should have at least 3 characters" in str(exc_info.value)
 
         # Invalid default_currency
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(base_currency="GBP", default_currency="usd")
+            SettingsBase(base_currency="GBP", default_currency="usd")
         assert "Currency code must be 3 uppercase letters" in str(exc_info.value)
 
     def test_settings_rates_currency_code_validation(self):
@@ -72,7 +72,7 @@ class TestSettingsModel:
             "rates": {"ca": Decimal("1.75")}  # Invalid: lowercase
         }
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(**settings_data)
+            SettingsBase(**settings_data)
         assert "must be 3 uppercase letters" in str(exc_info.value)
 
     def test_settings_rates_positive_validation(self):
@@ -83,7 +83,7 @@ class TestSettingsModel:
             "rates": {"CAD": Decimal("-1.75")}  # Invalid: negative
         }
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(**settings_data)
+            SettingsBase(**settings_data)
         assert "must be positive" in str(exc_info.value)
 
     def test_settings_rates_precision_validation(self):
@@ -94,13 +94,13 @@ class TestSettingsModel:
             "rates": {"CAD": Decimal("1.123456789")}  # 9 decimal places
         }
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(**settings_data)
+            SettingsBase(**settings_data)
         assert "exceeds maximum precision of 8 decimal places" in str(exc_info.value)
 
     def test_settings_baseline_display_months_range(self):
         """Test baseline_display_months must be 1-12."""
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(
+            SettingsBase(
                 base_currency="GBP",
                 default_currency="GBP",
                 baseline_display_months=0  # Invalid: too low
@@ -108,7 +108,7 @@ class TestSettingsModel:
         assert "greater than or equal to 1" in str(exc_info.value)
 
         with pytest.raises(ValidationError) as exc_info:
-            SettingsCreate(
+            SettingsBase(
                 base_currency="GBP",
                 default_currency="GBP",
                 baseline_display_months=13  # Invalid: too high
@@ -172,10 +172,10 @@ class TestAccountModel:
         with pytest.raises(ValidationError) as exc_info:
             AccountCreate(
                 name="Test",
-                currency="gb",  # Invalid: lowercase
+                currency="gb",  # Invalid: too short (Field constraint)
                 current_balance=Decimal("0")
             )
-        assert "Currency code must be 3 uppercase letters" in str(exc_info.value)
+        assert "String should have at least 3 characters" in str(exc_info.value)
 
     def test_account_balance_updated_at_optional(self):
         """Test balance_updated_at is optional for new accounts."""
@@ -239,15 +239,15 @@ class TestRecurringRuleModel:
             "currency": "GBP",
             "account_id": uuid4(),
             "frequency": Frequency.MONTHLY,
-            "day": 32,  # Invalid: > 31
+            "day": 32,  # Invalid: > 31 (Field constraint)
             "start_date": date(2024, 1, 1),
         }
         with pytest.raises(ValidationError) as exc_info:
             RecurringRuleCreate(**rule_data)
-        assert "Monthly/Annual frequency requires day 1-31" in str(exc_info.value)
+        assert "Input should be less than or equal to 31" in str(exc_info.value)
 
     def test_recurring_rule_date_range_validation(self):
-        """Test end_date must be after start_date."""
+        """Test end_date must be after or equal to start_date."""
         rule_data = {
             "description": "Limited rule",
             "amount": Decimal("100.00"),
@@ -260,7 +260,7 @@ class TestRecurringRuleModel:
         }
         with pytest.raises(ValidationError) as exc_info:
             RecurringRuleCreate(**rule_data)
-        assert "end_date must be after start_date" in str(exc_info.value)
+        assert "end_date must be after or equal to start_date" in str(exc_info.value)
 
     def test_recurring_rule_update_partial_validation(self):
         """Test RecurringRuleUpdate only validates when both frequency and day provided."""
@@ -329,7 +329,7 @@ class TestStoryModel:
             "name": "Goal Story",
             "start_date": date(2025, 1, 1),
             "funding_mode": FundingMode.PROJECTED,
-            "goal_type": GoalType.SPEND_NO_MORE,
+            "goal_type": GoalType.SPEND_UP_TO,
             # Missing goal_amount
             "display_currency": "GBP"
         }
@@ -338,7 +338,7 @@ class TestStoryModel:
         assert "goal_amount required" in str(exc_info.value)
 
     def test_story_date_range_validation(self):
-        """Test end_date must be after start_date."""
+        """Test end_date must be after or equal to start_date."""
         story_data = {
             "name": "Invalid Dates",
             "start_date": date(2025, 6, 15),
@@ -349,7 +349,7 @@ class TestStoryModel:
         }
         with pytest.raises(ValidationError) as exc_info:
             StoryCreate(**story_data)
-        assert "end_date must be after start_date" in str(exc_info.value)
+        assert "end_date must be after or equal to start_date" in str(exc_info.value)
 
     def test_story_update_partial_no_validation(self):
         """Test StoryUpdate allows partial updates without cross-field validation."""
@@ -359,8 +359,8 @@ class TestStoryModel:
         assert update.funding_amount is None  # Not provided
 
         # Only update goal_type - should pass (validation removed)
-        update2 = StoryUpdate(goal_type=GoalType.SPEND_NO_MORE)
-        assert update2.goal_type == GoalType.SPEND_NO_MORE
+        update2 = StoryUpdate(goal_type=GoalType.SPEND_UP_TO)
+        assert update2.goal_type == GoalType.SPEND_UP_TO
         assert update2.goal_amount is None  # Not provided
 
 

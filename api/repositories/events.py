@@ -8,6 +8,7 @@ critical business logic for account resolution, rate locking, and same-day order
 from uuid import UUID
 from typing import Optional
 from datetime import date
+from decimal import Decimal
 
 from api.repositories.base import BaseRepository
 from api.models import Event, EventCreate, EventUpdate
@@ -203,11 +204,11 @@ class EventRepository(BaseRepository[Event]):
         if updated_by:
             update_dict['updated_by'] = updated_by
 
-        # Apply update
+        # Apply update with Decimal handling (for mongomock compatibility)
         await self.collection.update_one(
             {"id": to_str(event_id)},
             {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, UUID) else v
+                      str(v) if isinstance(v, (UUID, Decimal)) else v
                       for k, v in update_dict.items()}}
         )
 

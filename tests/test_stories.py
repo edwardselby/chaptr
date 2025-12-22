@@ -231,6 +231,76 @@ class TestStoryCreate:
         assert data["goal_amount"] == "500.0"
 
     @pytest.mark.asyncio
+    async def test_create_story_funding_mode_fixed_requires_funding_amount(
+        self, async_client, sample_account
+    ):
+        """FIXED funding mode requires funding_amount (422 without)."""
+        payload = {
+            "name": "Fixed Budget Trip",
+            "start_date": "2025-04-01",
+            "end_date": "2025-04-30",
+            "default_account_id": str(sample_account.id),
+            "funding_mode": "fixed",
+            "funding_amount": None,  # Invalid: FIXED requires funding_amount
+            "goal_type": "none",
+            "goal_amount": None,
+            "display_currency": "GBP"
+        }
+
+        response = await async_client.post("/api/stories", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_story_funding_mode_projected_plus_requires_funding_amount(
+        self, async_client, sample_account
+    ):
+        """PROJECTED_PLUS funding mode requires funding_amount (422 without)."""
+        payload = {
+            "name": "Trip with Expected Loan",
+            "start_date": "2025-05-01",
+            "end_date": "2025-05-31",
+            "default_account_id": str(sample_account.id),
+            "funding_mode": "projected_plus",
+            "funding_amount": None,  # Invalid: PROJECTED_PLUS requires funding_amount
+            "goal_type": "none",
+            "goal_amount": None,
+            "display_currency": "GBP"
+        }
+
+        response = await async_client.post("/api/stories", json=payload)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_create_story_funding_mode_projected_accepts_null_funding_amount(
+        self, async_client, sample_account
+    ):
+        """PROJECTED funding mode does NOT require funding_amount (null is valid)."""
+        payload = {
+            "name": "Normal Trip",
+            "start_date": "2025-03-01",
+            "end_date": "2025-03-31",
+            "default_account_id": str(sample_account.id),
+            "funding_mode": "projected",
+            "funding_amount": None,  # Valid: PROJECTED doesn't require funding_amount
+            "goal_type": "none",
+            "goal_amount": None,
+            "display_currency": "GBP"
+        }
+
+        response = await async_client.post("/api/stories", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["funding_mode"] == "projected"
+        assert data["funding_amount"] is None
+
+    @pytest.mark.asyncio
     async def test_create_story_validation_error_missing_name(self, async_client, sample_account):
         """Create story without name returns 422."""
         payload = {

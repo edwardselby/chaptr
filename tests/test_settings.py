@@ -86,17 +86,9 @@ class TestSettingsGet:
 class TestSettingsUpdate:
     """Tests for PUT /api/settings endpoint."""
 
-    @pytest.mark.skip(reason="mongomock can't encode Decimal in dict values - API is correct, test limitation")
     @pytest.mark.asyncio
     async def test_update_settings_partial_rates_only(self, async_client, sample_settings):
-        """Update only rates field (partial update).
-
-        SKIPPED: This test fails with mongomock's Decimal encoding limitation.
-        The rates dict contains Decimal values which mongomock can't encode in update operations.
-
-        TODO: Implement Decimal handling in SettingsRepository.update_singleton() as noted in:
-              api/repositories/settings.py:125-128
-        """
+        """Update only rates field (partial update)."""
         payload = {
             "rates": {
                 "USD": "1.30",
@@ -136,17 +128,9 @@ class TestSettingsUpdate:
         assert data["date_format"] == sample_settings.date_format
         assert data["baseline_display_months"] == sample_settings.baseline_display_months
 
-    @pytest.mark.skip(reason="mongomock can't encode Decimal in dict values - API is correct, test limitation")
     @pytest.mark.asyncio
     async def test_update_settings_multiple_fields(self, async_client, sample_settings):
-        """Update multiple fields at once.
-
-        SKIPPED: This test fails with mongomock's Decimal encoding limitation.
-        The rates dict contains Decimal values which mongomock can't encode in update operations.
-
-        TODO: Implement Decimal handling in SettingsRepository.update_singleton() as noted in:
-              api/repositories/settings.py:125-128
-        """
+        """Update multiple fields at once."""
         payload = {
             "base_currency": "EUR",
             "default_currency": "EUR",

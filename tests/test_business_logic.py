@@ -161,6 +161,46 @@ class TestStoryCascadeDelete:
         assert get_event_response.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_deleting_story_deletes_multiple_events_comprehensively(
+        self, async_client, sample_account, sample_story, sample_settings
+    ):
+        """Deleting a story deletes ALL associated events (edge case: 3+ events)."""
+        event_ids = []
+
+        # Create 5 events for this story
+        for i in range(5):
+            event_payload = {
+                "event_date": f"2024-12-{20 + i}",
+                "description": f"Story Event {i + 1}",
+                "amount": -100.00 * (i + 1),
+                "currency": "GBP",
+                "account_id": str(sample_account.id),
+                "is_baseline": False,
+                "is_hypothetical": False,
+                "is_auto_adjustment": False
+            }
+            response = await async_client.post(
+                f"/api/events?story_id={sample_story.id}",
+                json=event_payload
+            )
+            assert response.status_code == 201
+            event_ids.append(response.json()["id"])
+
+        # Verify all 5 events exist
+        for event_id in event_ids:
+            response = await async_client.get(f"/api/events/{event_id}")
+            assert response.status_code == 200
+
+        # Delete story
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        assert delete_response.status_code == 204
+
+        # Verify ALL 5 events were deleted (comprehensive cleanup)
+        for event_id in event_ids:
+            response = await async_client.get(f"/api/events/{event_id}")
+            assert response.status_code == 404
+
+    @pytest.mark.asyncio
     async def test_deleting_story_preserves_baseline_events(
         self, async_client, sample_account, sample_story, sample_settings
     ):

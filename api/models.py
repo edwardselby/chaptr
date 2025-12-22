@@ -153,9 +153,9 @@ class StoryBase(BaseModel):
 
     @model_validator(mode='after')
     def validate_date_range(self):
-        """Validate end_date is after start_date if provided."""
-        if self.end_date and self.end_date <= self.start_date:
-            raise ValueError('end_date must be after start_date')
+        """Validate end_date is after or equal to start_date if provided."""
+        if self.end_date and self.end_date < self.start_date:
+            raise ValueError('end_date must be after or equal to start_date')
         return self
 
     @model_validator(mode='after')
@@ -398,9 +398,9 @@ class RecurringRuleBase(BaseModel):
 
     @model_validator(mode='after')
     def validate_date_range(self):
-        """Validate end_date is after start_date if provided."""
-        if self.end_date and self.end_date <= self.start_date:
-            raise ValueError('end_date must be after start_date')
+        """Validate end_date is after or equal to start_date if provided."""
+        if self.end_date and self.end_date < self.start_date:
+            raise ValueError('end_date must be after or equal to start_date')
         return self
 
 

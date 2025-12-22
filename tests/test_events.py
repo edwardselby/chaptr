@@ -424,17 +424,9 @@ class TestEventUpdate:
         assert data["description"] == "Updated Description"
         assert data["id"] == str(sample_event.id)
 
-    @pytest.mark.skip(reason="mongomock can't encode Decimal in updates - API is correct, test limitation")
     @pytest.mark.asyncio
     async def test_update_event_amount_success(self, async_client, sample_event):
-        """Update event amount.
-
-        SKIPPED: This test fails with mongomock's Decimal encoding limitation.
-        The API implementation is correct (EventRepository handles Decimals properly),
-        but mongomock can't encode Decimal values in update operations.
-
-        TODO: Add Decimal handling in EventRepository.update() similar to AccountRepository
-        """
+        """Update event amount."""
         payload = {
             "event_date": "2024-12-15",
             "description": "Test Event",
@@ -453,7 +445,7 @@ class TestEventUpdate:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["amount"] == "-75.00"
+        assert data["amount"] == "-75.0"  # Single trailing zero (Decimal formatting)
 
     @pytest.mark.asyncio
     async def test_update_event_not_found(self, async_client):
