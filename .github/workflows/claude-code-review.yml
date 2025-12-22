@@ -40,6 +40,17 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
+            IMPORTANT: Before reviewing, check for previous review comments on this PR.
+
+            1. Use `gh pr view ${{ github.event.pull_request.number }} --json comments` to read existing comments
+            2. Look for previous reviews from yourself (author: "claude" or "github-actions")
+            3. If previous reviews exist:
+               - Acknowledge what was already suggested
+               - Note what has been fixed since last review
+               - Only flag issues that are NEW or still UNRESOLVED
+               - Build on previous feedback, don't contradict it
+            4. If this is the first review, proceed with full review
+
             Review this PR and provide STRUCTURED, CONCISE feedback using the format below.
 
             **TARGET: 300 lines, MAX: 400 lines**
@@ -50,6 +61,7 @@ jobs:
             **Status**: ✅ Approve | ⚠️ Approve with Changes | ❌ Request Changes
             **Summary**: [2-3 sentences overall assessment]
             **Issues**: [X] Critical | [X] High | [X] Medium | [X] Low
+            **Previous Review**: First review | Follow-up (note fixes applied)
 
             ---
 
@@ -78,8 +90,13 @@ jobs:
             - Reference spec/docs instead of explaining known concepts
             - Group related issues to save space
             - TARGET 300 lines, allow up to 400 if necessary for clarity
+            - CHECK previous review comments first to avoid contradictions
+            - Acknowledge fixes made since last review
+            - Only flag NEW or UNRESOLVED issues, not already-addressed ones
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            CRITICAL: Write the COMPLETE review (all sections above) as ONE SINGLE comment.
+            Use `gh pr comment` with your Bash tool to post the ENTIRE review as a SINGLE comment.
+            DO NOT post multiple comments - combine everything into one comment body.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
