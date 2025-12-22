@@ -52,6 +52,21 @@ class ConflictType(str, Enum):
     DELETE_EDIT = "delete_edit"
 
 
+class EntityType(str, Enum):
+    """Entity types tracked in change_log."""
+    EVENT = "event"
+    ACCOUNT = "account"
+    STORY = "story"
+    RECURRING_RULE = "recurring_rule"
+
+
+class ChangeAction(str, Enum):
+    """Change actions tracked in change_log."""
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
 # ==================== Account Models ====================
 
 class AccountBase(BaseModel):
@@ -700,6 +715,75 @@ class SyncResponse(BaseModel):
     # TODO Phase 3: Add fields (applied, conflicts, server_changes,
     #                           sync_timestamp, full_sync_required)
     pass
+
+
+# ==================== Change Log Models ====================
+
+class ChangeLogEntry(BaseModel):
+    """
+    Change log entry for sync protocol.
+
+    Tracks all creates, updates, and deletes for syncing changes
+    between client and server. Used by sync protocol (Phase 3).
+
+    Entries are pruned after 31 days to prevent unbounded growth.
+    Clients with last_sync_at older than oldest entry receive
+    full_sync_required=true response.
+
+    Note: data field is null for delete actions.
+    """
+    id: UUID = Field(..., description="Unique change log entry identifier")
+    entity_type: EntityType = Field(..., description="Type of entity changed")
+    entity_id: UUID = Field(..., description="ID of the changed entity")
+    action: ChangeAction = Field(..., description="Type of change (create/update/delete)")
+    data: Optional[dict] = Field(
+        default=None,
+        description="Full entity snapshot (null for deletes)"
+    )
+    changed_by_user: UUID = Field(..., description="User who made the change")
+    changed_by_client: UUID = Field(
+        ...,
+        description="Client/device ID that made the change"
+    )
+    changed_at: datetime = Field(
+        ...,
+        description="When the change occurred (UTC timestamp)"
+    )
+
+    @model_validator(mode='after')
+    def validate_data_for_action(self):
+        """
+        Validate data field based on action type.
+
+        Business Rules:
+        - DELETE actions: data must be None (no snapshot needed)
+        - CREATE/UPDATE actions: data should be present (entity snapshot)
+        """
+        if self.action == ChangeAction.DELETE and self.data is not None:
+            raise ValueError('DELETE actions must have data=None')
+        return self
+
+
+"""
+Required MongoDB Indexes for change_log Collection:
+
+1. Compound index for sync queries:
+   db.change_log.create_index([
+       ("changed_at", 1),           # Time-based filtering
+       ("changed_by_client", 1)     # Exclude originating client
+   ])
+
+2. Entity lookup index:
+   db.change_log.create_index([
+       ("entity_type", 1),
+       ("entity_id", 1)
+   ])
+
+3. Pruning index:
+   db.change_log.create_index([("changed_at", 1)])
+
+Note: Index creation deferred to Phase 3 (sync protocol implementation).
+"""
 
 
 # ==================== Conflict Resolution Models ====================

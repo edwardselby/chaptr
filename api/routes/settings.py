@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from api.config import MongoDB
 from api.models import Settings, SettingsUpdate
 from api.repositories.settings import SettingsRepository
-from api.utils.auth import get_current_admin_user
+from api.utils.auth import get_current_admin_user, get_current_user
 
 router = APIRouter()
 
@@ -28,6 +28,7 @@ def get_settings_repo() -> SettingsRepository:
 
 @router.get("/settings", response_model=Settings)
 async def get_settings(
+    current_user: dict = Depends(get_current_user),
     repo: SettingsRepository = Depends(get_settings_repo)
 ):
     """

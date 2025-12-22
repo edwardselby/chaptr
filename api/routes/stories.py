@@ -28,6 +28,7 @@ def get_story_repo() -> StoryRepository:
 
 @router.get("/stories", response_model=list[Story])
 async def list_stories(
+    current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
@@ -52,6 +53,7 @@ async def list_stories(
 @router.get("/stories/{story_id}", response_model=Story)
 async def get_story(
     story_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
@@ -185,6 +187,7 @@ async def update_story(
 @router.delete("/stories/{story_id}", status_code=204)
 async def delete_story(
     story_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
