@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-259: DELETE /api/recurring-rules/{id} (note: removes future events per spec, event generation deferred to Phase 7)
 - RecurringRuleRepository with account validation and CRUD operations (event generation ±1 month window deferred to Phase 7)
 - Database indexes on events collection for query performance (event_date, story_id+event_date, account_id+event_date)
+- CPTR-16: Test data generator with TestDataGenerator class, CLI presets (small/medium/large), realistic data generation with referential integrity
+- CPTR-15: Comprehensive manual API testing guide documenting all 22 endpoints with curl examples, 6 testing scenarios, business rule validation
 
 ### Changed
 - PR#5 Review Fixes Round 1: EventCreate model - account_id and rate_to_base now optional (auto-resolved if not provided)
