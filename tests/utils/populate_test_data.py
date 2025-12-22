@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import random
 import sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -116,8 +116,8 @@ class TestDataGenerator:
             "server_url": "",
             "last_backup_date": None,
             "version": "1.0.0",
-            "created_at": datetime.now(),  # Use datetime.now() instead of utcnow()
-            "updated_at": datetime.now()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
 
         await self.settings_coll.insert_one(settings_data)
@@ -145,8 +145,25 @@ class TestDataGenerator:
         ]
         random.shuffle(bank_names)
 
-        # Currency distribution (GBP bias)
-        currencies = ["GBP", "GBP", "GBP", "USD", "EUR", "CAD"]
+        # Currency distribution - scale with account count, bias toward base currency
+        # Get available currencies from settings
+        available_currencies = [self.settings.base_currency] + list(self.settings.rates.keys())
+
+        # Distribute currencies: 40% base currency, 60% others
+        currencies = []
+        base_count = max(1, int(count * 0.4))  # At least 1 base currency account
+
+        # Add base currency accounts
+        currencies.extend([self.settings.base_currency] * base_count)
+
+        # Fill remaining with other currencies (cycle through available)
+        other_count = count - base_count
+        for i in range(other_count):
+            other_currencies = [c for c in available_currencies if c != self.settings.base_currency]
+            currencies.append(other_currencies[i % len(other_currencies)])
+
+        # Shuffle for variety
+        random.shuffle(currencies)
 
         accounts = []
         for i in range(count):
@@ -164,7 +181,7 @@ class TestDataGenerator:
                 # Normal balance
                 balance = random.uniform(100, 8000)
 
-            currency = currencies[i % len(currencies)]
+            currency = currencies[i]
 
             account_id = uuid4()
             account_data = {
@@ -172,12 +189,12 @@ class TestDataGenerator:
                 "name": bank_names[i % len(bank_names)],
                 "currency": currency,
                 "current_balance": str(Decimal(str(round(balance, 2)))),
-                "balance_updated_at": datetime.now() - timedelta(hours=random.randint(1, 48)),
+                "balance_updated_at": datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 48)),
                 "is_default": is_default,
                 "is_archived": False,
                 "pending_reconciliation": False,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
             }
 
             await self.accounts_coll.insert_one(account_data)
@@ -277,9 +294,9 @@ class TestDataGenerator:
                 "goal_type": goal_type.value,
                 "goal_amount": str(goal_amount) if goal_amount else None,
                 "display_currency": currency,
-                "created_at": datetime.now(),
+                "created_at": datetime.now(timezone.utc),
                 "created_by": None,
-                "updated_at": datetime.now(),
+                "updated_at": datetime.now(timezone.utc),
                 "updated_by": None
             }
 
@@ -344,8 +361,8 @@ class TestDataGenerator:
                 "day": pattern["day"],
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat() if end_date else None,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
             }
 
             await self.rules_coll.insert_one(rule_data)
@@ -439,9 +456,9 @@ class TestDataGenerator:
                 "is_baseline": is_baseline,
                 "is_hypothetical": False,
                 "is_auto_adjustment": False,
-                "created_at": datetime.now(),
+                "created_at": datetime.now(timezone.utc),
                 "created_by": None,
-                "updated_at": datetime.now(),
+                "updated_at": datetime.now(timezone.utc),
                 "updated_by": None,
                 "recurring_rule_id": None
             }

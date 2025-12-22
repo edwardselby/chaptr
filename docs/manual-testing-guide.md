@@ -225,7 +225,49 @@ curl -X DELETE http://localhost:8000/api/accounts/$HSBC_ID | jq '.'
 - Status: `409 Conflict`
 - Error message: Cannot archive the default account
 
-**Business Rule Verified:** ✅ Exactly one account is always default
+**Step 1.7: Proper default account archival workflow**
+
+To properly archive a default account, first transfer default status to another account:
+
+```bash
+# Transfer default status to Monzo first
+MONZO_ID="<uuid-from-step-1>"
+
+curl -X PUT http://localhost:8000/api/accounts/$MONZO_ID \
+  -H "Content-Type: application/json" \
+  -d '{"is_default": true}' | jq '.'
+```
+
+**Expected:**
+- Status: `200 OK`
+- Monzo now has `"is_default": true`
+- HSBC automatically unset to `"is_default": false`
+
+```bash
+# Now archive HSBC (safe since not default)
+curl -X DELETE http://localhost:8000/api/accounts/$HSBC_ID
+```
+
+**Expected:**
+- Status: `204 No Content`
+
+```bash
+# Verify archival worked correctly
+curl http://localhost:8000/api/accounts | jq '[.[] | {name: .name, is_default: .is_default, is_archived: .is_archived}]'
+```
+
+**Expected:**
+```json
+[
+  {"name": "Monzo", "is_default": true, "is_archived": false},
+  {"name": "HSBC", "is_default": false, "is_archived": true}
+]
+```
+
+**Business Rules Verified:**
+- ✅ Exactly one account is always default
+- ✅ Can archive non-default accounts
+- ✅ Must transfer default status before archiving default account
 
 ---
 
@@ -554,7 +596,27 @@ curl -X PUT http://localhost:8000/api/recurring_rules/$RULE_ID \
 - `"amount": "3750.0"` (updated)
 - `updated_at` timestamp changed
 
-**Step 4.7: Delete recurring rule**
+**Step 4.7: Try to create rule with invalid account (should fail)**
+
+```bash
+curl -X POST http://localhost:8000/api/recurring_rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Test Invalid Account",
+    "amount": -50.00,
+    "currency": "GBP",
+    "account_id": "00000000-0000-0000-0000-000000000000",
+    "frequency": "monthly",
+    "day": 15,
+    "start_date": "2025-01-01"
+  }' | jq '.'
+```
+
+**Expected:**
+- Status: `404 Not Found` or `422 Unprocessable Entity`
+- Error message: Account not found or invalid account_id
+
+**Step 4.8: Delete recurring rule**
 
 ```bash
 curl -X DELETE http://localhost:8000/api/recurring_rules/$RULE_ID
@@ -564,7 +626,7 @@ curl -X DELETE http://localhost:8000/api/recurring_rules/$RULE_ID
 - Status: `204 No Content`
 - Empty response body
 
-**Step 4.8: Verify deletion**
+**Step 4.9: Verify deletion**
 
 ```bash
 curl http://localhost:8000/api/recurring_rules/$RULE_ID | jq '.'
@@ -788,14 +850,16 @@ curl http://localhost:8000/api/events/$EVENT3_ID | jq '.'
 **Expected for ALL:**
 - Status: `404 Not Found` (all events deleted via cascade)
 
-**Step 6.8: Create baseline event (verify not affected)**
+**Step 6.8: Create one-off baseline event (verify not affected by story deletion)**
+
+One-off events with `is_baseline=true` are part of the baseline collection but independent of stories:
 
 ```bash
 curl -X POST http://localhost:8000/api/events \
   -H "Content-Type: application/json" \
   -d '{
     "date": "2025-02-10",
-    "description": "Baseline Event",
+    "description": "One-off Baseline Event",
     "amount": -50.00,
     "currency": "GBP",
     "is_baseline": true,
@@ -806,7 +870,7 @@ curl -X POST http://localhost:8000/api/events \
 
 Save: `BASELINE_ID="<uuid>"`
 
-Verify it still exists after story deletion (baseline events are independent):
+Verify it still exists after story deletion (one-off baseline events are independent of stories):
 
 ```bash
 curl http://localhost:8000/api/events/$BASELINE_ID | jq '.'
@@ -814,9 +878,9 @@ curl http://localhost:8000/api/events/$BASELINE_ID | jq '.'
 
 **Expected:**
 - Status: `200 OK`
-- Baseline event unaffected by story deletion
+- One-off baseline event unaffected by story deletion
 
-**Business Rule Verified:** ✅ Story deletion cascades to events, baseline events preserved
+**Business Rule Verified:** ✅ Story deletion cascades to story events only, one-off baseline events (is_baseline=true, story_id=null) are preserved
 
 ---
 
