@@ -1459,7 +1459,8 @@ async def test_story_end_with_at_least_missed():
     assert warning["amount"] == Decimal("2500.00")
     assert warning["threshold"] == Decimal("3000.00")
     assert warning["story_name"] == "savings"
-    assert "goal was" in warning["message"]
+    assert "short of goal" in warning["message"]
+    assert "500.00" in warning["message"]  # Verify shortfall amount shown
 
 
 @pytest.mark.asyncio

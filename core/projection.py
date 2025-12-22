@@ -507,7 +507,7 @@ async def calculate_account_projection(
         })
 
     # Step 5: Apply same-day ordering per spec
-    # Sort by: date ASC, amount DESC (income first), created_at ASC (tie-breaker)
+    # Sort by: date ASC, base_amount DESC (income first), created_at ASC (tie-breaker)
     events_with_base.sort(
         key=lambda e: (
             e.get("date"),
@@ -575,10 +575,14 @@ def detect_global_negative_warnings(projection_result: List[Dict]) -> List[Dict]
     Task 9: Detect when global balance goes negative.
 
     Args:
-        projection_result: List of events with running_balance
+        projection_result: List of events with running_balance (in base currency)
 
     Returns:
         List of warning dicts for negative balances
+
+    Note:
+        running_balance is always in base currency (from settings.base_currency).
+        Warning amounts reflect base currency values.
 
     See spec: Warning System (lines 620-643)
     """
@@ -687,6 +691,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
         # Check if exceeded goal
         if total_spend > goal_amount:
             overspent = total_spend - goal_amount
+            currency = story.get("display_currency", "GBP")
             warnings.append({
                 "type": "goal_exceeded",
                 "severity": "warning",
@@ -697,7 +702,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
                 "account_name": None,
                 "story_id": story.get("_id"),
                 "story_name": story.get("name"),
-                "message": f"{story['name']}: £{overspent} over budget"
+                "message": f"{story['name']}: {currency} {overspent:.2f} over budget (spent {total_spend:.2f}, goal {goal_amount:.2f})"
             })
 
     # Task 12: end_with_at_least - check final balance
@@ -706,6 +711,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
             final_balance = projection_result[-1].get("running_balance", Decimal("0"))
             if final_balance < goal_amount:
                 shortfall = goal_amount - final_balance
+                currency = story.get("display_currency", "GBP")
                 warnings.append({
                     "type": "goal_missed",
                     "severity": "warning",
@@ -716,7 +722,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
                     "account_name": None,
                     "story_id": story.get("_id"),
                     "story_name": story.get("name"),
-                    "message": f"{story['name']}: Projected £{final_balance}, goal was £{goal_amount}"
+                    "message": f"{story['name']}: {currency} {shortfall:.2f} short of goal (projected {final_balance:.2f}, goal {goal_amount:.2f})"
                 })
 
     return warnings
