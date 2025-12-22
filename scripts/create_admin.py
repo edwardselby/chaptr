@@ -61,6 +61,12 @@ async def get_credentials() -> tuple[str, str]:
     password = os.getenv("ADMIN_PASSWORD")
 
     if username and password:
+        # Validate username is not empty
+        username = username.strip()
+        if not username:
+            print("❌ ADMIN_USERNAME cannot be empty")
+            sys.exit(1)
+
         print(f"📋 Using credentials from environment variables")
         print(f"   Username: {username}")
         return username, password
