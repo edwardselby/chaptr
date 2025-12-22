@@ -520,16 +520,17 @@ async def test_story_projection_fixed_funding_mode(mock_db):
         db=mock_db
     )
 
-    # Should have 1 event (hypothetical funding)
-    assert len(result) >= 1, "Should have at least hypothetical funding event"
+    # Should have 1 baseline event (salary on Dec 28)
+    assert len(result) >= 1, "Should have at least salary baseline event"
 
-    # First event should be hypothetical funding
-    funding_event = result[0]
-    assert funding_event["description"] == "Story funding: skiing-2025"
-    assert funding_event["amount"] == Decimal("500.00")
-    assert funding_event["is_hypothetical"] is True
-    assert funding_event["running_balance"] == Decimal("500.00"), \
-        "Fixed funding starts with £500"
+    # Fixed mode: starting_balance = £500 (from story.funding_amount)
+    # No funding event created - funding is baked into starting_balance per spec
+    # First visible event should be salary (+£3000) on Dec 28
+    # Expected: £500 + £3000 = £3500
+    salary_event = next((e for e in result if e["description"] == "salary"), None)
+    assert salary_event is not None, "Should have salary baseline event"
+    assert salary_event["running_balance"] == Decimal("3500.00"), \
+        "Fixed funding: starts at £500, salary +£3000 = £3500"
 
 
 @pytest.mark.asyncio
@@ -576,26 +577,20 @@ async def test_story_projection_projected_plus_funding_mode(mock_db):
             db=mock_db
         )
 
-        # Should have 2 events: funding + tyres
-        assert len(result) >= 2, "Should have funding event + tyres"
+        # Should have tyres + baseline events (no funding event)
+        assert len(result) >= 1, "Should have tyres + baseline events"
 
-        # First event should be hypothetical funding
-        funding_event = result[0]
-        assert funding_event["description"] == "Story funding: volvo"
-        assert funding_event["amount"] == Decimal("1000.00")
-        assert funding_event["is_hypothetical"] is True
+        # Projected_plus mode: starting_balance = projected + funding_amount
+        # No funding event created - funding is baked into starting_balance per spec
+        # Projected on Dec 22 (day before) = £12,890
+        # Plus funding: £12,890 + £1,000 = £13,890
 
-        # Verify projected_plus calculation
-        # Projected on Dec 22 = £12,890 (after car rental on Dec 20)
-        # Plus funding: +£1,000 = £13,890
-        assert funding_event["running_balance"] == Decimal("13890.00"), \
-            "Projected_plus: £12,890 + £1,000 = £13,890"
-
-        # Second event should be tyres
-        tyres_event = result[1]
-        assert tyres_event["description"] == "new tyres"
+        # First event should be tyres on Dec 22
+        tyres_event = next((e for e in result if e["description"] == "new tyres"), None)
+        assert tyres_event is not None, "Should have tyres event"
+        # Expected: starting £13,890 - tyres £380 = £13,510
         assert tyres_event["running_balance"] == Decimal("13510.00"), \
-            "After tyres: £13,890 - £380 = £13,510"
+            "Projected_plus: (£12,890 + £1,000) - £380 tyres = £13,510"
 
     finally:
         # Clean up
@@ -699,10 +694,13 @@ async def test_hidden_events_affect_balance(mock_db):
 @pytest.mark.asyncio
 async def test_multi_currency_story_projection(mock_db):
     """
-    Test story projection with multi-currency funding and events.
+    Test story projection with CAD story and mixed currency events.
+
+    Note: Per spec-compliant implementation, funding_amount is stored in
+    base currency (GBP). The story.display_currency is for UI display only.
 
     Validates:
-    - Funding event in CAD converted to base currency (GBP)
+    - Fixed funding mode with base currency amount
     - Mixed currency events in story projection
     - Running balance calculated in base currency
     """
@@ -712,8 +710,8 @@ async def test_multi_currency_story_projection(mock_db):
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "funding_mode": "fixed",
-        "funding_amount": Decimal("1000.00"),  # $1000 CAD
-        "display_currency": "CAD",
+        "funding_amount": Decimal("580.00"),  # £580 GBP (base currency)
+        "display_currency": "CAD",  # For UI display only
         "default_account_id": UUID("11111111-1111-1111-1111-111111111111"),
         "created_at": datetime(2024, 12, 18, 8, 0, 0)
     }
@@ -742,34 +740,19 @@ async def test_multi_currency_story_projection(mock_db):
             db=mock_db
         )
 
-        # Should have funding event + car rental + baseline events
-        assert len(result) >= 2, "Should have at least funding + car rental"
+        # Should have car rental + baseline events (no funding event)
+        assert len(result) >= 1, "Should have at least car rental event"
 
-        # Verify funding event
-        funding = result[0]
-        assert funding["description"] == "Story funding: canada-trip"
-        assert funding["amount"] == Decimal("1000.00")  # $1000 CAD
-        assert funding["currency"] == "CAD"
-        assert funding["rate_to_base"] == Decimal("0.58")  # 1 CAD = 0.58 GBP
+        # Fixed mode: starting_balance = £580 (funding_amount in base currency)
+        # No funding event created - funding is baked into starting_balance per spec
 
-        # CRITICAL: Verify funding base_amount is correct
-        # $1000 CAD × 0.58 = £580 GBP
-        assert funding["base_amount"] == Decimal("580.00"), \
-            "$1000 CAD × 0.58 = £580 GBP"
-
-        # Verify running balance uses base currency
-        # Starting: 0 (fixed mode)
-        # After funding: +£580
-        assert funding["running_balance"] == Decimal("580.00"), \
-            "Fixed mode starts at 0, funding adds £580 (converted from CAD)"
-
-        # Verify subsequent events also use correct currency
+        # Verify car rental event
         car_rental = next((e for e in result if e["description"] == "car rental"), None)
-        if car_rental:
-            # Car rental: -£320 GBP
-            # Running balance: £580 - £320 = £260
-            assert car_rental["running_balance"] == Decimal("260.00"), \
-                "After £580 funding and -£320 car rental = £260"
+        assert car_rental is not None, "Should have car rental event"
+
+        # Expected: starting £580 - car rental £320 = £260
+        assert car_rental["running_balance"] == Decimal("260.00"), \
+            "Fixed funding: starts at £580, car rental -£320 = £260"
 
     finally:
         # Clean up
@@ -779,14 +762,19 @@ async def test_multi_currency_story_projection(mock_db):
 
 
 @pytest.mark.asyncio
-async def test_story_projection_with_hypothetical_filtering(mock_db):
+async def test_story_projection_fixed_mode_no_events(mock_db):
     """
-    Test story projection respects include_hypothetical parameter.
+    Test that fixed funding mode works correctly without creating events.
 
-    Validates that hypothetical funding events are correctly filtered
-    based on the include_hypothetical flag.
+    Per spec-compliant implementation, funding is baked into starting_balance,
+    not created as a separate event.
+
+    Validates:
+    - Fixed mode sets starting_balance = funding_amount
+    - No funding event is created
+    - Running balance calculated correctly from starting_balance
     """
-    # Create story with fixed funding (creates hypothetical funding event)
+    # Create story with fixed funding
     skiing_story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
         "name": "skiing-2025",
@@ -808,8 +796,6 @@ async def test_story_projection_with_hypothetical_filtering(mock_db):
 
     mock_db.stories = MockStories([skiing_story])
 
-    # Test 1: Default behavior (include_hypothetical not supported yet in story projection)
-    # Story projections always include their own hypothetical funding events
     result = await calculate_story_projection(
         story_id=str(skiing_story["_id"]),
         start_date=date(2024, 12, 23),
@@ -817,16 +803,20 @@ async def test_story_projection_with_hypothetical_filtering(mock_db):
         db=mock_db
     )
 
-    # Should have hypothetical funding event
-    assert len(result) >= 1, "Should have at least funding event"
-    funding = result[0]
-    assert funding["is_hypothetical"] is True, \
-        "Funding event should be hypothetical"
-    assert funding["description"] == "Story funding: skiing-2025"
+    # Should have 1 baseline event (salary on Dec 28)
+    assert len(result) >= 1, "Should have at least salary event"
 
-    # Note: include_hypothetical parameter will be added to calculate_story_projection
-    # in Phase 2.4 for what-if scenarios. For now, story projections always include
-    # their own funding events regardless of hypothetical status.
+    # Verify no funding event was created
+    descriptions = [e.get("description", "") for e in result]
+    assert not any("funding" in d.lower() for d in descriptions), \
+        "Should not create funding event - funding is baked into starting_balance"
+
+    # Verify starting balance is correct (£500 from funding_amount)
+    salary_event = next((e for e in result if e["description"] == "salary"), None)
+    assert salary_event is not None, "Should have salary event"
+    # Expected: starting £500 + salary £3000 = £3500
+    assert salary_event["running_balance"] == Decimal("3500.00"), \
+        "Fixed mode: starting_balance £500 + salary £3000 = £3500"
 
 
 @pytest.mark.asyncio
