@@ -11,6 +11,7 @@ from typing import Annotated
 from api.config import MongoDB
 from api.models import Account, AccountCreate, AccountUpdate
 from api.repositories.accounts import AccountRepository
+from api.utils.auth import get_current_user
 
 router = APIRouter()
 
@@ -28,6 +29,7 @@ def get_account_repo() -> AccountRepository:
 
 @router.get("/accounts", response_model=list[Account])
 async def list_accounts(
+    current_user: dict = Depends(get_current_user),
     include_archived: Annotated[bool, Query(
         description="Include archived accounts in results"
     )] = False,
@@ -64,6 +66,7 @@ async def list_accounts(
 @router.get("/accounts/{account_id}", response_model=Account)
 async def get_account(
     account_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """
@@ -180,6 +183,7 @@ async def update_account(
 @router.delete("/accounts/{account_id}", status_code=204)
 async def delete_account(
     account_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """

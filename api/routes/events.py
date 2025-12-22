@@ -31,6 +31,7 @@ def get_event_repo() -> EventRepository:
 
 @router.get("/events", response_model=list[Event])
 async def list_events(
+    current_user: dict = Depends(get_current_user),
     story_id: Annotated[Optional[UUID], Query(
         description="Filter by story UUID"
     )] = None,
@@ -108,6 +109,7 @@ async def list_events(
 @router.get("/events/{event_id}", response_model=Event)
 async def get_event(
     event_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: EventRepository = Depends(get_event_repo)
 ):
     """
@@ -249,6 +251,7 @@ async def update_event(
 @router.delete("/events/{event_id}", status_code=204)
 async def delete_event(
     event_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: EventRepository = Depends(get_event_repo)
 ):
     """

@@ -31,6 +31,7 @@ def get_recurring_rule_repo() -> RecurringRuleRepository:
 
 @router.get("/recurring-rules", response_model=list[RecurringRule])
 async def list_recurring_rules(
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -59,6 +60,7 @@ async def list_recurring_rules(
 @router.get("/recurring-rules/{rule_id}", response_model=RecurringRule)
 async def get_recurring_rule(
     rule_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
@@ -195,6 +197,7 @@ async def update_recurring_rule(
 @router.delete("/recurring-rules/{rule_id}", status_code=204)
 async def delete_recurring_rule(
     rule_id: UUID,
+    current_user: dict = Depends(get_current_user),
     repo: RecurringRuleRepository = Depends(get_recurring_rule_repo)
 ):
     """
