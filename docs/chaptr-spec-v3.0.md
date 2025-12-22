@@ -1,5 +1,5 @@
 # CHAPTR - Personal Finance Projection System
-## Design Specification v2.8
+## Design Specification v3.0
 
 ---
 
@@ -162,24 +162,10 @@ skiing:       default_account = Kat Credit (CAD)
 
 Funding adjustments (`fixed` or `projected_plus`) create a **funding event** that transitions from hypothetical to real:
 
-**Architecture:** Funding events are the **single source of truth** for funding amounts. When a story has `fixed` or `projected_plus` funding mode:
-- Starting balance does NOT include the funding_amount
-- Instead, a funding event is created with `is_hypothetical=true`
-- This funding event participates in the running balance calculation just like any other event
-- Result: Clear audit trail showing exactly where the funding came from
-
-**Example: Fixed mode with $2,000 funding**
-```
-Starting balance:        $0
-+$2,000 funding [planned] → $2,000  (hypothetical event)
--$600 ski passes          → $1,400
--$450 equipment           → $950
-```
-
 **Before story starts:**
 - Funding event is marked as `[planned]`
 - Displayed with amber colouring
-- Does NOT appear in ALL view (hypothetical events excluded from ALL view)
+- Does NOT appear in ALL view
 - Warning shown: "⚠ This story has hypothetical funding"
 
 **When story starts (on next view load):**
@@ -485,23 +471,18 @@ for each date in range:
 
 ### Filtered Calculation (Story View)
 
-**Architecture Note:** Funding events are the single source of truth for funding amounts. The starting_balance does NOT include `funding_amount` - instead, a hypothetical funding event is created (see lines 163-182) that adds the funding to the running balance. This ensures a clear audit trail and consistent event-based calculation.
-
 ```
 if story.funding_mode == 'projected':
     starting_balance = calculate projected balance on story.start_date
-    # No funding event created
 else if story.funding_mode == 'fixed':
-    starting_balance = 0
-    # Create funding event for story.funding_amount (marked is_hypothetical=true)
+    starting_balance = story.funding_amount
 else if story.funding_mode == 'projected_plus':
-    starting_balance = calculate projected balance on story.start_date
-    # Create funding event for story.funding_amount (marked is_hypothetical=true)
+    starting_balance = projected balance + story.funding_amount
 
 for each date in story range:
     for each event on this date (baseline + this story):
         display event if (baseline OR this story)
-        running_balance += ALL events (including hidden stories and funding events)
+        running_balance += ALL events (including hidden stories)
         if balance changed by hidden events:
             record gap indicator with delta
 ```
@@ -743,6 +724,338 @@ Both roles can:
 - Add/edit events
 - Update account balances
 - Create/edit stories
+
+---
+
+## Authentication & User Management
+
+CHAPTR uses **JWT (JSON Web Token) authentication** for secure, self-contained user authentication.
+
+### Philosophy
+
+- **Self-contained** - No external auth services required
+- **Simple** - Username/password authentication for home use
+- **Stateless** - JWT tokens validated locally without session storage
+- **Future-ready** - Architected to support OAuth (Google) upgrade later
+
+### User Model
+
+Users are identified and tracked throughout the system for conflict resolution and audit trails.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID | Unique user identifier |
+| username | String | Display name ("Edward", "Katrina") - used in conflict UI |
+| password_hash | String | Bcrypt-hashed password (never stored in plain text) |
+| role | Enum | "admin" or "user" |
+| created_at | DateTime | When user account was created |
+| updated_at | DateTime | When user account was last modified |
+
+**Password Security:**
+- Passwords hashed with bcrypt algorithm
+- Minimum 8 characters (reasonable for home use)
+- Salt automatically included by bcrypt
+- Never stored or logged in plain text
+
+### Authentication Endpoints
+
+#### POST /api/auth/login
+
+User authentication and token issuance.
+
+**Request:**
+```json
+{
+    "username": "Edward",
+    "password": "password123"
+}
+```
+
+**Success Response (200):**
+```json
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "user": {
+        "id": "uuid-123",
+        "username": "Edward",
+        "role": "admin"
+    }
+}
+```
+
+**Error Response (401):**
+```json
+{
+    "detail": "Invalid credentials"
+}
+```
+
+#### GET /api/auth/me
+
+Retrieve current authenticated user information.
+
+**Request Header:**
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Success Response (200):**
+```json
+{
+    "id": "uuid-123",
+    "username": "Edward",
+    "role": "admin"
+}
+```
+
+**Error Response (401):**
+```json
+{
+    "detail": "Invalid token"
+}
+```
+
+#### POST /api/auth/logout (Optional)
+
+Client-side logout - server doesn't track sessions, so client simply discards token.
+
+**Implementation:** Frontend clears token from localStorage.
+
+### JWT Token Structure
+
+**Token Payload:**
+```json
+{
+    "sub": "uuid-123",          // User ID (subject)
+    "username": "Edward",        // Display name
+    "role": "admin",            // User role
+    "exp": 1735689600           // Expiration timestamp
+}
+```
+
+**Token Configuration:**
+- **Algorithm:** HS256 (HMAC with SHA-256)
+- **Secret Key:** Stored in `.env` file (generated with `openssl rand -hex 32`)
+- **Expiration:** 24 hours (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`)
+- **Signature:** Server validates token signature on each request
+
+### Authorization Mechanism
+
+**Endpoint Protection:**
+
+Every protected endpoint uses a `get_current_user` dependency to extract and validate the JWT token:
+
+```python
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
+
+async def get_current_user(token: str = Depends(security)):
+    """Extract and validate JWT token, return user info."""
+    try:
+        payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        return {
+            "id": payload.get("sub"),
+            "username": payload.get("username"),
+            "role": payload.get("role")
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# Usage in protected endpoints
+@router.get("/accounts")
+async def get_accounts(current_user: dict = Depends(get_current_user)):
+    # current_user automatically injected with user info from token
+    accounts = await db.accounts.find({}).to_list()
+    return accounts
+```
+
+**Admin-Only Endpoints:**
+
+Settings and user management endpoints require admin role:
+
+```python
+@router.put("/settings")
+async def update_settings(
+    settings: SettingsUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # ... update settings ...
+```
+
+### Client-Side Authentication Flow
+
+**Login:**
+```javascript
+// 1. User submits login form
+const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'Edward', password: 'password123' })
+});
+
+const data = await response.json();
+// { access_token: "eyJhbGc...", token_type: "bearer", user: {...} }
+
+// 2. Store token in localStorage
+localStorage.setItem('auth_token', data.access_token);
+localStorage.setItem('current_user', JSON.stringify(data.user));
+```
+
+**Authenticated Requests:**
+```javascript
+// Include token in Authorization header for all API requests
+const token = localStorage.getItem('auth_token');
+
+const response = await fetch('/api/accounts', {
+    headers: {
+        'Authorization': `Bearer ${token}`
+    }
+});
+```
+
+**Logout:**
+```javascript
+// Clear token from localStorage
+localStorage.removeItem('auth_token');
+localStorage.removeItem('current_user');
+```
+
+### User Tracking
+
+The authenticated user's ID is automatically used to populate audit fields:
+
+**Event Creation:**
+```python
+@router.post("/events")
+async def create_event(
+    event: EventCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    event_data = event.model_dump()
+    event_data["created_by"] = current_user["id"]  # Auto-populated
+    event_data["updated_by"] = current_user["id"]
+
+    await db.events.insert_one(event_data)
+```
+
+**Event Update:**
+```python
+@router.put("/events/{event_id}")
+async def update_event(
+    event_id: UUID,
+    event: EventUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    update_data = event.model_dump(exclude_unset=True)
+    update_data["updated_by"] = current_user["id"]  # Auto-populated
+    update_data["updated_at"] = datetime.now(timezone.utc)
+
+    await db.events.update_one({"id": str(event_id)}, {"$set": update_data})
+```
+
+### First User Setup
+
+**Bootstrap Problem:** How is the first admin user created?
+
+**Solution:** Admin setup script run once during initial deployment:
+
+```bash
+# Run setup script to create first admin user
+python scripts/create_first_user.py --username Edward --password <secure-password>
+```
+
+**Script behavior:**
+1. Check if any users exist in database
+2. If none exist, create admin user with provided credentials
+3. If users exist, exit with error (prevents accidental admin creation)
+
+### Security Considerations
+
+**For Home Server (2-3 users via VPN):**
+
+1. **HTTPS Required:**
+   - JWT tokens sent in Authorization headers
+   - HTTPS prevents token interception
+   - SSL pre-configured on home server ✅
+
+2. **Secret Key Management:**
+   - Generated once: `openssl rand -hex 32`
+   - Stored in `.env` file (not committed to git)
+   - Backed up securely
+   - 32-byte (256-bit) key for HS256 algorithm
+
+3. **Token Expiration:**
+   - 24-hour expiration (configurable)
+   - Balance: convenience (longer) vs security (shorter)
+   - Home use: 24h reasonable, less frequent re-auth needed
+
+4. **Password Storage:**
+   - Bcrypt hashing (industry standard)
+   - Automatic salt generation
+   - Configurable work factor (default: 12 rounds)
+   - No plain-text passwords ever stored or logged
+
+5. **Token Validation:**
+   - Every request validates token signature
+   - Expired tokens rejected automatically
+   - Invalid signatures rejected (tampering detected)
+
+### Future OAuth Upgrade Path
+
+**Architecture supports future Google OAuth integration:**
+
+**Provider Abstraction:**
+```python
+class AuthProvider:
+    async def authenticate(self, credentials) -> User
+    async def create_token(self, user: User) -> str
+
+class LocalAuthProvider(AuthProvider):
+    """Username/password auth (current)"""
+    # Existing implementation
+
+class GoogleAuthProvider(AuthProvider):
+    """Google OAuth (future)"""
+    async def authenticate(self, credentials):
+        # Verify Google OAuth token
+        google_user = await verify_google_token(credentials.oauth_token)
+        # Find or create user in local database
+        user = await get_or_create_user(google_user)
+        return user
+
+    async def create_token(self, user: User) -> str:
+        # Still use JWT for API (same format!)
+        return create_access_token(user.id, user.username, user.role)
+```
+
+**Key Points:**
+- API still uses JWT tokens internally (OAuth only for initial authentication)
+- User model remains unchanged (OAuth ID stored separately)
+- Client flow stays the same (still receives JWT token)
+- Can support both methods simultaneously (local + OAuth)
+- Gradual migration possible (per-user basis)
+
+### Dependencies
+
+**Python Packages (already in requirements.txt):**
+```python
+python-jose[cryptography]>=3.3.0  # JWT creation & validation
+passlib[bcrypt]>=1.7.4             # Password hashing
+python-multipart>=0.0.6            # Form data handling
+```
+
+**Environment Variables (.env):**
+```bash
+SECRET_KEY=<generated-with-openssl-rand-hex-32>
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440  # 24 hours
+```
 
 ---
 
@@ -1415,6 +1728,8 @@ For a household app with 2-3 users, conflicts are rare. When they happen, a simp
 | v2.6 | Dec 2024 | Added: multi-user conflict resolution (detect and resolve), conflict data structure, resolution UI patterns, created_by/updated_by tracking. Resolved all discussion topics. |
 | v2.7 | Dec 2024 | Updated stack: Alpine.js frontend, Dexie.js for IndexedDB, Workbox for service worker. Added architecture diagram, project structure, offline data flow, client-side calculation logic, initial load and sync strategy. |
 | v2.8 | Dec 2024 | Added: detailed sync protocol (push/pull phases), sync queue structure, change_log collection for tracking deletes, hard delete everywhere approach, change_log pruning (31 days), stale client handling with full_sync_required flag. |
+| v2.9 | Dec 2024 | Clarified funding event architecture: funding events are the single source of truth for funding amounts. Starting balance does NOT include funding_amount; instead a hypothetical funding event is created. Fixed contradiction between "Hypothetical Funding Lifecycle" and "Filtered Calculation" sections. Updated examples to show correct calculation flow. |
+| v3.0 | Dec 2024 | Added: Authentication & User Management with JWT-based authentication. User model schema (id, username, password_hash, role), authentication endpoints (POST /api/auth/login, GET /api/auth/me), authorization mechanism with get_current_user dependency, client-side auth flow, user tracking for created_by/updated_by fields, first user setup script, security considerations (bcrypt, HTTPS, token expiration), and future OAuth upgrade path with provider abstraction. Resolved all authentication gaps identified in specification. |
 
 ---
 
