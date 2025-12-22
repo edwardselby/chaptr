@@ -162,10 +162,24 @@ skiing:       default_account = Kat Credit (CAD)
 
 Funding adjustments (`fixed` or `projected_plus`) create a **funding event** that transitions from hypothetical to real:
 
+**Architecture:** Funding events are the **single source of truth** for funding amounts. When a story has `fixed` or `projected_plus` funding mode:
+- Starting balance does NOT include the funding_amount
+- Instead, a funding event is created with `is_hypothetical=true`
+- This funding event participates in the running balance calculation just like any other event
+- Result: Clear audit trail showing exactly where the funding came from
+
+**Example: Fixed mode with $2,000 funding**
+```
+Starting balance:        $0
++$2,000 funding [planned] → $2,000  (hypothetical event)
+-$600 ski passes          → $1,400
+-$450 equipment           → $950
+```
+
 **Before story starts:**
 - Funding event is marked as `[planned]`
 - Displayed with amber colouring
-- Does NOT appear in ALL view
+- Does NOT appear in ALL view (hypothetical events excluded from ALL view)
 - Warning shown: "⚠ This story has hypothetical funding"
 
 **When story starts (on next view load):**
@@ -471,18 +485,23 @@ for each date in range:
 
 ### Filtered Calculation (Story View)
 
+**Architecture Note:** Funding events are the single source of truth for funding amounts. The starting_balance does NOT include `funding_amount` - instead, a hypothetical funding event is created (see lines 163-182) that adds the funding to the running balance. This ensures a clear audit trail and consistent event-based calculation.
+
 ```
 if story.funding_mode == 'projected':
     starting_balance = calculate projected balance on story.start_date
+    # No funding event created
 else if story.funding_mode == 'fixed':
-    starting_balance = story.funding_amount
+    starting_balance = 0
+    # Create funding event for story.funding_amount (marked is_hypothetical=true)
 else if story.funding_mode == 'projected_plus':
-    starting_balance = projected balance + story.funding_amount
+    starting_balance = calculate projected balance on story.start_date
+    # Create funding event for story.funding_amount (marked is_hypothetical=true)
 
 for each date in story range:
     for each event on this date (baseline + this story):
         display event if (baseline OR this story)
-        running_balance += ALL events (including hidden stories)
+        running_balance += ALL events (including hidden stories and funding events)
         if balance changed by hidden events:
             record gap indicator with delta
 ```
