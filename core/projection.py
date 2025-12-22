@@ -298,9 +298,9 @@ async def calculate_story_projection(
     Algorithm (from spec: Projection Engine > Filtered Calculation):
         1. Get story funding_mode
         2. Calculate starting_balance based on mode:
-           - projected: calc balance on story.start_date
-           - fixed: use story.funding_amount
-           - projected_plus: projected + story.funding_amount
+           - projected: calc balance on story.start_date (no funding event)
+           - fixed: starting_balance = 0, funding event adds amount
+           - projected_plus: starting_balance = projected, funding event adds amount
         3. Fetch ALL events in date range (not just baseline + this story)
         4. Calculate running_balance using ALL events (including hidden stories)
         5. Display only visible events (baseline OR this story)
@@ -372,8 +372,8 @@ async def calculate_story_projection(
 
         # Create hypothetical funding event at story start
         # Use deterministic UUID based on story_id for consistent identification
-        from uuid import uuid5, NAMESPACE_DNS
-        funding_event_id = uuid5(NAMESPACE_DNS, f"funding-{story_id}")
+        from uuid import uuid5, NAMESPACE_OID
+        funding_event_id = uuid5(NAMESPACE_OID, f"funding-{story_id}")
 
         funding_event = {
             "_id": funding_event_id,

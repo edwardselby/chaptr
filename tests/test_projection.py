@@ -531,10 +531,11 @@ async def test_story_projection_fixed_funding_mode(mock_db):
     # Should have 1 baseline event (salary on Dec 28)
     assert len(result) >= 1, "Should have at least salary baseline event"
 
-    # Fixed mode: starting_balance = £500 (from story.funding_amount)
-    # No funding event created - funding is baked into starting_balance per spec
-    # First visible event should be salary (+£3000) on Dec 28
-    # Expected: £500 + £3000 = £3500
+    # Fixed mode: starting_balance = £0, funding event adds £500
+    # Funding event created with is_hypothetical=true per spec lines 163-182
+    # First visible event should be funding event (+£500) on Dec 23
+    # Then salary (+£3000) on Dec 28
+    # Expected: £0 + £500 funding + £3000 salary = £3500
     salary_event = next((e for e in result if e["description"] == "salary"), None)
     assert salary_event is not None, "Should have salary baseline event"
     assert salary_event["running_balance"] == Decimal("3500.00"), \
@@ -588,10 +589,11 @@ async def test_story_projection_projected_plus_funding_mode(mock_db):
         # Should have tyres + baseline events (no funding event)
         assert len(result) >= 1, "Should have tyres + baseline events"
 
-        # Projected_plus mode: starting_balance = projected + funding_amount
-        # No funding event created - funding is baked into starting_balance per spec
+        # Projected_plus mode: starting_balance = projected, funding event adds amount
+        # Funding event created with is_hypothetical=true per spec lines 163-182
         # Projected on Dec 22 (day before) = £12,890
-        # Plus funding: £12,890 + £1,000 = £13,890
+        # Funding event adds: £1,000
+        # Total after funding: £12,890 + £1,000 = £13,890
 
         # First event should be tyres on Dec 22
         tyres_event = next((e for e in result if e["description"] == "new tyres"), None)
