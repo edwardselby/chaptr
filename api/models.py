@@ -801,3 +801,49 @@ class ConflictResolution(BaseModel):
     """Conflict resolution request."""
     # TODO Phase 6: Add fields (resolution: 'kept_local' or 'kept_server')
     pass
+
+
+# ==================== Projection Models ====================
+
+class ProjectionResponse(BaseModel):
+    """
+    Projection response model for GET /api/projection endpoint.
+
+    Returns financial projection data including events with running balances,
+    optional warnings, and gap indicators for filtered views.
+
+    The projection shows how balances will change over time based on
+    scheduled events, account balances, and story configurations.
+    """
+    view: str = Field(
+        ...,
+        description="View mode: 'all', 'all_what_if', or story UUID"
+    )
+    start_date: date = Field(
+        ...,
+        description="Projection start date (YYYY-MM-DD)"
+    )
+    end_date: date = Field(
+        ...,
+        description="Projection end date (YYYY-MM-DD)"
+    )
+    starting_balance: Decimal = Field(
+        ...,
+        max_digits=19,
+        decimal_places=4,
+        description="Total balance at projection start (base currency)"
+    )
+    events: list[dict] = Field(
+        ...,
+        description="List of events with running balances and gap indicators"
+    )
+    warnings: Optional[list[dict]] = Field(
+        default=None,
+        description="Optional warnings (included if include_warnings=true)"
+    )
+    display_currency: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Currency used for display amounts"
+    )
