@@ -741,9 +741,8 @@ class ChangeLogEntry(BaseModel):
         description="Full entity snapshot (null for deletes)"
     )
     changed_by_user: UUID = Field(..., description="User who made the change")
-    changed_by_client: str = Field(
+    changed_by_client: UUID = Field(
         ...,
-        min_length=1,
         description="Client/device ID that made the change"
     )
     changed_at: datetime = Field(
