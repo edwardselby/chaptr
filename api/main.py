@@ -140,7 +140,7 @@ async def root():
 
 
 # Register route modules
-from api.routes import accounts, stories, events, sync, recurring_rules, auth
+from api.routes import accounts, stories, events, sync, recurring_rules, auth, projection
 from api.routes import settings as settings_routes
 
 app.include_router(auth.router, prefix="/api", tags=["authentication"])
@@ -150,3 +150,4 @@ app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
 app.include_router(recurring_rules.router, prefix="/api", tags=["recurring-rules"])
 app.include_router(sync.router, prefix="/api", tags=["sync"])
+app.include_router(projection.router, prefix="/api", tags=["projection"])
