@@ -272,8 +272,11 @@ async def calculate_story_starting_balance(
         return projected_balance + funding_amount
 
     else:
-        # Default to projected mode
-        return Decimal("0")
+        # Unknown funding mode - fail fast with clear error
+        raise ValueError(
+            f"Unknown funding_mode: '{funding_mode}'. "
+            f"Expected 'projected', 'fixed', or 'projected_plus'"
+        )
 
 
 async def calculate_story_projection(
