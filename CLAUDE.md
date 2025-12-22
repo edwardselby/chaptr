@@ -349,14 +349,27 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 
 **Rules:**
 1. **One line per modification** - Keep entries brief and focused
-2. **Task number prefix** - Start each line with project key and task ID: `CPTR-1:`
+2. **Task UUID prefix** - Start each line with project key and short task UUID (first 8 chars): `CPTR-33d1ec98:`
 3. **Use categories** - Only Added, Changed, Fixed, Removed
 4. **Version format** - Semantic versioning: MAJOR.MINOR.PATCH
 5. **Date format** - ISO 8601: YYYY-MM-DD
-6. **Group related tasks** - Multiple task IDs comma-separated: `CPTR-3, CPTR-4:`
+6. **Group related tasks** - Multiple task UUIDs comma-separated: `CPTR-33d1ec98, CPTR-d19e9e1f:`
 7. **Unreleased work** - All unreleased changes go under `[Unreleased]` section until release
 
 **Project Key:** `CPTR` (CHAPTR)
+
+**UUID Format:** First 8 characters of Taskwarrior UUID (use `task <id> info` to get UUID)
+
+**Getting Task UUID:**
+```bash
+# Get UUID for current/recent task
+task <id> info | grep UUID
+
+# Example output:
+UUID          33d1ec98-e36a-48f7-9ff5-3909e8fa7b0b
+
+# Use first 8 characters in changelog: CPTR-33d1ec98
+```
 
 **Workflow:**
 - During development: Add entries under `[Unreleased]`
@@ -367,9 +380,9 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 ## [Unreleased]
 
 ### Added
-- CPTR-1: Project directory structure with api, routes, core, tests
-- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
-- CPTR-3, CPTR-4: MongoDB connection configuration and health check
+- CPTR-33d1ec98: Project directory structure with api, routes, core, tests
+- CPTR-d19e9e1f: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-a1b2c3d4, CPTR-e5f6g7h8: MongoDB connection configuration and health check
 ```
 
 **Example (Released):**
@@ -377,11 +390,11 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 ## [0.1.0] - 2024-12-19
 
 ### Added
-- CPTR-1: Project directory structure with api, routes, core, tests
-- CPTR-2: Python dependencies: FastAPI, Motor, Pydantic, Pytest
-- CPTR-3, CPTR-4: MongoDB connection configuration and health check
-- CPTR-291: Route stubs for accounts, stories, events, sync endpoints
-- CPTR-290: Core module stubs for projection and reconciliation
+- CPTR-33d1ec98: Project directory structure with api, routes, core, tests
+- CPTR-d19e9e1f: Python dependencies: FastAPI, Motor, Pydantic, Pytest
+- CPTR-a1b2c3d4, CPTR-e5f6g7h8: MongoDB connection configuration and health check
+- CPTR-9f8e7d6c: Route stubs for accounts, stories, events, sync endpoints
+- CPTR-5b4a3c2d: Core module stubs for projection and reconciliation
 ```
 
 **What NOT to include:**
@@ -397,6 +410,105 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 
 ---
 
+## Git Workflow & Branching Strategy
+
+This project uses a **dev-based branching workflow** with the following structure:
+
+```
+main (production releases only)
+  ↑
+  └─ dev (primary development branch)
+      ↑
+      ├─ feature/phase1-accounts
+      ├─ feature/phase2-projection
+      └─ fix/reconciliation-bug
+```
+
+### Branch Hierarchy
+
+- **`main`** - Production-ready releases only. Protected branch.
+- **`dev`** - Primary development branch. All feature work merges here.
+- **`feature/*`** - Feature branches. Always branch from and merge back to `dev`.
+- **`fix/*`** - Bug fix branches. Always branch from and merge back to `dev`.
+
+### Creating a Feature Branch
+
+**✅ CORRECT - Branch from dev:**
+```bash
+# Ensure you're on dev
+git checkout dev
+git pull origin dev
+
+# Create feature branch
+git checkout -b feature/phase1-accounts
+
+# Work on your changes...
+git add -A
+git commit -m "CPTR-33d1ec98: Implement account endpoints"
+git push -u origin feature/phase1-accounts
+```
+
+**❌ WRONG - Do NOT branch from main:**
+```bash
+# This is INCORRECT for this project
+git checkout main
+git checkout -b feature/my-feature
+```
+
+### Creating a Pull Request
+
+**Always target the `dev` branch:**
+
+```bash
+# Create PR targeting dev branch (NOT main)
+gh pr create --base dev --title "Feature: Account endpoints" --body "$(cat <<'EOF'
+## Summary
+- CPTR-33d1ec98: Implemented account CRUD endpoints
+- CPTR-d19e9e1f: Added account repository with business logic
+
+## Test Plan
+- All unit tests passing
+- Manual validation with Postman
+- Checked PR review feedback
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+**⚠️ CRITICAL:**
+- **ALWAYS** use `--base dev` when creating PRs
+- **NEVER** create PRs targeting `main` unless doing a release
+
+### Workflow Summary
+
+**Standard Development Flow:**
+1. `git checkout dev` - Switch to dev branch
+2. `git pull origin dev` - Get latest changes
+3. `git checkout -b feature/my-feature` - Create feature branch from dev
+4. Make changes, commit, push
+5. `gh pr create --base dev` - Create PR targeting dev
+6. After PR approval and merge → delete feature branch
+7. `git checkout dev && git pull origin dev` - Get merged changes
+
+**Release Flow (main branch updates):**
+1. Only happens during official releases
+2. `dev` branch is merged to `main`
+3. See "Release Process Protocol" section for full details
+4. After release: `dev` is synced with `main`
+
+### Quick Reference
+
+| Action | Command | Base Branch |
+|--------|---------|-------------|
+| Create feature branch | `git checkout -b feature/X` | `dev` |
+| Create fix branch | `git checkout -b fix/X` | `dev` |
+| Create PR | `gh pr create --base dev` | `dev` |
+| After merge | `git checkout dev && git pull` | `dev` |
+| Release (rare) | Merge `dev` → `main` | `main` |
+
+---
+
 ## Getting Started
 
 ### For Development Sessions
@@ -408,17 +520,21 @@ This project follows a **concise, ticket-based changelog format** to prevent exc
 3. **Pick next task**: `task project:chaptr.backend-api next`
 4. **Read task details**: `task <id> info` ← Check for existing annotations/notes
 5. **Reference docs**: Open relevant spec sections
-6. **🚨 START TASK FIRST**: `task <id> start` ← **MANDATORY BEFORE ANY WORK**
-7. **Implement & test**: Follow spec and plan
+6. **Create feature branch**: `git checkout dev && git pull && git checkout -b feature/task-<id>-description`
+7. **🚨 START TASK FIRST**: `task <id> start` ← **MANDATORY BEFORE ANY WORK**
+8. **Implement & test**: Follow spec and plan
    - **Add annotations** as you work: `task <id> annotate "Implementation note"`
    - Track decisions, issues, TODOs discovered during implementation
-8. **Complete task**: `task <id> done`
-9. **After PR creation**: Check for review feedback (see PR Review Workflow below)
+9. **Complete task**: `task <id> done`
+10. **Create PR**: `gh pr create --base dev` (see Git Workflow & Branching Strategy section)
+11. **After PR creation**: Check for review feedback (see PR Review Workflow below)
 
 **CRITICAL REMINDERS:**
-- Step 6 is NOT optional. You MUST run `task <id> start` before beginning implementation. This updates the user's graphical UI to show the task as "in progress".
-- Step 7: Use annotations liberally to track implementation adjustments, decisions, and follow-up items discovered during work.
-- Step 9: After creating a PR, another agent may add review comments. Always check and address feedback.
+- Step 6: Always branch from `dev`, never from `main`
+- Step 7 is NOT optional. You MUST run `task <id> start` before beginning implementation. This updates the user's graphical UI to show the task as "in progress".
+- Step 8: Use annotations liberally to track implementation adjustments, decisions, and follow-up items discovered during work.
+- Step 10: Always use `--base dev` when creating PRs
+- Step 11: After creating a PR, another agent may add review comments. Always check and address feedback.
 
 ### Pull Request Review Workflow
 
