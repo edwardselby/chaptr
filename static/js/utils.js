@@ -208,3 +208,63 @@ export function clearAuth() {
 export function isAuthenticated() {
     return !!getToken();
 }
+
+/**
+ * Show toast notification
+ *
+ * @param {string} message - Message to display
+ * @param {string} type - Toast type: 'success' | 'error' | 'warning' | 'info'
+ * @param {number} duration - Duration in ms (default: 3000)
+ */
+export function showToast(message, type = 'info', duration = 3000) {
+    // Create toast container if it doesn't exist
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+
+    // Add to container
+    container.appendChild(toast);
+
+    // Trigger animation
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    // Remove after duration
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300); // Wait for fade out
+    }, duration);
+}
+
+/**
+ * Get mode-aware error message
+ *
+ * Returns appropriate error message based on current storage mode.
+ *
+ * @param {string} mode - Current storage mode ('full' | 'sync-only' | 'basic')
+ * @param {string} operation - Operation that failed (e.g., 'save account')
+ * @returns {string} Mode-aware error message
+ */
+export function getModeAwareErrorMessage(mode, operation) {
+    const messages = {
+        'full': `Failed to ${operation}. Changes queued for sync.`,
+        'sync-only': `Failed to ${operation}. Please check connection and try again.`,
+        'basic': `Failed to ${operation}. Refresh and retry.`
+    };
+
+    return messages[mode] || `Failed to ${operation}.`;
+}
+
+/**
+ * Alias for getClientId() for backward compatibility
+ * @returns {Promise<string>} Client ID
+ */
+export const generateClientId = getClientId;

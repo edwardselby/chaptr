@@ -46,6 +46,12 @@
         </div>
     </header>
 
+    <!-- Mode 3 Warning Banner -->
+    <div class="mode-3-warning" x-show="storage && storage.mode === 'basic'" x-cloak>
+        <span class="warning-icon">⚠</span>
+        <span>Limited mode - offline sync unavailable. Use HTTPS for full functionality.</span>
+    </div>
+
     <!-- Main Content Area -->
     <main class="main-content">
 
@@ -332,6 +338,25 @@
                             </div>
                         </section>
 
+                        <!-- Runtime Information -->
+                        <section class="section">
+                            <div class="runtime-info">
+                                <h3>Runtime Information</h3>
+                                <div class="info-row">
+                                    <span class="label">Mode:</span>
+                                    <span class="value" x-text="getModeDisplay()"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Capabilities:</span>
+                                    <span class="value" x-html="getCapabilitiesDisplay()"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Storage:</span>
+                                    <span class="value" x-text="getStorageDisplay()"></span>
+                                </div>
+                            </div>
+                        </section>
+
                         <!-- Preferences -->
                         <section class="section">
                             <div class="section-header">
@@ -615,6 +640,38 @@
         alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
         // Remove defer to prevent double initialization
         document.head.appendChild(alpineScript);
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('[CHAPTR] Service Worker registered:', registration.scope);
+
+                        // Listen for background sync messages
+                        navigator.serviceWorker.addEventListener('message', event => {
+                            if (event.data.type === 'BACKGROUND_SYNC') {
+                                console.log('[CHAPTR] Background sync triggered');
+                                // Trigger Alpine.js manual sync if app is available
+                                if (window.Alpine && window.Alpine.store) {
+                                    const appInstance = document.querySelector('[x-data]');
+                                    if (appInstance) {
+                                        appInstance.__x.$data.manualSync();
+                                    }
+                                }
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.warn('[CHAPTR] Service Worker registration failed:', error.message);
+                        console.warn('[CHAPTR] Static assets won\'t cache - app will still work');
+                    });
+            });
+        } else {
+            console.warn('[CHAPTR] Service Worker not supported - static assets won\'t cache');
+        }
     </script>
 
 </body>

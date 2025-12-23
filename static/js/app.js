@@ -14,10 +14,12 @@ import {
     apiRequest,
     getClientId,
     clearAuth,
-    generateUUID
+    generateUUID,
+    showToast
 } from './utils.js';
 
 import { db } from './db.js';
+import { storage } from './storage-adapter.js';
 import { calculateProjection } from './projection.js';
 
 /**
@@ -27,6 +29,9 @@ import { calculateProjection } from './projection.js';
 window.app = function() {
     return {
         // ===== STATE =====
+
+        // Storage adapter (exposed for UI access)
+        storage: storage,
 
         // Navigation
         currentScreen: 'dashboard',
@@ -84,7 +89,15 @@ window.app = function() {
             // Load user from localStorage
             await this.loadUser();
 
-            // Load data (from Dexie or sync)
+            // Initialize storage adapter (detects mode and bootstraps)
+            await storage.init();
+
+            // Add mode-3-active class to body if in Basic mode (for CSS styling)
+            if (storage.mode === 'basic') {
+                document.body.classList.add('mode-3-active');
+            }
+
+            // Load data from storage adapter
             await this.loadData();
 
             // Setup network reconnection handler - auto-retry sync when online
@@ -110,44 +123,26 @@ window.app = function() {
         },
 
         /**
-         * Load data from Dexie or trigger full sync
+         * Load data from storage adapter
          */
         async loadData() {
             try {
-                // Check if Dexie has data
-                const accountCount = await db.accounts.count();
+                // Load from storage adapter (handles all 3 modes)
+                this.stories = await storage.getStories();
+                this.accounts = await storage.getAccounts();
+                this.events = await storage.getEvents();
+                this.users = []; // Users still from Dexie (admin only)
+                this.settings = await storage.getSettings() || { base_currency: 'GBP' };
 
-                if (accountCount === 0) {
-                    console.log('No local data - Phase 3 sync not implemented yet');
-                    // Phase 3: await this.fullSync();
-
-                    // For now, just load empty data
-                    await this.loadFromDexie();
-                } else {
-                    console.log('Loading from Dexie...');
-                    await this.loadFromDexie();
+                // Load users from Dexie if Mode 1
+                if (storage.mode === 'full') {
+                    this.users = await db.users.toArray();
                 }
-            } catch (error) {
-                console.error('Error loading data:', error);
-            }
-        },
-
-        /**
-         * Load data from Dexie
-         */
-        async loadFromDexie() {
-            try {
-                this.stories = await db.stories.toArray();
-                this.accounts = await db.accounts.toArray();
-                this.events = await db.events.toArray();
-                this.users = await db.users.toArray();
-                const settingsDoc = await db.settings.get(1);
-                this.settings = settingsDoc || { base_currency: 'GBP' };
 
                 // Initialize settings form
                 this.settingsForm = { ...this.settings };
 
-                console.log(`Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
+                console.log(`[CHAPTR] Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
                 // Update dashboard projection summary
                 await this.updateDashboardProjection();
@@ -543,10 +538,43 @@ window.app = function() {
          */
         async updateSyncQueueCount() {
             try {
-                this.syncQueueCount = await db.sync_queue.count();
+                this.syncQueueCount = await storage.getSyncQueueCount();
             } catch (error) {
                 console.error('Error counting sync queue:', error);
                 this.syncQueueCount = 0;
+            }
+        },
+
+        /**
+         * Manual sync - trigger sync of pending changes
+         */
+        async manualSync() {
+            if (this.isSyncing) {
+                console.log('[CHAPTR] Sync already in progress');
+                return;
+            }
+
+            try {
+                this.isSyncing = true;
+
+                const result = await storage.manualSync();
+
+                if (result.conflicts && result.conflicts > 0) {
+                    showToast(`Sync complete: ${result.conflicts} conflicts need resolution`, 'warning', 5000);
+                } else if (result.applied && result.applied > 0) {
+                    showToast(`Synced ${result.applied} changes`, 'success');
+                }
+
+                // Update queue count
+                await this.updateSyncQueueCount();
+
+                // Reload data to reflect server changes
+                await this.loadData();
+
+            } catch (error) {
+                console.error('[CHAPTR] Sync failed:', error);
+            } finally {
+                this.isSyncing = false;
             }
         },
 
@@ -597,112 +625,51 @@ window.app = function() {
         },
 
         /**
-         * Create new account (CRUD implementation)
+         * Create new account (via storage adapter)
          */
         async createAccount() {
-            // Generate local UUID
-            const localId = generateUUID();
-            const now = new Date().toISOString();
-
             const accountData = {
-                id: localId,
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
                 current_balance: parseFloat(this.accountForm.current_balance || 0),
-                is_default: this.accountForm.is_default || false,
-                is_archived: false,
-                rate_to_base: 1.0, // Will be calculated by backend based on settings
-                created_at: now,
-                updated_at: now
+                is_default: this.accountForm.is_default || false
             };
 
-            // 1. Optimistic Dexie write
-            await db.accounts.add(accountData);
+            // Use storage adapter (handles all 3 modes)
+            await storage.createAccount(accountData);
 
-            // 2. Queue for sync
-            await db.queueChange('account', localId, 'create', accountData);
-            await this.updateSyncQueueCount(); // Update UI indicator immediately
+            // Update sync queue count for UI indicator
+            await this.updateSyncQueueCount();
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest('/api/accounts', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            name: accountData.name,
-                            currency: accountData.currency,
-                            current_balance: accountData.current_balance,
-                            is_default: accountData.is_default
-                        })
-                    });
-
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        // Delete temp local record and add full server data
-                        await db.accounts.delete(localId);
-                        await db.accounts.put(serverData);
-                        // Clear sync queue
-                        await db.sync_queue.where({ entity_id: localId }).delete();
-                        await this.updateSyncQueueCount(); // Update UI indicator after sync
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // Reload data
+            await this.loadData();
         },
 
         /**
-         * Update existing account (CRUD implementation)
+         * Update existing account (via storage adapter)
          */
         async updateAccount() {
             const accountId = this.accountForm.id;
-            const now = new Date().toISOString();
 
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
                 current_balance: parseFloat(this.accountForm.current_balance || 0),
-                is_default: this.accountForm.is_default || false,
-                updated_at: now
+                is_default: this.accountForm.is_default || false
             };
 
-            // 1. Optimistic Dexie update
-            await db.accounts.update(accountId, updates);
+            // Use storage adapter (handles all 3 modes)
+            await storage.updateAccount(accountId, updates);
 
-            // 2. Queue for sync
-            await db.queueChange('account', accountId, 'update', updates);
-            await this.updateSyncQueueCount(); // Update UI indicator immediately
+            // Update sync queue count for UI indicator
+            await this.updateSyncQueueCount();
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/accounts/${accountId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify(updates)
-                    });
-
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        // Replace with full server data to preserve all server fields
-                        await db.accounts.put(serverData);
-                        // Clear sync queue
-                        await db.sync_queue.where({ entity_id: accountId, action: 'update' }).delete();
-                        await this.updateSyncQueueCount(); // Update UI indicator after sync
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // Reload data
+            await this.loadData();
         },
 
         /**
-         * Delete account (CRUD implementation)
+         * Delete account (via storage adapter)
          */
         async deleteAccount() {
             if (!confirm(`Delete account "${this.accountForm.name}"?`)) {
@@ -711,39 +678,17 @@ window.app = function() {
 
             try {
                 const accountId = this.accountForm.id;
-                const now = new Date().toISOString();
 
-                // 1. Mark as archived in Dexie (soft delete)
-                await db.accounts.update(accountId, {
-                    is_archived: true,
-                    updated_at: now
-                });
+                // Use storage adapter (handles all 3 modes)
+                await storage.deleteAccount(accountId);
 
-                // 2. Queue for sync
-                await db.queueChange('account', accountId, 'delete', { is_archived: true });
-                await this.updateSyncQueueCount(); // Update UI indicator immediately
-
-                // 3. API call (online mode only)
-                if (navigator.onLine) {
-                    try {
-                        const response = await apiRequest(`/api/accounts/${accountId}`, {
-                            method: 'DELETE'
-                        });
-
-                        if (response.ok) {
-                            // Clear sync queue
-                            await db.sync_queue.where({ entity_id: accountId, action: 'delete' }).delete();
-                            await this.updateSyncQueueCount(); // Update UI indicator after sync
-                        }
-                    } catch (apiError) {
-                        console.warn('API call failed, queued for sync:', apiError);
-                    }
-                }
+                // Update sync queue count for UI indicator
+                await this.updateSyncQueueCount();
 
                 this.showAccountModal = false;
 
-                // 4. Reload data
-                await this.loadFromDexie();
+                // Reload data
+                await this.loadData();
 
             } catch (error) {
                 console.error('Error deleting account:', error);
@@ -1464,7 +1409,7 @@ window.app = function() {
 
             const story = this.stories.find(s => s.id === this.currentView);
             alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
-        }
+        },
 
         // ===== FORMATTING HELPERS =====
 
@@ -1531,6 +1476,48 @@ window.app = function() {
             const drift = this.accountsTotal - this.projectionToday;
             const sign = drift >= 0 ? '+' : '';
             return sign + formatCurrency(drift, this.settings.base_currency);
+        },
+
+        // ===== MODE DISPLAY HELPERS =====
+
+        /**
+         * Get mode display text for Settings screen
+         * @returns {string} Mode display text
+         */
+        getModeDisplay() {
+            const modes = {
+                'full': 'Full (Offline-capable)',
+                'sync-only': 'Sync-Only (Online required)',
+                'basic': 'Basic (Limited)'
+            };
+            return modes[storage.mode] || 'Unknown';
+        },
+
+        /**
+         * Get capabilities display HTML for Settings screen
+         * @returns {string} HTML string with checkmarks/crosses
+         */
+        getCapabilitiesDisplay() {
+            const offline = storage.mode === 'full';
+            const sync = storage.mode !== 'basic';
+
+            const offlineIcon = offline ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
+            const syncIcon = sync ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
+
+            return `${offlineIcon} Offline sync &nbsp;&nbsp; ${syncIcon} Conflict detection`;
+        },
+
+        /**
+         * Get storage type display for Settings screen
+         * @returns {string} Storage type text
+         */
+        getStorageDisplay() {
+            const storageTypes = {
+                'full': `IndexedDB (Dexie ${Dexie.version})`,
+                'sync-only': 'Memory (cleared on refresh)',
+                'basic': 'Memory (cleared on refresh)'
+            };
+            return storageTypes[storage.mode] || 'Unknown';
         },
 
         // ===== AUTH =====
