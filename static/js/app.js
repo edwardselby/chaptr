@@ -13,7 +13,8 @@ import {
     isPast,
     apiRequest,
     getClientId,
-    clearAuth
+    clearAuth,
+    generateUUID
 } from './utils.js';
 
 import { db } from './db.js';
@@ -554,15 +555,15 @@ window.app = function() {
          */
         async saveAccount() {
             try {
-                // For PR2, this will integrate with Dexie + API
-                // For now, just close modal
-                console.log('Save account:', this.accountForm);
-                this.showAccountModal = false;
+                const isEdit = !!this.accountForm.id;
 
-                // TODO PR2: Implement CRUD
-                // - Write to Dexie
-                // - Call API endpoint
-                // - Reload data
+                if (isEdit) {
+                    await this.updateAccount();
+                } else {
+                    await this.createAccount();
+                }
+
+                this.showAccountModal = false;
 
             } catch (error) {
                 console.error('Error saving account:', error);
@@ -571,7 +572,115 @@ window.app = function() {
         },
 
         /**
-         * Delete account
+         * Create new account (CRUD implementation)
+         */
+        async createAccount() {
+            // Generate local UUID
+            const localId = generateUUID();
+            const now = new Date().toISOString();
+
+            const accountData = {
+                id: localId,
+                name: this.accountForm.name,
+                currency: this.accountForm.currency.toUpperCase(),
+                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                is_default: this.accountForm.is_default || false,
+                is_archived: false,
+                rate_to_base: 1.0, // Will be calculated by backend based on settings
+                last_updated: now,
+                created_at: now,
+                updated_at: now
+            };
+
+            // 1. Optimistic Dexie write
+            await db.accounts.add(accountData);
+
+            // 2. Queue for sync
+            await db.queueChange('account', localId, 'create', accountData);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest('/api/accounts', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: accountData.name,
+                            currency: accountData.currency,
+                            current_balance: accountData.current_balance,
+                            is_default: accountData.is_default
+                        })
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        // Update with server ID and data
+                        await db.accounts.update(localId, {
+                            id: serverData.id,
+                            rate_to_base: serverData.rate_to_base,
+                            updated_at: serverData.updated_at
+                        });
+                        // Clear sync queue
+                        await db.sync_queue.where({ entity_id: localId }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Update existing account (CRUD implementation)
+         */
+        async updateAccount() {
+            const accountId = this.accountForm.id;
+            const now = new Date().toISOString();
+
+            const updates = {
+                name: this.accountForm.name,
+                currency: this.accountForm.currency.toUpperCase(),
+                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                is_default: this.accountForm.is_default || false,
+                last_updated: now,
+                updated_at: now
+            };
+
+            // 1. Optimistic Dexie update
+            await db.accounts.update(accountId, updates);
+
+            // 2. Queue for sync
+            await db.queueChange('account', accountId, 'update', updates);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest(`/api/accounts/${accountId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(updates)
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        await db.accounts.update(accountId, {
+                            rate_to_base: serverData.rate_to_base,
+                            updated_at: serverData.updated_at
+                        });
+                        // Clear sync queue
+                        await db.sync_queue.where({ entity_id: accountId, action: 'update' }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Delete account (CRUD implementation)
          */
         async deleteAccount() {
             if (!confirm(`Delete account "${this.accountForm.name}"?`)) {
@@ -579,14 +688,38 @@ window.app = function() {
             }
 
             try {
-                // For PR2, this will integrate with Dexie + API
-                console.log('Delete account:', this.accountForm.id);
+                const accountId = this.accountForm.id;
+                const now = new Date().toISOString();
+
+                // 1. Mark as archived in Dexie (soft delete)
+                await db.accounts.update(accountId, {
+                    is_archived: true,
+                    updated_at: now
+                });
+
+                // 2. Queue for sync
+                await db.queueChange('account', accountId, 'delete', { is_archived: true });
+
+                // 3. API call (online mode only)
+                if (navigator.onLine) {
+                    try {
+                        const response = await apiRequest(`/api/accounts/${accountId}`, {
+                            method: 'DELETE'
+                        });
+
+                        if (response.ok) {
+                            // Clear sync queue
+                            await db.sync_queue.where({ entity_id: accountId, action: 'delete' }).delete();
+                        }
+                    } catch (apiError) {
+                        console.warn('API call failed, queued for sync:', apiError);
+                    }
+                }
+
                 this.showAccountModal = false;
 
-                // TODO PR2: Implement delete
-                // - Mark as archived in Dexie
-                // - Call API endpoint
-                // - Reload data
+                // 4. Reload data
+                await this.loadFromDexie();
 
             } catch (error) {
                 console.error('Error deleting account:', error);
@@ -618,6 +751,355 @@ window.app = function() {
                 date: date.toISOString().split('T')[0],
                 balance: account.current_balance // Mock: just use current balance
             }));
+        },
+
+        // ===== STORIES =====
+
+        /**
+         * Create new story (CRUD implementation)
+         * @param {object} storyData - Story form data
+         */
+        async createStory(storyData) {
+            const localId = generateUUID();
+            const now = new Date().toISOString();
+
+            const story = {
+                id: localId,
+                name: storyData.name,
+                start_date: storyData.start_date,
+                end_date: storyData.end_date,
+                display_currency: storyData.display_currency || this.settings.base_currency,
+                funding_mode: storyData.funding_mode || 'projected',
+                funding_amount: parseFloat(storyData.funding_amount || 0),
+                goal_type: storyData.goal_type || null,
+                goal_amount: parseFloat(storyData.goal_amount || 0),
+                default_account_id: storyData.default_account_id || null,
+                is_archived: false,
+                created_at: now,
+                updated_at: now
+            };
+
+            // 1. Optimistic Dexie write
+            await db.stories.add(story);
+
+            // 2. Queue for sync
+            await db.queueChange('story', localId, 'create', story);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest('/api/stories', {
+                        method: 'POST',
+                        body: JSON.stringify(story)
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        await db.stories.update(localId, {
+                            id: serverData.id,
+                            updated_at: serverData.updated_at
+                        });
+                        await db.sync_queue.where({ entity_id: localId }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Update existing story (CRUD implementation)
+         * @param {string} storyId - Story UUID
+         * @param {object} updates - Story updates
+         */
+        async updateStory(storyId, updates) {
+            const now = new Date().toISOString();
+
+            const storyUpdates = {
+                ...updates,
+                updated_at: now
+            };
+
+            // 1. Optimistic Dexie update
+            await db.stories.update(storyId, storyUpdates);
+
+            // 2. Queue for sync
+            await db.queueChange('story', storyId, 'update', storyUpdates);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest(`/api/stories/${storyId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(storyUpdates)
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        await db.stories.update(storyId, {
+                            updated_at: serverData.updated_at
+                        });
+                        await db.sync_queue.where({ entity_id: storyId, action: 'update' }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Delete story with cascade warning (CRUD implementation)
+         * @param {string} storyId - Story UUID
+         */
+        async deleteStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) return;
+
+            // Check for associated events
+            const associatedEvents = this.events.filter(e => e.story_id === storyId);
+
+            if (associatedEvents.length > 0) {
+                const confirmMsg = `Delete story "${story.name}"?\n\nThis will also delete ${associatedEvents.length} associated event(s).`;
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+
+                // Delete associated events
+                for (const event of associatedEvents) {
+                    await this.deleteEvent(event.id);
+                }
+            } else {
+                if (!confirm(`Delete story "${story.name}"?`)) {
+                    return;
+                }
+            }
+
+            const now = new Date().toISOString();
+
+            // 1. Mark as archived in Dexie
+            await db.stories.update(storyId, {
+                is_archived: true,
+                updated_at: now
+            });
+
+            // 2. Queue for sync
+            await db.queueChange('story', storyId, 'delete', { is_archived: true });
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest(`/api/stories/${storyId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await db.sync_queue.where({ entity_id: storyId, action: 'delete' }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        // ===== EVENTS =====
+
+        /**
+         * Resolve account ID using hierarchy (spec: Account Resolution at Creation)
+         * 1. User-selected account
+         * 2. Story default account
+         * 3. Global default account
+         * @param {string|null} selectedAccountId - User-selected account ID
+         * @param {string|null} storyId - Story ID for this event
+         * @returns {string|null} Resolved account ID
+         */
+        resolveAccountId(selectedAccountId, storyId) {
+            // 1. User-selected account
+            if (selectedAccountId) {
+                return selectedAccountId;
+            }
+
+            // 2. Story default account
+            if (storyId) {
+                const story = this.stories.find(s => s.id === storyId);
+                if (story && story.default_account_id) {
+                    return story.default_account_id;
+                }
+            }
+
+            // 3. Global default account
+            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
+            return defaultAccount ? defaultAccount.id : null;
+        },
+
+        /**
+         * Create new event (CRUD implementation)
+         * @param {object} eventData - Event form data
+         */
+        async createEvent(eventData) {
+            const localId = generateUUID();
+            const now = new Date().toISOString();
+
+            // Resolve account using hierarchy
+            const accountId = this.resolveAccountId(
+                eventData.account_id,
+                eventData.story_id
+            );
+
+            if (!accountId) {
+                alert('No account available. Please create an account first.');
+                return;
+            }
+
+            // Get account for currency
+            const account = this.accounts.find(a => a.id === accountId);
+            const currency = account ? account.currency : this.settings.base_currency;
+
+            const event = {
+                id: localId,
+                description: eventData.description,
+                amount: parseFloat(eventData.amount),
+                date: eventData.date,
+                account_id: accountId,
+                currency: currency,
+                rate_to_base: account ? account.rate_to_base : 1.0,
+                story_id: eventData.story_id || null,
+                is_baseline: eventData.is_baseline || false,
+                is_hypothetical: eventData.is_hypothetical || false,
+                event_type: eventData.event_type || 'OUTGOING',
+                notes: eventData.notes || '',
+                created_at: now,
+                updated_at: now
+            };
+
+            // 1. Optimistic Dexie write
+            await db.events.add(event);
+
+            // 2. Queue for sync
+            await db.queueChange('event', localId, 'create', event);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest('/api/events', {
+                        method: 'POST',
+                        body: JSON.stringify(event)
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        await db.events.update(localId, {
+                            id: serverData.id,
+                            updated_at: serverData.updated_at
+                        });
+                        await db.sync_queue.where({ entity_id: localId }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Update existing event (CRUD implementation)
+         * @param {string} eventId - Event UUID
+         * @param {object} updates - Event updates
+         */
+        async updateEvent(eventId, updates) {
+            const now = new Date().toISOString();
+
+            const eventUpdates = {
+                ...updates,
+                updated_at: now
+            };
+
+            // If account changed, update currency and rate
+            if (updates.account_id) {
+                const account = this.accounts.find(a => a.id === updates.account_id);
+                if (account) {
+                    eventUpdates.currency = account.currency;
+                    eventUpdates.rate_to_base = account.rate_to_base;
+                }
+            }
+
+            // 1. Optimistic Dexie update
+            await db.events.update(eventId, eventUpdates);
+
+            // 2. Queue for sync
+            await db.queueChange('event', eventId, 'update', eventUpdates);
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest(`/api/events/${eventId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(eventUpdates)
+                    });
+
+                    if (response.ok) {
+                        const serverData = await response.json();
+                        await db.events.update(eventId, {
+                            updated_at: serverData.updated_at
+                        });
+                        await db.sync_queue.where({ entity_id: eventId, action: 'update' }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
+        },
+
+        /**
+         * Delete event (CRUD implementation)
+         * @param {string} eventId - Event UUID
+         */
+        async deleteEvent(eventId) {
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) return;
+
+            if (!confirm(`Delete event "${event.description}"?`)) {
+                return;
+            }
+
+            const now = new Date().toISOString();
+
+            // 1. Mark as deleted in Dexie (or actually delete)
+            await db.events.delete(eventId);
+
+            // 2. Queue for sync
+            await db.queueChange('event', eventId, 'delete', { deleted_at: now });
+
+            // 3. API call (online mode only)
+            if (navigator.onLine) {
+                try {
+                    const response = await apiRequest(`/api/events/${eventId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await db.sync_queue.where({ entity_id: eventId, action: 'delete' }).delete();
+                    }
+                } catch (apiError) {
+                    console.warn('API call failed, queued for sync:', apiError);
+                }
+            }
+
+            // 4. Reload data
+            await this.loadFromDexie();
         },
 
         // ===== SETTINGS =====
