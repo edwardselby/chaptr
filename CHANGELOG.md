@@ -12,14 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: client_id parameter on all repository mutation methods
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: _get_user_id() helper in BaseRepository for DRY user extraction
+- CPTR-e6875013, CPTR-59348847: Sync protocol models (SyncChange, SyncRequest, SyncConflict, SyncServerChange, SyncResponse, FullSyncResponse)
+- CPTR-e6875013, CPTR-59348847: POST /api/sync endpoint with bidirectional push/pull phases and conflict detection
+- CPTR-e6875013, CPTR-59348847: GET /api/sync/full endpoint for stale client recovery with user-filtered dataset
+- CPTR-e6875013, CPTR-59348847: Conflict detection (edit_edit, delete_edit, business_rule) with base_updated_at timestamp comparison
+- CPTR-e6875013, CPTR-59348847: Stale client detection with full_sync_required flag when last_sync_at older than oldest change_log entry
 
 ### Changed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All repositories log changes to change_log collection after create/update/delete operations
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All route handlers pass client_id=None for backward compatibility with REST API
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: log_change() omits None values per MongoDB best practice (reduces document size)
+- CPTR-e6875013, CPTR-59348847: Pull phase explicitly includes REST API changes (client_id=None) and other clients' changes via $or query
+- CPTR-e6875013, CPTR-59348847: Full sync endpoint filters all entities by created_by field to prevent cross-user data leakage
 
 ### Fixed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Replaced deprecated datetime.utcnow() with utc_now() for timezone-aware timestamps
+- CPTR-e6875013, CPTR-59348847: Settings access in full sync uses get_or_create_default() singleton pattern
+- CPTR-e6875013, CPTR-59348847: handle_update returns None for idempotency when entity already deleted by another client
+- CPTR-e6875013, CPTR-59348847: FullSyncResponse.sync_timestamp type changed to datetime for consistency with SyncResponse
 
 
 ## [0.0.5] - 2025-12-22
