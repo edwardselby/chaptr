@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-6969cf85: Accounts screen with CRUD operations (create, edit, delete accounts with validation)
+- CPTR-6969cf85: Settings screen with admin-only access (user management, preferences, conversion rates, backup/restore)
+- CPTR-6969cf85: Command bar with context-sensitive actions (+ Event/Account, $ Balance/Funding, 🔄 Sync, ? Help)
+- CPTR-6969cf85: Account modal with validation (name, currency, balance, default flag)
+- CPTR-6969cf85: User management modal for admin users (username, admin flag editing)
+- CPTR-6969cf85: Backup/restore functionality with JSON download/upload and validation
+- CPTR-6969cf85: Pending sync UI indicator (amber badge in header showing queued changes count, clickable to trigger sync)
+- CPTR-6969cf85: Auto-retry on network reconnection (window 'online' event listener triggers sync if queue not empty)
+
+### Changed
+- CPTR-6969cf85: Navigation aligned with mockup design (removed icon-based tab bar, added MANAGE and VIEW ALL action buttons)
+- CPTR-6969cf85: Command bar styling updated to match mockup (grid layout, background/borders on buttons, proper spacing)
+- CPTR-6969cf85: Account resolution hierarchy implemented (user-selected → story default → global default)
+- CPTR-6969cf85: Event rate_to_base calculation changed to lookup from settings.rates[currency] instead of account field
+- CPTR-6969cf85: Account update changed from partial db.update() to full db.put() to preserve all server fields
+- CPTR-6969cf85: Removed last_updated field from accounts (using only updated_at per spec)
+- CPTR-6969cf85: Alpine.js initialization fixed (removed explicit x-init to prevent double initialization)
+
+### Fixed
+- CPTR-6969cf85: JavaScript syntax error (missing comma after editFunding method)
+- CPTR-6969cf85: Command bar class name mismatch (HTML used .cmd-btn, CSS expected .command-btn - reverted to .cmd-btn per mockup)
+- CPTR-6969cf85: Backup restore validation added (10MB file size limit, comprehensive schema validation for version, arrays, field types)
+- CPTR-6969cf85: Currency input auto-uppercase (added text-transform: uppercase CSS)
+- CPTR-6969cf85: Sync queue count tracking (updates after CRUD operations and successful API syncs)
+
 ## [0.0.6] - 2025-12-22
 
 ### Added
