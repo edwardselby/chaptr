@@ -424,7 +424,10 @@ class StorageAdapter {
                 }
             } catch (error) {
                 console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
-                // Check queue limit
+                // Check queue limit AFTER write (intentional design choice):
+                // Allows user's current operation to complete (501st item allowed)
+                // Then blocks future operations, forcing sync before continuing
+                // This ensures user doesn't lose their current work
                 await this.checkQueueLimit();
             }
         }
@@ -524,6 +527,7 @@ class StorageAdapter {
                 }
             } catch (error) {
                 console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
+                // Queue limit check after write (see createAccount_Full for rationale)
                 await this.checkQueueLimit();
             }
         }
@@ -626,6 +630,7 @@ class StorageAdapter {
                 }
             } catch (error) {
                 console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
+                // Queue limit check after write (see createAccount_Full for rationale)
                 await this.checkQueueLimit();
             }
         }
@@ -686,7 +691,9 @@ class StorageAdapter {
         if (count === 400) {
             showToast('⚠ 400+ pending changes. Sync recommended.', 'warning', 5000);
         } else if (count >= 500) {
-            // Hard block - show modal (to be implemented in UI layer)
+            // Hard block at 500 changes - modal UI deferred to Phase 7
+            // TODO Phase 7: Implement modal with "Sync Now" / "Cancel" buttons
+            // For now: Error thrown, caught by app.js, prevents operation
             throw new Error('QUEUE_LIMIT_REACHED');
         }
     }
