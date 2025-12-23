@@ -147,19 +147,12 @@ class SettingsRepository(BaseRepository[Settings]):
             {"$set": {k: convert_decimals(v) for k, v in update_dict.items()}}
         )
 
-        # Get updated settings for change log
+        # Get updated settings
         updated_settings = await self.get_or_create_default()
 
-        # Log change for sync (prefer current_user, fallback to updated_by)
-        user_id = self._get_user_id(current_user) or updated_by
-        await self.log_change(
-            "settings",
-            existing.id,
-            "update",
-            updated_settings.model_dump(mode="json"),
-            user_id,
-            client_id
-        )
+        # NOTE: Settings changes are NOT logged to change_log per spec
+        # Settings are a global singleton shared across all devices
+        # Sync happens through /api/settings endpoint, not change_log protocol
 
         # Return updated settings
         return updated_settings
