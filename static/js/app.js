@@ -92,6 +92,11 @@ window.app = function() {
             // Initialize storage adapter (detects mode and bootstraps)
             await storage.init();
 
+            // Add mode-3-active class to body if in Basic mode (for CSS styling)
+            if (storage.mode === 'basic') {
+                document.body.classList.add('mode-3-active');
+            }
+
             // Load data from storage adapter
             await this.loadData();
 
@@ -1508,7 +1513,7 @@ window.app = function() {
          */
         getStorageDisplay() {
             const storageTypes = {
-                'full': 'IndexedDB (Dexie 3.2.4)',
+                'full': `IndexedDB (Dexie ${Dexie.version})`,
                 'sync-only': 'Memory (cleared on refresh)',
                 'basic': 'Memory (cleared on refresh)'
             };

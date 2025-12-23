@@ -389,7 +389,6 @@ class StorageAdapter {
     }
 
     async createAccount_Full(accountData, now) {
-        const { generateUUID } = await import('./utils.js');
         const localId = generateUUID();
 
         const fullData = {
