@@ -54,7 +54,8 @@ class EventRepository(BaseRepository[Event]):
         self,
         data: EventCreate,
         story_id: Optional[UUID] = None,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Event:
         """
         Create new event with account resolution and rate locking.
@@ -120,7 +121,7 @@ class EventRepository(BaseRepository[Event]):
             rate = data.rate_to_base
 
         # Extract user ID from current_user if authenticated
-        user_id = UUID(current_user["id"]) if current_user else None
+        user_id = self._get_user_id(current_user)
 
         # Create event with resolved account and locked rate
         event = Event(
@@ -145,13 +146,24 @@ class EventRepository(BaseRepository[Event]):
         # Insert into MongoDB
         await self.collection.insert_one(event.model_dump(mode="json"))
 
+        # Log change for sync
+        await self.log_change(
+            "event",
+            event.id,
+            "create",
+            event.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
         return event
 
     async def update(
         self,
         event_id: UUID,
         data: EventUpdate,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Event:
         """
         Update existing event.
@@ -216,10 +228,28 @@ class EventRepository(BaseRepository[Event]):
                       for k, v in update_dict.items()}}
         )
 
-        # Return updated event
-        return await self.get(event_id)
+        # Get updated event for change log
+        updated_event = await self.get(event_id)
 
-    async def delete(self, event_id: UUID) -> bool:
+        # Log change for sync
+        await self.log_change(
+            "event",
+            event_id,
+            "update",
+            updated_event.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id
+        )
+
+        # Return updated event
+        return updated_event
+
+    async def delete(
+        self,
+        event_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
         """
         Hard delete event.
 
@@ -248,6 +278,16 @@ class EventRepository(BaseRepository[Event]):
                 "Cannot delete auto-adjustment event. "
                 "These are managed by the reconciliation system."
             )
+
+        # Log change BEFORE deletion (to capture entity snapshot)
+        await self.log_change(
+            "event",
+            event_id,
+            "delete",
+            event.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id
+        )
 
         # Hard delete
         await self.collection.delete_one({"id": to_str(event_id)})

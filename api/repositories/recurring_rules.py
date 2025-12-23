@@ -102,7 +102,7 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             )
 
         # Extract user ID from current_user if authenticated
-        user_id = UUID(current_user["id"]) if current_user else None
+        user_id = self._get_user_id(current_user)
 
         # Create recurring rule with generated ID and timestamps
         rule = RecurringRule(
@@ -200,21 +200,20 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         )
 
         # Get updated rule for change log
-        updated = await self.get(rule_id)
+        updated_rule = await self.get(rule_id)
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "recurring_rule",
             rule_id,
             "update",
-            updated.model_dump(mode="json"),
-            user_id,
+            updated_rule.model_dump(mode="json"),
+            self._get_user_id(current_user),
             client_id
         )
 
         # Return updated rule
-        return updated
+        return updated_rule
 
     async def delete(
         self,
@@ -249,7 +248,7 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         """
         from datetime import date
 
-        # Get rule for change log (before deletion)
+        # Verify rule exists and get snapshot for change log (before deletion)
         rule = await self.get(rule_id)
 
         # Delete only FUTURE instances that haven't been edited
@@ -264,13 +263,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         await self.collection.delete_one({"id": to_str(rule_id)})
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "recurring_rule",
             rule_id,
             "delete",
             rule.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 

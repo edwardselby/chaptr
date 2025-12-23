@@ -109,4 +109,4 @@ async def update_settings(
     # if not current_user.is_admin:
     #     raise ResourceConflictError("Settings can only be modified by admins")
 
-    return await repo.update_singleton(data)
+    return await repo.update_singleton(data, current_user=current_user, client_id=None)

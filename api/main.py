@@ -11,6 +11,8 @@ import logging
 from datetime import datetime
 
 from api.config import settings, MongoDB
+from api.utils.indexes import create_change_log_indexes
+from api.utils.db import utc_now
 
 # Configure logging
 logging.basicConfig(
@@ -72,9 +74,8 @@ async def lifespan(app: FastAPI):
             await db.users.create_index([("username", 1)], unique=True)
             logger.info("✓ Created unique index on users.username")
 
-            # Change log indexes for sync and pruning performance
-            await db.change_log.create_index([("changed_at", 1)])
-            logger.info("✓ Created index on change_log.changed_at (for pruning queries)")
+            # Create change_log indexes for sync protocol
+            await create_change_log_indexes(db)
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
@@ -132,7 +133,7 @@ async def health_check():
         "database": "connected" if db_connected else "disconnected",
         "version": "0.1.0",
         "environment": settings.environment,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": utc_now().isoformat()
     }
 
 
