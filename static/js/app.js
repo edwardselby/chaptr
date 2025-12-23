@@ -587,7 +587,6 @@ window.app = function() {
                 is_default: this.accountForm.is_default || false,
                 is_archived: false,
                 rate_to_base: 1.0, // Will be calculated by backend based on settings
-                last_updated: now,
                 created_at: now,
                 updated_at: now
             };
@@ -613,12 +612,9 @@ window.app = function() {
 
                     if (response.ok) {
                         const serverData = await response.json();
-                        // Update with server ID and data
-                        await db.accounts.update(localId, {
-                            id: serverData.id,
-                            rate_to_base: serverData.rate_to_base,
-                            updated_at: serverData.updated_at
-                        });
+                        // Delete temp local record and add full server data
+                        await db.accounts.delete(localId);
+                        await db.accounts.put(serverData);
                         // Clear sync queue
                         await db.sync_queue.where({ entity_id: localId }).delete();
                     }
@@ -643,7 +639,6 @@ window.app = function() {
                 currency: this.accountForm.currency.toUpperCase(),
                 current_balance: parseFloat(this.accountForm.current_balance || 0),
                 is_default: this.accountForm.is_default || false,
-                last_updated: now,
                 updated_at: now
             };
 
@@ -663,10 +658,8 @@ window.app = function() {
 
                     if (response.ok) {
                         const serverData = await response.json();
-                        await db.accounts.update(accountId, {
-                            rate_to_base: serverData.rate_to_base,
-                            updated_at: serverData.updated_at
-                        });
+                        // Replace with full server data to preserve all server fields
+                        await db.accounts.put(serverData);
                         // Clear sync queue
                         await db.sync_queue.where({ entity_id: accountId, action: 'update' }).delete();
                     }
@@ -963,6 +956,11 @@ window.app = function() {
             const account = this.accounts.find(a => a.id === accountId);
             const currency = account ? account.currency : this.settings.base_currency;
 
+            // Lookup rate_to_base from settings.rates
+            const rate_to_base = this.settings.rates && this.settings.rates[currency]
+                ? this.settings.rates[currency]
+                : 1.0;
+
             const event = {
                 id: localId,
                 description: eventData.description,
@@ -970,7 +968,7 @@ window.app = function() {
                 date: eventData.date,
                 account_id: accountId,
                 currency: currency,
-                rate_to_base: account ? account.rate_to_base : 1.0,
+                rate_to_base: rate_to_base,
                 story_id: eventData.story_id || null,
                 is_baseline: eventData.is_baseline || false,
                 is_hypothetical: eventData.is_hypothetical || false,
@@ -1231,6 +1229,14 @@ window.app = function() {
             const file = event.target.files[0];
             if (!file) return;
 
+            // Validate file size (max 10MB)
+            const maxSizeMB = 10;
+            if (file.size > maxSizeMB * 1024 * 1024) {
+                alert(`File too large. Maximum size is ${maxSizeMB}MB.`);
+                event.target.value = '';
+                return;
+            }
+
             if (!confirm('⚠ This will OVERWRITE all existing data. Continue?')) {
                 event.target.value = '';
                 return;
@@ -1240,9 +1246,28 @@ window.app = function() {
                 const text = await file.text();
                 const backup = JSON.parse(text);
 
-                // Validate backup structure
-                if (!backup.version || !backup.accounts) {
-                    throw new Error('Invalid backup file format');
+                // Comprehensive backup validation
+                if (!backup.version || typeof backup.version !== 'string') {
+                    throw new Error('Invalid backup: missing or invalid version');
+                }
+
+                // Validate required array fields
+                const requiredArrays = ['accounts', 'stories', 'events'];
+                for (const field of requiredArrays) {
+                    if (!backup[field] || !Array.isArray(backup[field])) {
+                        throw new Error(`Invalid backup: missing or invalid ${field} array`);
+                    }
+                }
+
+                // Validate optional fields
+                if (backup.users && !Array.isArray(backup.users)) {
+                    throw new Error('Invalid backup: users must be an array');
+                }
+                if (backup.recurring_rules && !Array.isArray(backup.recurring_rules)) {
+                    throw new Error('Invalid backup: recurring_rules must be an array');
+                }
+                if (backup.settings && typeof backup.settings !== 'object') {
+                    throw new Error('Invalid backup: settings must be an object');
                 }
 
                 // Clear existing data and restore
