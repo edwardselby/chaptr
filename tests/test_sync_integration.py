@@ -8,9 +8,8 @@ Comprehensive testing of multi-client sync scenarios including:
 - Stale client recovery with full sync
 - Recurring event generation and editing
 
-**INTEGRATION TEST SUITE UPGRADE NEEDED**:
-These tests require real MongoDB instead of mongomock for proper
-change_log query simulation. See Tasks CPTR-298, CPTR-299.
+**Uses real MongoDB** for accurate change_log query simulation.
+Mark tests with @pytest.mark.integration for selective execution.
 """
 
 import pytest
@@ -31,7 +30,7 @@ from api.repositories.events import EventRepository
 # ============================================================================
 
 @pytest_asyncio.fixture
-async def sample_account_with_user(account_repo, sample_user):
+async def sample_account_with_user(account_repo_real, sample_user_real):
     """Account with created_by set to sample_user for sync tests."""
     from api.models import AccountCreate
     from datetime import datetime, timezone
@@ -44,16 +43,16 @@ async def sample_account_with_user(account_repo, sample_user):
         is_archived=False,
         pending_reconciliation=False
     )
-    account = await account_repo.create(
+    account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user.id)},
+        current_user={"id": str(sample_user_real.id)},
         client_id="test-setup"
     )
     return account
 
 
 @pytest_asyncio.fixture
-async def sample_story_with_user(story_repo, sample_account_with_user, sample_user):
+async def sample_story_with_user(story_repo_real, sample_account_with_user, sample_user_real):
     """Story with created_by set to sample_user for sync tests."""
     from api.models import StoryCreate
     story_data = StoryCreate(
@@ -67,16 +66,16 @@ async def sample_story_with_user(story_repo, sample_account_with_user, sample_us
         goal_amount=None,
         display_currency="GBP"
     )
-    story = await story_repo.create(
+    story = await story_repo_real.create(
         story_data,
-        current_user={"id": str(sample_user.id)},
+        current_user={"id": str(sample_user_real.id)},
         client_id="test-setup"
     )
     return story
 
 
 @pytest_asyncio.fixture
-async def sample_event_with_user(event_repo, sample_account_with_user, sample_settings, sample_user):
+async def sample_event_with_user(event_repo_real, sample_account_with_user, sample_settings_real, sample_user_real):
     """Event with created_by set to sample_user for sync tests."""
     event_data = EventCreate(
         event_date=date(2024, 12, 15),
@@ -89,16 +88,16 @@ async def sample_event_with_user(event_repo, sample_account_with_user, sample_se
         is_hypothetical=False,
         is_auto_adjustment=False
     )
-    event = await event_repo.create(
+    event = await event_repo_real.create(
         event_data,
-        current_user={"id": str(sample_user.id)},
+        current_user={"id": str(sample_user_real.id)},
         client_id="test-setup"
     )
     return event
 
 
 @pytest_asyncio.fixture
-async def sample_recurring_rule_with_user(recurring_rule_repo, sample_account_with_user, sample_user):
+async def sample_recurring_rule_with_user(recurring_rule_repo_real, sample_account_with_user, sample_user_real):
     """
     Pre-created monthly recurring rule WITH created_by set.
 
@@ -115,38 +114,27 @@ async def sample_recurring_rule_with_user(recurring_rule_repo, sample_account_wi
         end_date=None
     )
     # Pass current_user so created_by is set
-    rule = await recurring_rule_repo.create(
+    rule = await recurring_rule_repo_real.create(
         rule_data,
-        current_user={"id": str(sample_user.id)},
+        current_user={"id": str(sample_user_real.id)},
         client_id="test-setup"
     )
     return rule
-
-
-@pytest_asyncio.fixture
-async def sync_mock_db(clean_database):
-    """
-    Pass-through fixture for consistency with plan.
-
-    Note: Mongomock handles ISO string timestamp comparisons correctly,
-    so no patching is needed for change_log queries.
-    """
-    return clean_database
 
 
 # ============================================================================
 # Task 21: Two-Client Bidirectional Sync
 # ============================================================================
 
-@pytest.mark.skip(reason="Needs real MongoDB integration - Task CPTR-299")
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_two_client_bidirectional_sync(
-    async_client,
-    auth_headers,
+    async_client_real,
+    auth_headers_real,
     sample_account_with_user,
     sample_story_with_user,
-    sample_settings,
-    sync_mock_db
+    sample_settings_real,
+    clean_database_real
 ):
     """
     Test bidirectional sync between two clients.
@@ -187,7 +175,7 @@ async def test_two_client_bidirectional_sync(
         }]
     }
 
-    response_a1 = await async_client.post("/api/sync", json=sync_a1, headers=auth_headers)
+    response_a1 = await async_client_real.post("/api/sync", json=sync_a1, headers=auth_headers_real)
     assert response_a1.status_code == 200
     data_a1 = response_a1.json()
     assert len(data_a1["applied"]) == 1
@@ -199,7 +187,7 @@ async def test_two_client_bidirectional_sync(
     # We need a timestamp that's after fixture setup but before Client A's event creation
     # Solution: Use the earliest change_log entry's timestamp minus 1 second
     from datetime import timezone, timedelta
-    earliest_log = await sync_mock_db["change_log"].find_one(sort=[("changed_at", 1)])
+    earliest_log = await clean_database_real["change_log"].find_one(sort=[("changed_at", 1)])
     earliest_ts = datetime.fromisoformat(earliest_log["changed_at"]) - timedelta(seconds=1)
 
     sync_b1 = {
@@ -208,7 +196,7 @@ async def test_two_client_bidirectional_sync(
         "changes": []
     }
 
-    response_b1 = await async_client.post("/api/sync", json=sync_b1, headers=auth_headers)
+    response_b1 = await async_client_real.post("/api/sync", json=sync_b1, headers=auth_headers_real)
     assert response_b1.status_code == 200
     data_b1 = response_b1.json()
 
@@ -244,7 +232,7 @@ async def test_two_client_bidirectional_sync(
         }]
     }
 
-    response_b2 = await async_client.post("/api/sync", json=sync_b2, headers=auth_headers)
+    response_b2 = await async_client_real.post("/api/sync", json=sync_b2, headers=auth_headers_real)
     assert response_b2.status_code == 200
     data_b2 = response_b2.json()
     assert len(data_b2["applied"]) == 1
@@ -257,7 +245,7 @@ async def test_two_client_bidirectional_sync(
         "changes": []
     }
 
-    response_a2 = await async_client.post("/api/sync", json=sync_a2, headers=auth_headers)
+    response_a2 = await async_client_real.post("/api/sync", json=sync_a2, headers=auth_headers_real)
     assert response_a2.status_code == 200
     data_a2 = response_a2.json()
 
@@ -277,11 +265,11 @@ async def test_two_client_bidirectional_sync(
 
 @pytest.mark.asyncio
 async def test_edit_edit_conflict_detection(
-    async_client,
-    auth_headers,
-    event_repo,
-    sample_event,
-    sync_mock_db
+    async_client_real,
+    auth_headers_real,
+    event_repo_real,
+    sample_event_with_user,
+    clean_database_real
 ):
     """
     Test edit/edit conflict when two clients edit same entity.
@@ -299,7 +287,7 @@ async def test_edit_edit_conflict_detection(
     - Client B's change is NOT applied
     """
     # Both clients have same base timestamp
-    base_timestamp = sample_event.updated_at
+    base_timestamp = sample_event_with_user.updated_at
 
     # Client A: Edit event (succeeds)
     sync_a = {
@@ -307,7 +295,7 @@ async def test_edit_edit_conflict_detection(
         "last_sync_at": None,
         "changes": [{
             "entity_type": "event",
-            "entity_id": str(sample_event.id),
+            "entity_id": str(sample_event_with_user.id),
             "action": "update",
             "data": {
                 "description": "Updated by Client A",
@@ -317,7 +305,7 @@ async def test_edit_edit_conflict_detection(
         }]
     }
 
-    response_a = await async_client.post("/api/sync", json=sync_a, headers=auth_headers)
+    response_a = await async_client_real.post("/api/sync", json=sync_a, headers=auth_headers_real)
     assert response_a.status_code == 200
     data_a = response_a.json()
     assert len(data_a["applied"]) == 1
@@ -329,7 +317,7 @@ async def test_edit_edit_conflict_detection(
         "last_sync_at": None,
         "changes": [{
             "entity_type": "event",
-            "entity_id": str(sample_event.id),
+            "entity_id": str(sample_event_with_user.id),
             "action": "update",
             "data": {
                 "description": "Updated by Client B",
@@ -339,7 +327,7 @@ async def test_edit_edit_conflict_detection(
         }]
     }
 
-    response_b = await async_client.post("/api/sync", json=sync_b, headers=auth_headers)
+    response_b = await async_client_real.post("/api/sync", json=sync_b, headers=auth_headers_real)
     assert response_b.status_code == 200
     data_b = response_b.json()
     assert len(data_b["applied"]) == 0
@@ -347,7 +335,7 @@ async def test_edit_edit_conflict_detection(
 
     conflict = data_b["conflicts"][0]
     assert conflict["entity_type"] == "event"
-    assert conflict["entity_id"] == str(sample_event.id)
+    assert conflict["entity_id"] == str(sample_event_with_user.id)
     assert conflict["conflict_type"] == "edit_edit"
     assert conflict["client_version"]["description"] == "Updated by Client B"
     assert conflict["server_version"]["description"] == "Updated by Client A"
@@ -359,11 +347,11 @@ async def test_edit_edit_conflict_detection(
 
 @pytest.mark.asyncio
 async def test_delete_edit_conflict_detection(
-    async_client,
-    auth_headers,
-    event_repo,
-    sample_event,
-    sync_mock_db
+    async_client_real,
+    auth_headers_real,
+    event_repo_real,
+    sample_event_with_user,
+    clean_database_real
 ):
     """
     Test delete/edit conflict when one client deletes, another edits.
@@ -381,7 +369,7 @@ async def test_delete_edit_conflict_detection(
     - server_version includes current entity state
     - Entity still exists on server
     """
-    base_timestamp = sample_event.updated_at
+    base_timestamp = sample_event_with_user.updated_at
 
     # Client A: Edit event (succeeds)
     sync_a = {
@@ -389,14 +377,14 @@ async def test_delete_edit_conflict_detection(
         "last_sync_at": None,
         "changes": [{
             "entity_type": "event",
-            "entity_id": str(sample_event.id),
+            "entity_id": str(sample_event_with_user.id),
             "action": "update",
             "data": {"description": "Modified before delete attempt"},
             "base_updated_at": base_timestamp.isoformat()
         }]
     }
 
-    response_a = await async_client.post("/api/sync", json=sync_a, headers=auth_headers)
+    response_a = await async_client_real.post("/api/sync", json=sync_a, headers=auth_headers_real)
     assert response_a.status_code == 200
     data_a = response_a.json()
     assert len(data_a["applied"]) == 1
@@ -407,14 +395,14 @@ async def test_delete_edit_conflict_detection(
         "last_sync_at": None,
         "changes": [{
             "entity_type": "event",
-            "entity_id": str(sample_event.id),
+            "entity_id": str(sample_event_with_user.id),
             "action": "delete",
             "data": None,
             "base_updated_at": base_timestamp.isoformat()
         }]
     }
 
-    response_b = await async_client.post("/api/sync", json=sync_b, headers=auth_headers)
+    response_b = await async_client_real.post("/api/sync", json=sync_b, headers=auth_headers_real)
     assert response_b.status_code == 200
     data_b = response_b.json()
     assert len(data_b["applied"]) == 0
@@ -427,7 +415,7 @@ async def test_delete_edit_conflict_detection(
     assert conflict["server_version"]["description"] == "Modified before delete attempt"
 
     # Verify entity still exists
-    existing = await event_repo.get(sample_event.id)
+    existing = await event_repo_real.get(sample_event_with_user.id)
     assert existing.description == "Modified before delete attempt"
 
 
@@ -435,15 +423,15 @@ async def test_delete_edit_conflict_detection(
 # Task 24: Stale Client Recovery
 # ============================================================================
 
-@pytest.mark.skip(reason="Needs real MongoDB integration - Task CPTR-299")
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_stale_client_full_sync_required(
-    async_client,
-    auth_headers,
+    async_client_real,
+    auth_headers_real,
     sample_account_with_user,
     sample_event_with_user,
-    sample_settings,
-    sync_mock_db
+    sample_settings_real,
+    clean_database_real
 ):
     """
     Test stale client detection when last_sync_at is before oldest change_log entry.
@@ -466,7 +454,7 @@ async def test_stale_client_full_sync_required(
     old_sync_time = datetime.now(timezone.utc) - timedelta(days=60)
 
     # Create recent change log entry (simulating pruned logs - old entries gone)
-    await sync_mock_db["change_log"].insert_one({
+    await clean_database_real["change_log"].insert_one({
         "id": str(uuid4()),
         "entity_type": "event",
         "entity_id": str(sample_event_with_user.id),
@@ -484,14 +472,14 @@ async def test_stale_client_full_sync_required(
         "changes": []
     }
 
-    response = await async_client.post("/api/sync", json=sync_request, headers=auth_headers)
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
     assert response.status_code == 200
     data = response.json()
     assert data["full_sync_required"] is True
     assert len(data["server_changes"]) == 0  # Empty when full sync required
 
     # Test full sync endpoint
-    full_sync_response = await async_client.get("/api/sync/full", headers=auth_headers)
+    full_sync_response = await async_client_real.get("/api/sync/full", headers=auth_headers_real)
     assert full_sync_response.status_code == 200
     full_data = full_sync_response.json()
 
@@ -511,17 +499,17 @@ async def test_stale_client_full_sync_required(
 # Task 25: Recurring Event Generation & Editing
 # ============================================================================
 
-@pytest.mark.skip(reason="Needs real MongoDB integration - Task CPTR-299")
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_recurring_event_generation_on_sync(
-    async_client,
-    auth_headers,
+    async_client_real,
+    auth_headers_real,
     sample_account_with_user,
     sample_recurring_rule_with_user,
-    sample_settings,
-    event_repo,
-    sample_user,
-    sync_mock_db
+    sample_settings_real,
+    event_repo_real,
+    sample_user_real,
+    clean_database_real
 ):
     """
     Test recurring events generate during sync and edited instances preserved.
@@ -547,12 +535,12 @@ async def test_recurring_event_generation_on_sync(
         "changes": []
     }
 
-    response_a1 = await async_client.post("/api/sync", json=sync_a1, headers=auth_headers)
+    response_a1 = await async_client_real.post("/api/sync", json=sync_a1, headers=auth_headers_real)
     assert response_a1.status_code == 200
     data_a1 = response_a1.json()
 
     # Verify events generated
-    generated_events = await sync_mock_db["events"].find({
+    generated_events = await clean_database_real["events"].find({
         "recurring_rule_id": str(sample_recurring_rule_with_user.id)
     }).to_list(length=100)
     assert len(generated_events) > 0, "Should generate recurring events in ±1 month window"
@@ -564,7 +552,7 @@ async def test_recurring_event_generation_on_sync(
     await event_repo.update(
         UUID(edited_event_id),
         EventUpdate(description="EDITED: Custom description"),
-        current_user={"id": str(sample_user.id)},
+        current_user={"id": str(sample_user_real.id)},
         client_id="client-a"
     )
 
@@ -575,7 +563,7 @@ async def test_recurring_event_generation_on_sync(
         "changes": []
     }
 
-    response_a2 = await async_client.post("/api/sync", json=sync_a2, headers=auth_headers)
+    response_a2 = await async_client_real.post("/api/sync", json=sync_a2, headers=auth_headers_real)
     assert response_a2.status_code == 200
 
     # Verify edited event preserved
@@ -585,7 +573,7 @@ async def test_recurring_event_generation_on_sync(
 
     # Client B: Sync (should receive generated events in server_changes)
     # Use timestamp just before earliest change_log entry
-    earliest_log = await sync_mock_db["change_log"].find_one(sort=[("changed_at", 1)])
+    earliest_log = await clean_database_real["change_log"].find_one(sort=[("changed_at", 1)])
     earliest_ts = datetime.fromisoformat(earliest_log["changed_at"]) - timedelta(seconds=1)
 
     sync_b1 = {
@@ -594,7 +582,7 @@ async def test_recurring_event_generation_on_sync(
         "changes": []
     }
 
-    response_b1 = await async_client.post("/api/sync", json=sync_b1, headers=auth_headers)
+    response_b1 = await async_client_real.post("/api/sync", json=sync_b1, headers=auth_headers_real)
     assert response_b1.status_code == 200
     data_b1 = response_b1.json()
 

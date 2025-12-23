@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task 223: Comprehensive fixture selection guide in conftest.py documenting when to use mongomock vs real MongoDB
 
 ### Changed
+- CPTR-5c895d99: test_sync_integration.py migrated to use real MongoDB fixtures (Task 224)
+- CPTR-5c895d99: Added *_real fixture variants (sample_user_real, sample_settings_real, auth_headers_real) for integration tests
+- CPTR-5c895d99: Updated all repository, client, and auth fixtures in test_sync_integration.py to use real MongoDB
+- CPTR-5c895d99: Removed sync_mock_db fixture and @pytest.mark.skip decorators from integration tests
 - CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: User-aware test fixtures (sample_account_with_user, sample_story_with_user, etc.) to match JWT authentication context
 - CPTR-817e6e17, CPTR-bbb22028, CPTR-58ee8f5e: Three complex integration tests marked as skipped pending real MongoDB migration (Tasks 223-226)
 - CPTR-817e6e17 to CPTR-2b2f2374: Deprecated datetime.utcnow() replaced with timezone-aware datetime.now(timezone.utc) in all tests

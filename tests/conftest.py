@@ -98,7 +98,7 @@ async def clean_database(mongodb_test):
 # Real MongoDB Fixtures (for complex integration tests)
 # ============================================================================
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def mongodb_real():
     """
     Real MongoDB connection for complex integration tests.
@@ -109,6 +109,9 @@ async def mongodb_real():
     **Usage**: For tests requiring accurate change_log queries,
     timestamp filtering, or complex async/motor behavior that
     mongomock doesn't simulate properly.
+
+    **Note**: Function-scoped for pytest-asyncio compatibility.
+    Database cleanup happens in clean_database_real fixture.
     """
     import os
 
@@ -256,6 +259,43 @@ def settings_repo(clean_database):
 def user_repo(clean_database):
     """UserRepository instance for testing."""
     return UserRepository(clean_database)
+
+
+# Real MongoDB Repository Fixtures (for integration tests)
+@pytest.fixture
+def account_repo_real(clean_database_real):
+    """AccountRepository instance for integration testing with real MongoDB."""
+    return AccountRepository(clean_database_real)
+
+
+@pytest.fixture
+def story_repo_real(clean_database_real):
+    """StoryRepository instance for integration testing with real MongoDB."""
+    return StoryRepository(clean_database_real)
+
+
+@pytest.fixture
+def event_repo_real(clean_database_real):
+    """EventRepository instance for integration testing with real MongoDB."""
+    return EventRepository(clean_database_real)
+
+
+@pytest.fixture
+def recurring_rule_repo_real(clean_database_real):
+    """RecurringRuleRepository instance for integration testing with real MongoDB."""
+    return RecurringRuleRepository(clean_database_real)
+
+
+@pytest.fixture
+def settings_repo_real(clean_database_real):
+    """SettingsRepository instance for integration testing with real MongoDB."""
+    return SettingsRepository(clean_database_real)
+
+
+@pytest.fixture
+def user_repo_real(clean_database_real):
+    """UserRepository instance for integration testing with real MongoDB."""
+    return UserRepository(clean_database_real)
 
 
 # ============================================================================
@@ -552,6 +592,67 @@ async def sample_user(user_repo):
     )
     user = await user_repo.create(user_data)
     return user
+
+
+@pytest_asyncio.fixture
+async def sample_user_real(user_repo_real):
+    """
+    Pre-created admin user for integration testing with real MongoDB.
+
+    Username: Edward
+    Password: TestPass123
+    Role: admin
+    """
+    user_data = UserCreate(
+        username="Edward",
+        password="TestPass123",
+        role="admin"
+    )
+    user = await user_repo_real.create(user_data)
+    return user
+
+
+@pytest_asyncio.fixture
+async def sample_settings_real(settings_repo_real):
+    """
+    Pre-created global settings for integration testing with real MongoDB.
+
+    Creates default settings with GBP base currency.
+    Note: Settings is a singleton, so we use update_singleton() to initialize it.
+    """
+    settings_data = SettingsBase(
+        base_currency="GBP",
+        default_currency="GBP",
+        date_format="DD/MM/YYYY",
+        baseline_display_months=1,
+        rates={},  # Empty rates - tests don't need currency conversion
+        server_url="",
+        last_backup_date=None,
+        version="1.0.0"
+    )
+    # Settings is singleton - use update_singleton to initialize
+    settings = await settings_repo_real.update_singleton(settings_data)
+    return settings
+
+
+@pytest_asyncio.fixture
+async def auth_headers_real(sample_user_real):
+    """
+    Generate Authorization headers with admin JWT token for real MongoDB integration tests.
+
+    Creates valid JWT token for sample_user_real and returns headers dict
+    ready to use with async_client_real requests.
+
+    :Example:
+
+    >>> response = await async_client_real.post("/api/events", headers=auth_headers_real, json=event_data)
+    """
+    token = create_access_token(
+        user_id=sample_user_real.id,
+        username=sample_user_real.username,
+        role=sample_user_real.role
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest_asyncio.fixture
