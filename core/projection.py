@@ -186,14 +186,16 @@ async def calculate_global_projection(
 
     for event in events_with_base:
         # Add event base_amount to running balance
-        # Convert to Decimal in case it's from MongoDB
-        base_amount = Decimal(str(event.get("base_amount", "0")))
+        # base_amount is already a Decimal from conversion above
+        base_amount = event["base_amount"]
         running_balance += base_amount
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
 
         # Remove MongoDB _id field (not JSON serializable)
+        # TODO: Consider whitelist pattern instead of blacklist (pop)
+        #       Create explicit field list to return for better robustness
         result_event.pop("_id", None)
 
         # Step 5: Add display currency conversion if requested
@@ -390,6 +392,7 @@ async def calculate_story_projection(
 
         funding_event = {
             "_id": funding_event_id,
+            "id": str(funding_event_id),
             "date": story.get("start_date"),
             "description": f"Story funding: {story.get('name')}",
             "amount": funding_amount,
@@ -435,12 +438,20 @@ async def calculate_story_projection(
         )
     )
 
+    # Remove MongoDB _id field from all events before processing
+    # This prevents ObjectId from appearing in any results
+    # TODO: Consider whitelist pattern instead of blacklist (pop)
+    #       Create explicit field list to return for better robustness
+    #       (prevents future MongoDB fields from leaking if non-serializable)
+    for event in all_events_with_funding:
+        event.pop("_id", None)
+
     # Step 6: Calculate running balance using ALL events, but only display visible ones
     # Visible events: baseline OR this story
     # Hidden events: other stories (not baseline, not this story)
     running_balance = starting_balance
     results = []
-    visible_event_ids = set()
+    visible_event_ids = set()  # Track using UUID 'id' field, not ObjectId '_id'
 
     for event in all_events_with_funding:
         # Add event to running balance (ALL events affect balance)
@@ -457,10 +468,9 @@ async def calculate_story_projection(
         # Hidden events still affect running_balance but aren't displayed
         if is_visible:
             result_event = {**event, "running_balance": running_balance}
-            # Remove MongoDB _id field (not JSON serializable)
-            result_event.pop("_id", None)
             results.append(result_event)
-            visible_event_ids.add(event["_id"])
+            # Track visible event IDs using UUID 'id' field
+            visible_event_ids.add(event.get("id"))
 
     # Step 7: Add gap indicators (Phase 2.4 - Tasks 2, 3, 4)
     # Get settings for currency conversion
@@ -482,8 +492,8 @@ async def calculate_story_projection(
     )
 
     # Step 8: Attach gap metadata to visible events
-    # Build index of visible events by ID for fast lookup
-    visible_events_by_id = {e["_id"]: e for e in results}
+    # Build index of visible events by ID for fast lookup (using UUID 'id' field)
+    visible_events_by_id = {e["id"]: e for e in results}
 
     for gap in gaps:
         after_event_id = gap["after_event_id"]
@@ -597,13 +607,15 @@ async def calculate_account_projection(
 
     for event in events_with_base:
         # Add event base_amount to running balance
-        # Convert to Decimal in case it's from MongoDB
-        base_amount = Decimal(str(event.get("base_amount", "0")))
+        # base_amount is already a Decimal from conversion above
+        base_amount = event["base_amount"]
         running_balance += base_amount
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
         # Remove MongoDB _id field (not JSON serializable)
+        # TODO: Consider whitelist pattern instead of blacklist (pop)
+        #       Create explicit field list to return for better robustness
         result_event.pop("_id", None)
         results.append(result_event)
 
@@ -698,7 +710,8 @@ def detect_gaps_between_visible_events(
     hidden_events_accumulator = []
 
     for event in all_events_sorted:
-        event_id = event["_id"]
+        # Use UUID 'id' field instead of ObjectId '_id' (which was removed)
+        event_id = event.get("id")
         is_visible = event_id in visible_event_ids
 
         if is_visible:
@@ -713,7 +726,7 @@ def detect_gaps_between_visible_events(
                     # Record gap metadata
                     gaps.append({
                         "type": "gap_indicator",
-                        "after_event_id": last_visible_event["_id"],
+                        "after_event_id": last_visible_event.get("id"),
                         "before_event_id": event_id,
                         "hidden_event_count": len(hidden_events_accumulator),
                         "hidden_events": list(hidden_events_accumulator),
@@ -737,7 +750,7 @@ def detect_gaps_between_visible_events(
         if delta_base != Decimal("0"):
             gaps.append({
                 "type": "gap_indicator",
-                "after_event_id": last_visible_event["_id"],
+                "after_event_id": last_visible_event.get("id"),
                 "before_event_id": None,  # No next visible event
                 "hidden_event_count": len(hidden_events_accumulator),
                 "hidden_events": list(hidden_events_accumulator),

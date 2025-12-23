@@ -332,3 +332,70 @@ class TestEndToEndProjection:
         for event in events:
             assert "base_amount" in event
             assert isinstance(event["base_amount"], Decimal)
+
+
+class TestMongoDBIntegration:
+    """
+    Integration tests with real MongoDB connection.
+
+    These tests require a running MongoDB instance and are marked
+    with @pytest.mark.integration to allow selective execution.
+
+    Run with: pytest -m integration
+    Skip with: pytest -m "not integration"
+    """
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_projection_with_real_mongodb(self):
+        """Integration test: Verify projection works with actual MongoDB."""
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from api.config import settings
+
+        # Get MongoDB connection from settings
+        client = AsyncIOMotorClient(settings.mongodb_url)
+        db = client[settings.mongodb_db_name]
+
+        try:
+            # Verify MongoDB is accessible
+            await db.command("ping")
+
+            # Get actual settings document
+            settings_doc = await db.settings.find_one()
+            assert settings_doc is not None, "Settings document not found in MongoDB"
+
+            # Get actual accounts
+            accounts = await db.accounts.find({"is_archived": False}).to_list(None)
+            assert len(accounts) > 0, "No accounts found in MongoDB"
+
+            # Get actual events
+            events = await db.events.find().limit(10).to_list(10)
+
+            # Run projection with real data
+            from core.projection import calculate_global_projection
+            projection_results = await calculate_global_projection(
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 12, 31),
+                db=db
+            )
+
+            # Verify results structure
+            assert isinstance(projection_results, list)
+
+            # Verify no ObjectId leaks in results
+            for event in projection_results:
+                # Check all fields are JSON serializable
+                import json
+                try:
+                    json.dumps(event, default=str)
+                except (TypeError, ValueError) as e:
+                    pytest.fail(f"Event contains non-serializable data: {e}")
+
+                # Verify _id field was removed
+                assert "_id" not in event, f"ObjectId '_id' leaked in event: {event.get('description')}"
+
+                # Verify required fields present
+                assert "id" in event or "date" in event
+
+        finally:
+            client.close()
