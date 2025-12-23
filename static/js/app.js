@@ -43,6 +43,7 @@ window.app = function() {
 
         // UI State
         isSyncing: false,
+        syncQueueCount: 0, // Track pending changes for UI indicator
         showAccountModal: false,
         showEventModal: false,
         showUserModal: false,
@@ -85,6 +86,15 @@ window.app = function() {
 
             // Load data (from Dexie or sync)
             await this.loadData();
+
+            // Setup network reconnection handler - auto-retry sync when online
+            window.addEventListener('online', async () => {
+                console.log('Network reconnected - triggering auto-sync...');
+                await this.updateSyncQueueCount();
+                if (this.syncQueueCount > 0) {
+                    await this.manualSync();
+                }
+            });
 
             console.log('CHAPTR ready!');
         },
@@ -147,6 +157,9 @@ window.app = function() {
 
                 // Calculate accounts total
                 this.calculateAccountsTotal();
+
+                // Update sync queue count for UI indicator
+                await this.updateSyncQueueCount();
             } catch (error) {
                 console.error('Error loading from Dexie:', error);
             }
@@ -526,6 +539,18 @@ window.app = function() {
         },
 
         /**
+         * Update sync queue count for UI indicator
+         */
+        async updateSyncQueueCount() {
+            try {
+                this.syncQueueCount = await db.sync_queue.count();
+            } catch (error) {
+                console.error('Error counting sync queue:', error);
+                this.syncQueueCount = 0;
+            }
+        },
+
+        /**
          * Open account modal for adding new account
          */
         openAccountModal() {
@@ -596,6 +621,7 @@ window.app = function() {
 
             // 2. Queue for sync
             await db.queueChange('account', localId, 'create', accountData);
+            await this.updateSyncQueueCount(); // Update UI indicator immediately
 
             // 3. API call (online mode only)
             if (navigator.onLine) {
@@ -617,6 +643,7 @@ window.app = function() {
                         await db.accounts.put(serverData);
                         // Clear sync queue
                         await db.sync_queue.where({ entity_id: localId }).delete();
+                        await this.updateSyncQueueCount(); // Update UI indicator after sync
                     }
                 } catch (apiError) {
                     console.warn('API call failed, queued for sync:', apiError);
@@ -647,6 +674,7 @@ window.app = function() {
 
             // 2. Queue for sync
             await db.queueChange('account', accountId, 'update', updates);
+            await this.updateSyncQueueCount(); // Update UI indicator immediately
 
             // 3. API call (online mode only)
             if (navigator.onLine) {
@@ -662,6 +690,7 @@ window.app = function() {
                         await db.accounts.put(serverData);
                         // Clear sync queue
                         await db.sync_queue.where({ entity_id: accountId, action: 'update' }).delete();
+                        await this.updateSyncQueueCount(); // Update UI indicator after sync
                     }
                 } catch (apiError) {
                     console.warn('API call failed, queued for sync:', apiError);
@@ -692,6 +721,7 @@ window.app = function() {
 
                 // 2. Queue for sync
                 await db.queueChange('account', accountId, 'delete', { is_archived: true });
+                await this.updateSyncQueueCount(); // Update UI indicator immediately
 
                 // 3. API call (online mode only)
                 if (navigator.onLine) {
@@ -703,6 +733,7 @@ window.app = function() {
                         if (response.ok) {
                             // Clear sync queue
                             await db.sync_queue.where({ entity_id: accountId, action: 'delete' }).delete();
+                            await this.updateSyncQueueCount(); // Update UI indicator after sync
                         }
                     } catch (apiError) {
                         console.warn('API call failed, queued for sync:', apiError);

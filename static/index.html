@@ -36,6 +36,10 @@
                 <span class="sync-dot"></span>
                 <span class="sync-text">syncing</span>
             </div>
+            <div class="sync-pending-indicator" x-show="syncQueueCount > 0 && !isSyncing" @click="manualSync()" title="Click to sync now">
+                <span class="sync-pending-count" x-text="syncQueueCount"></span>
+                <span class="sync-pending-text">pending</span>
+            </div>
             <button class="btn-settings" @click="switchScreen('settings')">
                 <span>⚙</span>
             </button>

@@ -149,6 +149,33 @@ body::before {
     text-transform: lowercase;
 }
 
+.sync-pending-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--amber);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--amber);
+    background: rgba(255, 191, 0, 0.1);
+    transition: background 0.2s;
+}
+
+.sync-pending-indicator:hover {
+    background: rgba(255, 191, 0, 0.2);
+}
+
+.sync-pending-count {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.sync-pending-text {
+    text-transform: lowercase;
+}
+
 .btn-settings {
     background: none;
     border: none;
