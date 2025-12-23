@@ -2,10 +2,28 @@
 Pytest configuration and fixtures for CHAPTR API tests.
 
 Provides test infrastructure for Phase 1.4 endpoint testing:
-- MongoDB test database (mongomock)
-- FastAPI test client
+- MongoDB test database (mongomock for simple tests)
+- Real MongoDB (localhost:63000 for complex integration tests)
+- FastAPI test client (both mongomock and real MongoDB variants)
 - Repository fixtures
 - Sample data generators
+
+## Fixture Selection Guide
+
+**Use mongomock fixtures** (mongodb_test, clean_database, async_client):
+- Simple CRUD tests (accounts, events, stories, recurring_rules, settings)
+- Business logic validation
+- Authentication/authorization tests
+- Fast unit tests
+
+**Use real MongoDB fixtures** (mongodb_real, clean_database_real, async_client_real):
+- Complex integration tests (sync, recurring generation, pruning)
+- Tests requiring accurate change_log queries
+- Tests with timestamp-based filtering
+- Tests that mongomock can't simulate properly
+
+Mark integration tests with `@pytest.mark.integration` decorator.
+Run with: `pytest -m integration` or exclude with: `pytest -m "not integration"`
 """
 
 import pytest
@@ -77,6 +95,63 @@ async def clean_database(mongodb_test):
 
 
 # ============================================================================
+# Real MongoDB Fixtures (for complex integration tests)
+# ============================================================================
+
+@pytest_asyncio.fixture(scope="function")
+async def mongodb_real():
+    """
+    Real MongoDB connection for complex integration tests.
+
+    Connects to MongoDB on localhost:63000 (configured instance).
+    Uses worker-based database naming for parallel test isolation.
+
+    **Usage**: For tests requiring accurate change_log queries,
+    timestamp filtering, or complex async/motor behavior that
+    mongomock doesn't simulate properly.
+
+    **Note**: Function-scoped for pytest-asyncio compatibility.
+    Database cleanup happens in clean_database_real fixture.
+    """
+    import os
+
+    # Get worker ID for parallel test isolation
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    db_name = f"chaptr_test_integration_{worker_id}"
+
+    # Connect to real MongoDB
+    client = AsyncIOMotorClient("mongodb://localhost:63000")
+    db = client[db_name]
+
+    yield db
+
+    # Cleanup: Drop entire test database
+    await client.drop_database(db_name)
+    client.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def clean_database_real(mongodb_real):
+    """
+    Clean real MongoDB database before each test.
+
+    Drops all collections to start with fresh state.
+    Ensures test isolation even when using real MongoDB.
+    """
+    # Drop all collections before test
+    collections = await mongodb_real.list_collection_names()
+    for collection in collections:
+        await mongodb_real[collection].drop()
+
+    yield mongodb_real
+
+    # Cleanup after test
+    collections = await mongodb_real.list_collection_names()
+    for collection in collections:
+        await mongodb_real[collection].drop()
+
+
+# ============================================================================
 # Application Fixtures
 # ============================================================================
 
@@ -105,6 +180,40 @@ async def async_client(test_app):
     Uses httpx AsyncClient with ASGI transport for FastAPI.
     """
     transport = ASGITransport(app=test_app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test"
+    ) as client:
+        yield client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_app_real(clean_database_real):
+    """
+    FastAPI test application with real MongoDB.
+
+    Overrides MongoDB.get_database() to use real MongoDB instance.
+    Use for integration tests requiring accurate database behavior.
+    """
+    # Mock MongoDB.get_database to return real test database
+    original_get_db = MongoDB.get_database
+    MongoDB.get_database = lambda: clean_database_real
+
+    yield app
+
+    # Restore original
+    MongoDB.get_database = original_get_db
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_client_real(test_app_real):
+    """
+    HTTP client for integration testing with real MongoDB.
+
+    Uses httpx AsyncClient with ASGI transport for FastAPI.
+    Use for complex integration tests (sync, recurring, pruning).
+    """
+    transport = ASGITransport(app=test_app_real)
     async with AsyncClient(
         transport=transport,
         base_url="http://test"
@@ -150,6 +259,43 @@ def settings_repo(clean_database):
 def user_repo(clean_database):
     """UserRepository instance for testing."""
     return UserRepository(clean_database)
+
+
+# Real MongoDB Repository Fixtures (for integration tests)
+@pytest.fixture
+def account_repo_real(clean_database_real):
+    """AccountRepository instance for integration testing with real MongoDB."""
+    return AccountRepository(clean_database_real)
+
+
+@pytest.fixture
+def story_repo_real(clean_database_real):
+    """StoryRepository instance for integration testing with real MongoDB."""
+    return StoryRepository(clean_database_real)
+
+
+@pytest.fixture
+def event_repo_real(clean_database_real):
+    """EventRepository instance for integration testing with real MongoDB."""
+    return EventRepository(clean_database_real)
+
+
+@pytest.fixture
+def recurring_rule_repo_real(clean_database_real):
+    """RecurringRuleRepository instance for integration testing with real MongoDB."""
+    return RecurringRuleRepository(clean_database_real)
+
+
+@pytest.fixture
+def settings_repo_real(clean_database_real):
+    """SettingsRepository instance for integration testing with real MongoDB."""
+    return SettingsRepository(clean_database_real)
+
+
+@pytest.fixture
+def user_repo_real(clean_database_real):
+    """UserRepository instance for integration testing with real MongoDB."""
+    return UserRepository(clean_database_real)
 
 
 # ============================================================================
@@ -446,6 +592,89 @@ async def sample_user(user_repo):
     )
     user = await user_repo.create(user_data)
     return user
+
+
+@pytest_asyncio.fixture
+async def sample_user_real(user_repo_real):
+    """
+    Pre-created admin user for integration testing with real MongoDB.
+
+    Username: Edward
+    Password: TestPass123
+    Role: admin
+    """
+    user_data = UserCreate(
+        username="Edward",
+        password="TestPass123",
+        role="admin"
+    )
+    user = await user_repo_real.create(user_data)
+    return user
+
+
+@pytest_asyncio.fixture
+async def sample_settings_real(settings_repo_real):
+    """
+    Pre-created global settings for integration testing with real MongoDB.
+
+    Creates default settings with GBP base currency.
+    Note: Settings is a singleton, so we use update_singleton() to initialize it.
+    """
+    settings_data = SettingsBase(
+        base_currency="GBP",
+        default_currency="GBP",
+        date_format="DD/MM/YYYY",
+        baseline_display_months=1,
+        rates={},  # Empty rates - tests don't need currency conversion
+        server_url="",
+        last_backup_date=None,
+        version="1.0.0"
+    )
+    # Settings is singleton - use update_singleton to initialize
+    settings = await settings_repo_real.update_singleton(settings_data)
+    return settings
+
+
+@pytest_asyncio.fixture
+async def auth_headers_real(sample_user_real):
+    """
+    Generate Authorization headers with admin JWT token for real MongoDB integration tests.
+
+    Creates valid JWT token for sample_user_real and returns headers dict
+    ready to use with async_client_real requests.
+
+    :Example:
+
+    >>> response = await async_client_real.post("/api/events", headers=auth_headers_real, json=event_data)
+    """
+    token = create_access_token(
+        user_id=sample_user_real.id,
+        username=sample_user_real.username,
+        role=sample_user_real.role
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def settings_with_rates_real(mongodb_real):
+    """
+    Create default settings with currency rates for recurring event tests (real MongoDB).
+
+    Required by generate_recurring_events for rate_to_base calculations.
+    """
+    from api.models import Settings
+    from api.utils.db import generate_id, utc_now
+
+    settings = Settings(
+        id=generate_id(),
+        base_currency="GBP",
+        default_currency="GBP",
+        rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
+        created_at=utc_now(),
+        updated_at=utc_now()
+    )
+    await mongodb_real["settings"].insert_one(settings.model_dump(mode="json"))
+    return settings
 
 
 @pytest_asyncio.fixture

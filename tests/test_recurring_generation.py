@@ -4,9 +4,8 @@ Tests for recurring event generation within sync protocol.
 Tests the generate_recurring_events utility function that materializes
 recurring rules as actual event instances within a ±1 month window.
 
-**INTEGRATION TEST SUITE UPGRADE NEEDED**:
-These tests would benefit from real MongoDB for more accurate
-change_log behavior simulation. See Task CPTR-300.
+**Uses real MongoDB** for accurate change_log behavior simulation.
+Mark tests with @pytest.mark.integration for selective execution.
 """
 
 import pytest
@@ -20,27 +19,9 @@ from api.models import RecurringRule, Event, Frequency, Settings
 from api.utils.db import generate_id, utc_now
 
 
-@pytest_asyncio.fixture(scope="function")
-async def settings_with_rates(mongodb_test):
-    """
-    Create default settings with currency rates for recurring event tests.
-
-    Required by generate_recurring_events for rate_to_base calculations.
-    """
-    settings = Settings(
-        id=generate_id(),
-        base_currency="GBP",
-        default_currency="GBP",
-        rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
-        created_at=utc_now(),
-        updated_at=utc_now()
-    )
-    await mongodb_test["settings"].insert_one(settings.model_dump(mode="json"))
-    return settings
-
-
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_monthly_recurring_events(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_monthly_recurring_events(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test generation of monthly recurring events within window.
 
@@ -69,10 +50,10 @@ async def test_generate_monthly_recurring_events(mongodb_test, clean_database, s
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Should generate ~2-3 instances (±1 month window)
     assert len(generated) >= 1, "Should generate at least 1 monthly instance"
@@ -90,11 +71,11 @@ async def test_generate_monthly_recurring_events(mongodb_test, clean_database, s
         assert event.created_by == user_id
 
     # Verify events were inserted into database
-    db_events = await mongodb_test["events"].find({"recurring_rule_id": str(rule.id)}).to_list(length=None)
+    db_events = await mongodb_real["events"].find({"recurring_rule_id": str(rule.id)}).to_list(length=None)
     assert len(db_events) == len(generated)
 
     # Verify change log entries were created
-    change_logs = await mongodb_test["change_log"].find({
+    change_logs = await mongodb_real["change_log"].find({
         "entity_type": "event",
         "action": "create",
         "changed_by_client": "client-a"
@@ -102,8 +83,9 @@ async def test_generate_monthly_recurring_events(mongodb_test, clean_database, s
     assert len(change_logs) == len(generated)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_weekly_recurring_events(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_weekly_recurring_events(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test generation of weekly recurring events.
 
@@ -132,10 +114,10 @@ async def test_generate_weekly_recurring_events(mongodb_test, clean_database, se
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-b")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-b")
 
     # Assert: Should generate 4-9 weekly instances
     assert len(generated) >= 4, "Should generate at least 4 weekly instances"
@@ -148,8 +130,9 @@ async def test_generate_weekly_recurring_events(mongodb_test, clean_database, se
         assert event.recurring_rule_id == rule.id
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_annual_recurring_events(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_annual_recurring_events(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test generation of annual recurring events.
 
@@ -178,10 +161,10 @@ async def test_generate_annual_recurring_events(mongodb_test, clean_database, se
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, None)
+    generated = await generate_recurring_events(mongodb_real, user_id, None)
 
     # Assert: Should generate 0-1 annual instances
     assert len(generated) <= 1, "Should generate at most 1 annual instance in ±1 month"
@@ -193,8 +176,9 @@ async def test_generate_annual_recurring_events(mongodb_test, clean_database, se
         assert event.recurring_rule_id == rule.id
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_recurring_events_avoids_duplicates(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test that generation skips existing instances to avoid duplicates.
 
@@ -223,7 +207,7 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_d
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Create one existing event instance manually
     existing_event = Event(
@@ -243,26 +227,27 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_d
         updated_by=user_id
     )
 
-    await mongodb_test["events"].insert_one(existing_event.model_dump(mode="json"))
+    await mongodb_real["events"].insert_one(existing_event.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Should NOT regenerate the existing instance
-    total_events = await mongodb_test["events"].count_documents({"recurring_rule_id": str(rule_id)})
+    total_events = await mongodb_real["events"].count_documents({"recurring_rule_id": str(rule_id)})
 
     # Original event + newly generated events
     assert len(generated) >= 0  # May generate 0-2 additional instances
     assert total_events == 1 + len(generated)
 
     # Verify existing event was not modified
-    db_existing = await mongodb_test["events"].find_one({"id": str(existing_event.id)})
+    db_existing = await mongodb_real["events"].find_one({"id": str(existing_event.id)})
     assert db_existing is not None
     assert db_existing["description"] == "Monthly Rent"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_recurring_events_preserves_edited_instances(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_recurring_events_preserves_edited_instances(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test that generation preserves manually edited instances.
 
@@ -291,7 +276,7 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_test
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Create edited event instance (updated_at different from created_at)
     created_time = utc_now() - timedelta(hours=2)
@@ -314,24 +299,25 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_test
         updated_by=user_id
     )
 
-    await mongodb_test["events"].insert_one(edited_event.model_dump(mode="json"))
+    await mongodb_real["events"].insert_one(edited_event.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Edited event should NOT be in generated list
     generated_dates = [e.event_date for e in generated]
     assert edited_event.event_date not in generated_dates, "Should not regenerate edited instance"
 
     # Verify edited event still exists with modifications intact
-    db_edited = await mongodb_test["events"].find_one({"id": str(edited_event.id)})
+    db_edited = await mongodb_real["events"].find_one({"id": str(edited_event.id)})
     assert db_edited is not None
     assert db_edited["description"] == "Monthly Subscription (Edited)"
     assert db_edited["amount"] == "-20"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_recurring_events_respects_end_date(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_recurring_events_respects_end_date(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test that generation respects rule end_date.
 
@@ -359,17 +345,18 @@ async def test_generate_recurring_events_respects_end_date(mongodb_test, clean_d
         updated_by=user_id
     )
 
-    await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Should NOT generate any events (rule expired)
     assert len(generated) == 0, "Should not generate events for expired rule"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test generation with multiple active recurring rules.
 
@@ -430,10 +417,10 @@ async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_data
     ]
 
     for rule in rules:
-        await mongodb_test["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+        await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Should generate instances for all 3 rules
     # Monthly: 2-3, Weekly: 4-9, Annual: 0-1 = total 6-13
@@ -445,8 +432,9 @@ async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_data
         assert len(rule_events) > 0, f"Should generate at least 1 instance for {rule.description}"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generate_recurring_events_empty_rules(mongodb_test, clean_database, settings_with_rates):
+async def test_generate_recurring_events_empty_rules(mongodb_real, clean_database_real, settings_with_rates_real):
     """
     Test generation with no recurring rules.
 
@@ -455,7 +443,7 @@ async def test_generate_recurring_events_empty_rules(mongodb_test, clean_databas
     """
     # Act: Generate recurring events (no rules in database)
     user_id = uuid4()
-    generated = await generate_recurring_events(mongodb_test, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
 
     # Assert: Should return empty list
     assert generated == []

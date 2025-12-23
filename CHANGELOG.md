@@ -19,8 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: Comprehensive sync integration test suite (test_sync_integration.py) with 5 tests covering multi-client sync, conflict detection, stale client recovery, and recurring events
 - CPTR-2c99cc6d, CPTR-2b2f2374: Manual sync testing guide (docs/sync-manual-testing-guide.md) with curl commands for validation
 - Taskwarrior tasks for real MongoDB integration test suite upgrade (Tasks 223-226)
+- Task 223 (CPTR-298): Real MongoDB fixtures (mongodb_real, clean_database_real, test_app_real, async_client_real) for complex integration tests
+- Task 223: Worker-based database naming (chaptr_test_integration_{worker_id}) for parallel test isolation
+- Task 223: pytest.ini integration marker for separating integration tests from unit tests
+- Task 223: Comprehensive fixture selection guide in conftest.py documenting when to use mongomock vs real MongoDB
 
 ### Changed
+- CPTR-cfce2518, CPTR-57034d01, CPTR-5c895d99 (Tasks 224-226): Migrate integration tests to real MongoDB - 14/17 passing
 - CPTR-6969cf85: Navigation aligned with mockup design (removed icon-based tab bar, added MANAGE and VIEW ALL action buttons)
 - CPTR-6969cf85: Command bar styling updated to match mockup (grid layout, background/borders on buttons, proper spacing)
 - CPTR-6969cf85: Account resolution hierarchy implemented (user-selected → story default → global default)
