@@ -311,12 +311,13 @@ async def sync(
 
         if not full_sync_required:
             # Query changes since last_sync_at
-            # Include: REST API changes (client_id=None) and other clients' changes
+            # Include: REST API changes (client_id=None or missing) and other clients' changes
             # Exclude: Only this client's own changes
             cursor = db["change_log"].find({
                 "changed_at": {"$gt": request.last_sync_at.isoformat()},
                 "$or": [
-                    {"changed_by_client": None},  # REST API changes
+                    {"changed_by_client": {"$in": [None]}},  # REST API changes (field is null)
+                    {"changed_by_client": {"$exists": False}},  # Field not present (old fixtures)
                     {"changed_by_client": {"$ne": request.client_id}}  # Other clients
                 ]
             }).sort("changed_at", 1)
