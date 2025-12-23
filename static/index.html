@@ -228,13 +228,25 @@
         </button>
     </nav>
 
-    <!-- Scripts -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    <!-- Scripts - Load Dexie first (needed by modules) -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
-    <script type="module" src="/static/js/db.js"></script>
-    <script type="module" src="/static/js/utils.js"></script>
-    <script type="module" src="/static/js/projection.js"></script>
-    <script type="module" src="/static/js/app.js"></script>
+
+    <!-- Load app modules and Alpine -->
+    <script type="module">
+        // Import app.js which will set window.app
+        await import('/static/js/app.js');
+
+        // Wait for app to be defined
+        if (typeof window.app !== 'function') {
+            console.error('app() not defined after importing app.js');
+        }
+
+        // Dynamically load Alpine after app is ready
+        const alpineScript = document.createElement('script');
+        alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
+        alpineScript.defer = true;
+        document.head.appendChild(alpineScript);
+    </script>
 
 </body>
 </html>

@@ -70,14 +70,14 @@ window.app = function() {
         async init() {
             console.log('CHAPTR initializing...');
 
+            // Set initial projection dates FIRST (before any rendering happens)
+            this.setDefaultProjectionDates();
+
             // Load user from localStorage
             await this.loadUser();
 
             // Load data (from Dexie or sync)
             await this.loadData();
-
-            // Set initial projection dates
-            this.setDefaultProjectionDates();
 
             console.log('CHAPTR ready!');
         },
@@ -101,8 +101,11 @@ window.app = function() {
                 const accountCount = await db.accounts.count();
 
                 if (accountCount === 0) {
-                    console.log('No local data - triggering full sync...');
-                    await this.fullSync();
+                    console.log('No local data - Phase 3 sync not implemented yet');
+                    // Phase 3: await this.fullSync();
+
+                    // For now, just load empty data
+                    await this.loadFromDexie();
                 } else {
                     console.log('Loading from Dexie...');
                     await this.loadFromDexie();

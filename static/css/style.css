@@ -170,7 +170,8 @@ body::before {
 }
 
 .screen {
-    display: none;
+    /* Alpine's x-show handles visibility */
+    display: block;
 }
 
 .screen-content {

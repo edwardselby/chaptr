@@ -59,11 +59,18 @@ export async function calculateProjection(
     displayCurrency = null
 ) {
     try {
+        // Validate dates
+        if (!startDate || !endDate) {
+            console.warn('calculateProjection called with null dates');
+            return [];
+        }
+
         // Get settings for currency conversion
         const settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
 
         // Step 1: Sum all account current_balance as starting point
-        const accounts = await db.accounts.where('is_archived').equals(false).toArray();
+        const allAccounts = await db.accounts.toArray();
+        const accounts = allAccounts.filter(a => !a.is_archived);
         let startingBalance = 0;
 
         for (const account of accounts) {

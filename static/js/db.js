@@ -54,14 +54,16 @@ db.on('ready', async () => {
  * Helper: Get all accounts (excluding archived)
  */
 db.getActiveAccounts = async function() {
-    return await db.accounts.where('is_archived').equals(false).toArray();
+    const all = await db.accounts.toArray();
+    return all.filter(a => !a.is_archived);
 };
 
 /**
  * Helper: Get all active stories (excluding archived)
  */
 db.getActiveStories = async function() {
-    return await db.stories.where('is_archived').equals(false).toArray();
+    const all = await db.stories.toArray();
+    return all.filter(s => !s.is_archived);
 };
 
 /**
@@ -85,14 +87,16 @@ db.getStoryEvents = async function(storyId) {
  * Helper: Get baseline events
  */
 db.getBaselineEvents = async function() {
-    return await db.events.where('is_baseline').equals(true).toArray();
+    const all = await db.events.toArray();
+    return all.filter(e => e.is_baseline === true);
 };
 
 /**
  * Helper: Get default account
  */
 db.getDefaultAccount = async function() {
-    return await db.accounts.where('is_default').equals(true).first();
+    const all = await db.accounts.toArray();
+    return all.find(a => a.is_default === true);
 };
 
 /**

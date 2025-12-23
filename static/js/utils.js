@@ -47,6 +47,7 @@ export function formatDate(dateStr) {
  * @returns {string} Formatted range (e.g., "Dec 18 → Jan 18")
  */
 export function formatDateRange(startDate, endDate) {
+    if (!startDate || !endDate) return '';
     return `${formatDate(startDate)} → ${formatDate(endDate)}`;
 }
 
