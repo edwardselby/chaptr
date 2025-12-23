@@ -2,10 +2,28 @@
 Pytest configuration and fixtures for CHAPTR API tests.
 
 Provides test infrastructure for Phase 1.4 endpoint testing:
-- MongoDB test database (mongomock)
-- FastAPI test client
+- MongoDB test database (mongomock for simple tests)
+- Real MongoDB (localhost:63000 for complex integration tests)
+- FastAPI test client (both mongomock and real MongoDB variants)
 - Repository fixtures
 - Sample data generators
+
+## Fixture Selection Guide
+
+**Use mongomock fixtures** (mongodb_test, clean_database, async_client):
+- Simple CRUD tests (accounts, events, stories, recurring_rules, settings)
+- Business logic validation
+- Authentication/authorization tests
+- Fast unit tests
+
+**Use real MongoDB fixtures** (mongodb_real, clean_database_real, async_client_real):
+- Complex integration tests (sync, recurring generation, pruning)
+- Tests requiring accurate change_log queries
+- Tests with timestamp-based filtering
+- Tests that mongomock can't simulate properly
+
+Mark integration tests with `@pytest.mark.integration` decorator.
+Run with: `pytest -m integration` or exclude with: `pytest -m "not integration"`
 """
 
 import pytest
@@ -77,6 +95,60 @@ async def clean_database(mongodb_test):
 
 
 # ============================================================================
+# Real MongoDB Fixtures (for complex integration tests)
+# ============================================================================
+
+@pytest_asyncio.fixture(scope="session")
+async def mongodb_real():
+    """
+    Real MongoDB connection for complex integration tests.
+
+    Connects to MongoDB on localhost:63000 (configured instance).
+    Uses worker-based database naming for parallel test isolation.
+
+    **Usage**: For tests requiring accurate change_log queries,
+    timestamp filtering, or complex async/motor behavior that
+    mongomock doesn't simulate properly.
+    """
+    import os
+
+    # Get worker ID for parallel test isolation
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    db_name = f"chaptr_test_integration_{worker_id}"
+
+    # Connect to real MongoDB
+    client = AsyncIOMotorClient("mongodb://localhost:63000")
+    db = client[db_name]
+
+    yield db
+
+    # Cleanup: Drop entire test database
+    await client.drop_database(db_name)
+    client.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def clean_database_real(mongodb_real):
+    """
+    Clean real MongoDB database before each test.
+
+    Drops all collections to start with fresh state.
+    Ensures test isolation even when using real MongoDB.
+    """
+    # Drop all collections before test
+    collections = await mongodb_real.list_collection_names()
+    for collection in collections:
+        await mongodb_real[collection].drop()
+
+    yield mongodb_real
+
+    # Cleanup after test
+    collections = await mongodb_real.list_collection_names()
+    for collection in collections:
+        await mongodb_real[collection].drop()
+
+
+# ============================================================================
 # Application Fixtures
 # ============================================================================
 
@@ -105,6 +177,40 @@ async def async_client(test_app):
     Uses httpx AsyncClient with ASGI transport for FastAPI.
     """
     transport = ASGITransport(app=test_app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test"
+    ) as client:
+        yield client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def test_app_real(clean_database_real):
+    """
+    FastAPI test application with real MongoDB.
+
+    Overrides MongoDB.get_database() to use real MongoDB instance.
+    Use for integration tests requiring accurate database behavior.
+    """
+    # Mock MongoDB.get_database to return real test database
+    original_get_db = MongoDB.get_database
+    MongoDB.get_database = lambda: clean_database_real
+
+    yield app
+
+    # Restore original
+    MongoDB.get_database = original_get_db
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_client_real(test_app_real):
+    """
+    HTTP client for integration testing with real MongoDB.
+
+    Uses httpx AsyncClient with ASGI transport for FastAPI.
+    Use for complex integration tests (sync, recurring, pruning).
+    """
+    transport = ASGITransport(app=test_app_real)
     async with AsyncClient(
         transport=transport,
         base_url="http://test"
