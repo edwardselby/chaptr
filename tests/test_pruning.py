@@ -3,6 +3,10 @@ Tests for change_log pruning functionality.
 
 Tests the scheduled maintenance job that removes old change_log entries
 to prevent unbounded database growth.
+
+**INTEGRATION TEST SUITE UPGRADE NEEDED**:
+These tests would benefit from real MongoDB for accurate
+timestamp-based query simulation. See Task CPTR-301.
 """
 
 import pytest

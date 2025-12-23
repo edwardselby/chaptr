@@ -3,6 +3,10 @@ Tests for recurring event generation within sync protocol.
 
 Tests the generate_recurring_events utility function that materializes
 recurring rules as actual event instances within a ±1 month window.
+
+**INTEGRATION TEST SUITE UPGRADE NEEDED**:
+These tests would benefit from real MongoDB for more accurate
+change_log behavior simulation. See Task CPTR-300.
 """
 
 import pytest
