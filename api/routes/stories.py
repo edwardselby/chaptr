@@ -129,7 +129,7 @@ async def create_story(
       }'
     ```
     """
-    return await repo.create(data, current_user=current_user)
+    return await repo.create(data, current_user=current_user, client_id=None)
 
 
 @router.put("/stories/{story_id}", response_model=Story)
@@ -181,7 +181,7 @@ async def update_story(
       }'
     ```
     """
-    return await repo.update(story_id, data, current_user=current_user)
+    return await repo.update(story_id, data, current_user=current_user, client_id=None)
 
 
 @router.delete("/stories/{story_id}", status_code=204)
@@ -213,5 +213,5 @@ async def delete_story(
     curl -X DELETE http://localhost:8000/api/stories/{story-id}
     ```
     """
-    await repo.delete(story_id)
+    await repo.delete(story_id, current_user=current_user, client_id=None)
     return None

@@ -45,7 +45,12 @@ class AccountRepository(BaseRepository[Account]):
         """
         super().__init__(db, "accounts", Account)
 
-    async def create(self, data: AccountCreate) -> Account:
+    async def create(
+        self,
+        data: AccountCreate,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> Account:
         """
         Create new account with is_default enforcement.
 
@@ -97,12 +102,24 @@ class AccountRepository(BaseRepository[Account]):
         # Insert into MongoDB
         await self.collection.insert_one(account.model_dump(mode="json"))
 
+        # Log change for sync
+        await self.log_change(
+            "account",
+            account.id,
+            "create",
+            account.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id
+        )
+
         return account
 
     async def update(
         self,
         account_id: UUID,
-        data: AccountUpdate
+        data: AccountUpdate,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Account:
         """
         Update existing account.
@@ -160,10 +177,28 @@ class AccountRepository(BaseRepository[Account]):
                       for k, v in update_dict.items()}}
         )
 
-        # Return updated account
-        return await self.get(account_id)
+        # Get updated account for change log
+        updated_account = await self.get(account_id)
 
-    async def archive(self, account_id: UUID) -> bool:
+        # Log change for sync
+        await self.log_change(
+            "account",
+            account_id,
+            "update",
+            updated_account.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id
+        )
+
+        # Return updated account
+        return updated_account
+
+    async def archive(
+        self,
+        account_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
         """
         Soft delete account by setting is_archived=true.
 
@@ -200,6 +235,19 @@ class AccountRepository(BaseRepository[Account]):
                 "is_archived": True,
                 "updated_at": utc_now().isoformat()
             }}
+        )
+
+        # Get updated account for change log (after archiving)
+        updated_account = await self.get(account_id)
+
+        # Log change for sync (archiving is an update, not delete)
+        await self.log_change(
+            "account",
+            account_id,
+            "update",
+            updated_account.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id
         )
 
         return True
