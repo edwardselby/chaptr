@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6] - 2025-12-22
+
 ### Added
 - CPTR-4ab09b87: Regression test suite for projection MongoDB bugs (6 tests: Decimal conversion, date queries, end-to-end integration)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Change logging foundation for sync - ChangeLogMixin in BaseRepository
