@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CPTR-6969cf85: Frontend foundation - HTML shell with Alpine.js structure (Dashboard, Projection, Accounts, Settings screens)
+- CPTR-6969cf85: Terminal aesthetic CSS with #4af626 green on #000 black, JetBrains Mono font, scanline overlay effect
+- CPTR-6969cf85: PWA manifest.json for mobile installation
+- CPTR-6969cf85: Utility functions (formatCurrency, formatDate, API request wrapper with JWT auth)
+- CPTR-6969cf85: Alpine.js reactive state management (navigation, data loading, projection state)
+- CPTR-6969cf85: Dexie.js IndexedDB schema (9 tables: accounts, stories, events, recurring_rules, users, settings, conflicts, sync_queue, sync_meta)
+- CPTR-6969cf85: Dashboard screen (stories list with status, accounts quick view, projection summary)
+- CPTR-6969cf85: Projection screen (filter chips, timeline, gap indicators, TODAY divider, currency toggle)
+- CPTR-6969cf85: Client-side projection logic ported from Python (running balance calculation, gap detection, multi-currency conversion)
+- CPTR-6969cf85: Data loading from backend (/api/sync integration, Dexie population, auto-sync on first load)
 - CPTR-4ab09b87: Regression test suite for projection MongoDB bugs (6 tests: Decimal conversion, date queries, end-to-end integration)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Change logging foundation for sync - ChangeLogMixin in BaseRepository
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
