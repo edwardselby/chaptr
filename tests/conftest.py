@@ -726,6 +726,35 @@ async def sample_story_with_user(story_repo_real, sample_user_real, sample_accou
 
 
 @pytest_asyncio.fixture
+async def sample_event_with_user(event_repo_real, sample_account_with_user, sample_story_with_user, sample_user_real, sample_settings_real):
+    """
+    Pre-created event for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need events owned by a specific user.
+    Requires sample_settings_real for currency rate lookup.
+    """
+    from api.models import EventCreate
+    from decimal import Decimal
+    from datetime import date
+
+    event_data = EventCreate(
+        event_date=date(2025, 1, 15),
+        description="Test Event",
+        amount=Decimal("-50.00"),
+        currency="GBP",
+        account_id=sample_account_with_user.id,
+        story_id=sample_story_with_user.id
+    )
+    event = await event_repo_real.create(
+        event_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API, not sync
+    )
+    return event
+
+
+@pytest_asyncio.fixture
 async def sample_regular_user(user_repo):
     """
     Pre-created regular (non-admin) user for authorization testing.

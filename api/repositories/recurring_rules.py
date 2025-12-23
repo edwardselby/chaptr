@@ -58,7 +58,8 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         self,
         data: RecurringRuleCreate,
         current_user: Optional[dict] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
     ) -> RecurringRule:
         """
         Create new recurring rule.
@@ -104,9 +105,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Extract user ID from current_user if authenticated
         user_id = self._get_user_id(current_user)
 
+        # Use provided entity_id (from sync) or generate new ID
+        rule_id = entity_id if entity_id is not None else generate_id()
+
         # Create recurring rule with generated ID and timestamps
         rule = RecurringRule(
-            id=generate_id(),
+            id=rule_id,
             **data.model_dump(),
             created_at=utc_now(),
             created_by=user_id,

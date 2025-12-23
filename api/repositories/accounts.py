@@ -49,7 +49,8 @@ class AccountRepository(BaseRepository[Account]):
         self,
         data: AccountCreate,
         current_user: Optional[dict] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
     ) -> Account:
         """
         Create new account with is_default enforcement.
@@ -91,9 +92,12 @@ class AccountRepository(BaseRepository[Account]):
                 }}
             )
 
+        # Use provided entity_id (from sync) or generate new ID
+        account_id = entity_id if entity_id is not None else generate_id()
+
         # Create account with generated ID and timestamps
         account = Account(
-            id=generate_id(),
+            id=account_id,
             **data.model_dump(),
             created_at=utc_now(),
             updated_at=utc_now()

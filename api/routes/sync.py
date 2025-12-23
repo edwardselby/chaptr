@@ -107,6 +107,10 @@ async def handle_create(
     """
     Dispatch create operation to appropriate repository.
 
+    For sync protocol, the client specifies entity_id which MUST be used
+    instead of server-generated ID. We add the ID to the data dict before
+    creating the model.
+
     Raises:
         ResourceConflictError: If creation violates business rules
         ValidationError: If data doesn't match Create model schema
@@ -116,7 +120,8 @@ async def handle_create(
         return  # Unknown entity type - skip silently
 
     create_data = create_model_class(**change.data)
-    await repo.create(create_data, current_user=current_user, client_id=client_id)
+    # Pass entity_id to repository - sync protocol requires using client-specified IDs
+    await repo.create(create_data, current_user=current_user, client_id=client_id, entity_id=change.entity_id)
 
 
 async def handle_update(

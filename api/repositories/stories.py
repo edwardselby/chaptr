@@ -51,7 +51,8 @@ class StoryRepository(BaseRepository[Story]):
         self,
         data: StoryCreate,
         current_user: Optional[dict] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
     ) -> Story:
         """
         Create new story.
@@ -94,9 +95,12 @@ class StoryRepository(BaseRepository[Story]):
         # Extract user ID from current_user if authenticated
         user_id = self._get_user_id(current_user)
 
+        # Use provided entity_id (from sync) or generate new ID
+        story_id = entity_id if entity_id is not None else generate_id()
+
         # Create story with generated ID and timestamps
         story = Story(
-            id=generate_id(),
+            id=story_id,
             **data.model_dump(),
             created_at=utc_now(),
             created_by=user_id,
