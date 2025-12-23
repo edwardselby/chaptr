@@ -788,6 +788,23 @@ class SyncChange(BaseModel):
         description="Client's last known updated_at for conflict detection (updates/deletes only)"
     )
 
+    @model_validator(mode='after')
+    def validate_base_updated_at_for_updates_deletes(self):
+        """
+        Validate base_updated_at is provided for UPDATE and DELETE actions.
+
+        Business Rules:
+        - UPDATE actions: Must include base_updated_at for conflict detection
+        - DELETE actions: Must include base_updated_at for conflict detection
+        - CREATE actions: base_updated_at should be None (entity doesn't exist yet)
+        """
+        if self.action in (ChangeAction.UPDATE, ChangeAction.DELETE):
+            if self.base_updated_at is None:
+                raise ValueError(
+                    f'{self.action.value} actions require base_updated_at for conflict detection'
+                )
+        return self
+
 
 class SyncRequest(BaseModel):
     """
@@ -813,6 +830,22 @@ class SyncRequest(BaseModel):
         default=[],
         description="Client changes to push to server"
     )
+
+    @model_validator(mode='after')
+    def validate_last_sync_at_not_future(self):
+        """
+        Validate last_sync_at is not in the future.
+
+        Business Rules:
+        - last_sync_at must be <= current server time
+        - Prevents client clock drift or malicious future timestamps
+        - None is allowed (first sync)
+        """
+        if self.last_sync_at is not None:
+            from api.utils.db import utc_now
+            if self.last_sync_at > utc_now():
+                raise ValueError('last_sync_at cannot be in the future')
+        return self
 
 
 class SyncConflict(BaseModel):
@@ -894,6 +927,46 @@ class SyncResponse(BaseModel):
     full_sync_required: bool = Field(
         default=False,
         description="True if client is stale and should call GET /api/sync/full"
+    )
+
+
+class FullSyncResponse(BaseModel):
+    """
+    Response from GET /api/sync/full endpoint.
+
+    Returns complete dataset for stale clients who missed too many changes.
+    Client should clear local database and repopulate with this data.
+
+    Used when:
+    - First sync (client has no last_sync_at)
+    - Stale client (last_sync_at older than oldest change_log entry)
+    - Client explicitly requests full refresh
+
+    All entities are filtered by user to ensure data isolation.
+    """
+    accounts: list[dict] = Field(
+        default=[],
+        description="All accounts owned by user"
+    )
+    stories: list[dict] = Field(
+        default=[],
+        description="All stories owned by user"
+    )
+    events: list[dict] = Field(
+        default=[],
+        description="All events owned by user"
+    )
+    recurring_rules: list[dict] = Field(
+        default=[],
+        description="All recurring rules owned by user"
+    )
+    settings: dict = Field(
+        ...,
+        description="Global settings (shared across users)"
+    )
+    sync_timestamp: str = Field(
+        ...,
+        description="Current server time - use as last_sync_at for next sync"
     )
 
 

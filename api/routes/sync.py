@@ -11,6 +11,7 @@ GET /api/sync/full - Full dataset download for stale clients
 See docs/chaptr-spec-sync-addendum.md for architecture details.
 """
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -18,11 +19,13 @@ from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from api.config import MongoDB
+from api.repositories.base import BaseRepository
 from api.models import (
     SyncRequest,
     SyncResponse,
     SyncConflict,
     SyncServerChange,
+    FullSyncResponse,
     EntityType,
     ChangeAction,
     # Create models
@@ -53,7 +56,12 @@ router = APIRouter()
 # ==================== Model Mapping Helpers ====================
 
 def get_create_model(entity_type: str):
-    """Map entity_type to corresponding Create Pydantic model."""
+    """
+    Map entity_type to corresponding Create Pydantic model.
+
+    Note: Settings are not included - they use singleton pattern (update-only).
+    Settings are initialized on startup and can only be updated via SettingsUpdate.
+    """
     mapping = {
         "event": EventCreate,
         "story": StoryCreate,
@@ -77,7 +85,7 @@ def get_update_model(entity_type: str):
 
 # ==================== Repository Dispatcher Helpers ====================
 
-def get_repository(db: AsyncIOMotorDatabase, entity_type: str):
+def get_repository(db: AsyncIOMotorDatabase, entity_type: str) -> Optional[BaseRepository]:
     """Get repository instance for entity type."""
     mapping = {
         "event": EventRepository(db),
@@ -92,7 +100,7 @@ def get_repository(db: AsyncIOMotorDatabase, entity_type: str):
 # ==================== Change Handlers ====================
 
 async def handle_create(
-    repo,
+    repo: BaseRepository,
     change,
     current_user: dict,
     client_id: str
@@ -104,7 +112,7 @@ async def handle_create(
         ResourceConflictError: If creation violates business rules
         ValidationError: If data doesn't match Create model schema
     """
-    create_model_class = get_create_model(change.entity_type)
+    create_model_class = get_create_model(change.entity_type.value)
     if not create_model_class:
         return  # Unknown entity type - skip silently
 
@@ -113,7 +121,7 @@ async def handle_create(
 
 
 async def handle_update(
-    repo,
+    repo: BaseRepository,
     change,
     current_user: dict,
     client_id: str
@@ -126,7 +134,7 @@ async def handle_update(
         If different, server was modified after client's last sync -> conflict.
 
     Returns:
-        SyncConflict if edit/edit conflict detected, None if successfully applied.
+        SyncConflict if edit/edit or delete/edit conflict detected, None if successfully applied.
 
     Raises:
         ResourceNotFoundError: If entity doesn't exist (handled by caller)
@@ -135,8 +143,14 @@ async def handle_update(
     try:
         existing = await repo.get(change.entity_id)
     except ResourceNotFoundError:
-        # Entity was deleted by another client - skip update
-        return None
+        # Entity was deleted by another client - return delete/edit conflict
+        return SyncConflict(
+            entity_type=change.entity_type,
+            entity_id=change.entity_id,
+            conflict_type="delete_edit",
+            client_version=change.data,  # Client wants to update
+            server_version=None  # Server deleted it
+        )
 
     # Conflict detection: compare timestamps
     if change.base_updated_at and existing.updated_at != change.base_updated_at:
@@ -149,7 +163,7 @@ async def handle_update(
         )
 
     # No conflict - apply update
-    update_model_class = get_update_model(change.entity_type)
+    update_model_class = get_update_model(change.entity_type.value)
     if not update_model_class:
         return None  # Unknown entity type
 
@@ -159,7 +173,7 @@ async def handle_update(
 
 
 async def handle_delete(
-    repo,
+    repo: BaseRepository,
     change,
     current_user: dict,
     client_id: str
@@ -240,7 +254,7 @@ async def sync(
 
     # ========== PUSH PHASE: Process client changes ==========
     for change in request.changes:
-        repo = get_repository(db, change.entity_type)
+        repo = get_repository(db, change.entity_type.value)
         if not repo:
             # Unknown entity type - skip
             continue
@@ -287,18 +301,22 @@ async def sync(
 
         if oldest_log:
             # Parse ISO string to datetime for comparison
-            from datetime import datetime
-            oldest_changed_at = datetime.fromisoformat(oldest_log["changed_at"].replace('Z', '+00:00'))
+            oldest_changed_at = datetime.fromisoformat(oldest_log["changed_at"])
 
             if request.last_sync_at < oldest_changed_at:
                 # Client is stale - change log was pruned
                 full_sync_required = True
 
         if not full_sync_required:
-            # Query changes since last_sync_at, excluding this client's changes
+            # Query changes since last_sync_at
+            # Include: REST API changes (client_id=None) and other clients' changes
+            # Exclude: Only this client's own changes
             cursor = db["change_log"].find({
                 "changed_at": {"$gt": request.last_sync_at.isoformat()},
-                "changed_by_client": {"$ne": request.client_id}
+                "$or": [
+                    {"changed_by_client": None},  # REST API changes
+                    {"changed_by_client": {"$ne": request.client_id}}  # Other clients
+                ]
             }).sort("changed_at", 1)
 
             async for log_entry in cursor:
@@ -318,7 +336,7 @@ async def sync(
     )
 
 
-@router.get("/sync/full")
+@router.get("/sync/full", response_model=FullSyncResponse)
 async def full_sync(current_user: dict = Depends(get_current_user)):
     """
     Full dataset download for stale clients.
@@ -342,19 +360,23 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
     3. Store sync_timestamp for next incremental sync
     """
     db = MongoDB.get_database()
+    user_id = current_user["id"]
 
-    # Get all entities
+    # Get all entities for this user
     account_repo = AccountRepository(db)
     story_repo = StoryRepository(db)
     event_repo = EventRepository(db)
     recurring_rule_repo = RecurringRuleRepository(db)
     settings_repo = SettingsRepository(db)
 
+    # Filter by created_by to ensure user only gets their own data
+    user_filter = {"created_by": user_id}
+
     return {
-        "accounts": [a.model_dump(mode="json") for a in await account_repo.list()],
-        "stories": [s.model_dump(mode="json") for s in await story_repo.list()],
-        "events": [e.model_dump(mode="json") for e in await event_repo.list()],
-        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list()],
-        "settings": (await settings_repo.get_all()).model_dump(mode="json"),
+        "accounts": [a.model_dump(mode="json") for a in await account_repo.list(filters=user_filter)],
+        "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter)],
+        "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter)],
+        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter)],
+        "settings": (await settings_repo.get_all()).model_dump(mode="json"),  # Settings are global
         "sync_timestamp": utc_now().isoformat()
     }
