@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting CHAPTR API...")
 
+    # Start background scheduler for maintenance jobs
+    from api.scheduler import start_scheduler
+    start_scheduler()
+
     # Validate SECRET_KEY in production
     if settings.environment == "production" and settings.secret_key == "dev-secret-key-change-in-production":
         logger.critical("❌ CRITICAL: Using default SECRET_KEY in production environment!")
@@ -67,6 +71,10 @@ async def lifespan(app: FastAPI):
             # Unique index on username for authentication performance + uniqueness enforcement
             await db.users.create_index([("username", 1)], unique=True)
             logger.info("✓ Created unique index on users.username")
+
+            # Change log indexes for sync and pruning performance
+            await db.change_log.create_index([("changed_at", 1)])
+            logger.info("✓ Created index on change_log.changed_at (for pruning queries)")
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
@@ -76,6 +84,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down CHAPTR API...")
+
+    # Shutdown background scheduler
+    from api.scheduler import shutdown_scheduler
+    shutdown_scheduler()
+
     MongoDB.close()
 
 

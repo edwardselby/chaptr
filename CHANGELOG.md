@@ -13,11 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: client_id parameter on all repository mutation methods
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: _get_user_id() helper in BaseRepository for DRY user extraction
+- CPTR-b5002098: Change log pruning infrastructure (configurable retention via CHANGE_LOG_RETENTION_DAYS, default 31 days)
+- CPTR-b5002098: APScheduler background scheduler with daily 2AM pruning job, graceful shutdown, and timeout protection
+- CPTR-b5002098: Database index on change_log.changed_at for efficient pruning queries
 
 ### Changed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All repositories log changes to change_log collection after create/update/delete operations
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All route handlers pass client_id=None for backward compatibility with REST API
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: log_change() omits None values per MongoDB best practice (reduces document size)
+- CPTR-b5002098: Main application startup integrates scheduler initialization and creates change_log indexes
+- CPTR-b5002098: Pruning job uses configurable retention period from Settings
 
 ### Fixed
 - CPTR-4ab09b87: MongoDB Decimal128 to Python Decimal conversion in projection functions (7 locations) and API route (2 locations)
