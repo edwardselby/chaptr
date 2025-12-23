@@ -191,9 +191,97 @@
         <!-- Accounts Screen -->
         <div class="screen" x-show="currentScreen === 'accounts'" x-cloak>
             <div class="screen-content">
-                <div class="empty-state">
-                    <p>Accounts screen - Coming in PR2</p>
-                </div>
+
+                <!-- Accounts List -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Accounts</h2>
+                        <button class="btn-add" @click="openAccountModal()">+ Add</button>
+                    </div>
+                    <div class="accounts-list">
+                        <template x-if="accounts.length === 0">
+                            <div class="empty-state">
+                                <p>No accounts yet. Add your first account to get started.</p>
+                            </div>
+                        </template>
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <div class="account-card" @click="viewAccountDetails(account.id)">
+                                <div class="account-card-header">
+                                    <div class="account-name-row">
+                                        <span class="account-name" x-text="account.name"></span>
+                                        <span class="tag tag-default" x-show="account.is_default">[default]</span>
+                                    </div>
+                                    <div class="account-meta">
+                                        <span class="account-currency" x-text="account.currency"></span>
+                                        <span class="account-updated" x-text="'Updated ' + formatRelativeTime(account.last_updated || account.updated_at)"></span>
+                                    </div>
+                                </div>
+                                <div class="account-card-balance">
+                                    <span class="balance-label">Current</span>
+                                    <span class="balance-value" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></span>
+                                </div>
+                                <div class="account-pending" x-show="account.pending_reconciliation">
+                                    <span class="pending-indicator">⚠ Pending reconciliation</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <!-- Projection vs Reality -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Projection vs Reality</h2>
+                    </div>
+                    <div class="drift-panel">
+                        <div class="drift-row">
+                            <span class="drift-label">Accounts Total</span>
+                            <span class="drift-value" x-text="formatCurrency(accountsTotal, settings.base_currency)"></span>
+                        </div>
+                        <div class="drift-row">
+                            <span class="drift-label">Projected NOW</span>
+                            <span class="drift-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></span>
+                        </div>
+                        <div class="drift-row drift-highlight">
+                            <span class="drift-label">Drift</span>
+                            <span class="drift-value" :class="getDriftClass()" x-text="formatDrift()"></span>
+                        </div>
+                        <div class="drift-explanation">
+                            <p class="drift-note" x-show="Math.abs(accountsTotal - projectionToday) > 0">
+                                <template x-if="accountsTotal > projectionToday">
+                                    <span>💡 Accounts show more money than projection expected</span>
+                                </template>
+                                <template x-if="accountsTotal < projectionToday">
+                                    <span>💡 Accounts show less money than projection expected</span>
+                                </template>
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Per-Account Projections (Future Dates) -->
+                <section class="section" x-show="accounts.length > 0">
+                    <div class="section-header">
+                        <h2>Projected Balances</h2>
+                        <span class="section-subtitle">Next 30 days</span>
+                    </div>
+                    <div class="account-projections">
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <div class="projection-card">
+                                <div class="projection-card-header" x-text="account.name"></div>
+                                <div class="projection-dates">
+                                    <template x-for="(projection, index) in getAccountProjections(account.id)" :key="index">
+                                        <div class="projection-date-row">
+                                            <span class="projection-date" x-text="formatDate(projection.date)"></span>
+                                            <span class="projection-balance" :class="projection.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projection.balance, account.currency)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
             </div>
         </div>
 
@@ -207,6 +295,69 @@
         </div>
 
     </main>
+
+    <!-- Account Modal -->
+    <div class="modal-overlay" x-show="showAccountModal" @click="showAccountModal = false" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
+                <button class="modal-close" @click="showAccountModal = false">✕</button>
+            </div>
+            <form @submit.prevent="saveAccount" class="modal-body">
+                <div class="form-group">
+                    <label for="account-name">Account Name</label>
+                    <input
+                        id="account-name"
+                        type="text"
+                        x-model="accountForm.name"
+                        placeholder="e.g., Monzo, HSBC"
+                        required
+                        class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="account-currency">Currency</label>
+                    <input
+                        id="account-currency"
+                        type="text"
+                        x-model="accountForm.currency"
+                        pattern="[A-Z]{3}"
+                        placeholder="GBP, USD, EUR"
+                        maxlength="3"
+                        required
+                        class="form-input">
+                    <span class="form-hint">3-letter currency code (e.g., GBP)</span>
+                </div>
+                <div class="form-group">
+                    <label for="account-balance">Current Balance</label>
+                    <input
+                        id="account-balance"
+                        type="number"
+                        x-model="accountForm.current_balance"
+                        step="0.01"
+                        placeholder="0.00"
+                        required
+                        class="form-input">
+                    <span class="form-hint">Negative values allowed for overdrafts</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-checkbox">
+                        <input type="checkbox" x-model="accountForm.is_default">
+                        <span>Set as default account</span>
+                    </label>
+                    <span class="form-hint">Default account used for new events</span>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showAccountModal = false">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Account</button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        x-show="accountForm.id"
+                        @click="deleteAccount()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Command Bar (Bottom Navigation) -->
     <nav class="command-bar">

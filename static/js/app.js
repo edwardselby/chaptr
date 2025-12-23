@@ -45,6 +45,7 @@ window.app = function() {
         showEventModal: false,
         accountForm: {},
         eventForm: {},
+        accountsTotal: 0,
 
         // Projection State
         currentView: 'all',
@@ -133,6 +134,9 @@ window.app = function() {
 
                 // Calculate story goal statuses
                 await this.calculateStoryStatuses();
+
+                // Calculate accounts total
+                this.calculateAccountsTotal();
             } catch (error) {
                 console.error('Error loading from Dexie:', error);
             }
@@ -498,7 +502,114 @@ window.app = function() {
 
         // ===== ACCOUNTS =====
 
-        // Account CRUD operations will be added in PR2
+        /**
+         * Calculate total of all account balances
+         */
+        calculateAccountsTotal() {
+            this.accountsTotal = this.accounts
+                .filter(a => !a.is_archived)
+                .reduce((sum, account) => {
+                    const balance = parseFloat(account.current_balance || 0);
+                    const rateToBase = parseFloat(account.rate_to_base || 1.0);
+                    return sum + (balance * rateToBase);
+                }, 0);
+        },
+
+        /**
+         * Open account modal for adding new account
+         */
+        openAccountModal() {
+            this.accountForm = {
+                name: '',
+                currency: this.settings.base_currency || 'GBP',
+                current_balance: 0,
+                is_default: false
+            };
+            this.showAccountModal = true;
+        },
+
+        /**
+         * View account details (open edit modal)
+         * @param {string} accountId - Account UUID
+         */
+        viewAccountDetails(accountId) {
+            const account = this.accounts.find(a => a.id === accountId);
+            if (account) {
+                this.accountForm = { ...account };
+                this.showAccountModal = true;
+            }
+        },
+
+        /**
+         * Save account (create or update)
+         */
+        async saveAccount() {
+            try {
+                // For PR2, this will integrate with Dexie + API
+                // For now, just close modal
+                console.log('Save account:', this.accountForm);
+                this.showAccountModal = false;
+
+                // TODO PR2: Implement CRUD
+                // - Write to Dexie
+                // - Call API endpoint
+                // - Reload data
+
+            } catch (error) {
+                console.error('Error saving account:', error);
+                alert('Failed to save account');
+            }
+        },
+
+        /**
+         * Delete account
+         */
+        async deleteAccount() {
+            if (!confirm(`Delete account "${this.accountForm.name}"?`)) {
+                return;
+            }
+
+            try {
+                // For PR2, this will integrate with Dexie + API
+                console.log('Delete account:', this.accountForm.id);
+                this.showAccountModal = false;
+
+                // TODO PR2: Implement delete
+                // - Mark as archived in Dexie
+                // - Call API endpoint
+                // - Reload data
+
+            } catch (error) {
+                console.error('Error deleting account:', error);
+                alert('Failed to delete account');
+            }
+        },
+
+        /**
+         * Get projected balances for an account at 3 future dates
+         * Uses filtered projection to show account-specific balances
+         * @param {string} accountId - Account UUID
+         * @returns {Array} Array of {date, balance} objects
+         */
+        getAccountProjections(accountId) {
+            const account = this.accounts.find(a => a.id === accountId);
+            if (!account) return [];
+
+            // Calculate 3 dates: 1 week, 2 weeks, 1 month from today
+            const today = new Date();
+            const dates = [
+                new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000),   // +1 week
+                new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000),  // +2 weeks
+                new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)   // +1 month
+            ];
+
+            // For now, return mock data
+            // TODO PR2: Implement real per-account projection calculation
+            return dates.map(date => ({
+                date: date.toISOString().split('T')[0],
+                balance: account.current_balance // Mock: just use current balance
+            }));
+        }
 
         // ===== FORMATTING HELPERS =====
 
@@ -546,18 +657,25 @@ window.app = function() {
 
         /**
          * Get drift class (positive/negative)
+         * Compares accounts total with projected balance
          */
         getDriftClass() {
-            // TODO: Calculate drift
-            return 'positive';
+            const drift = this.accountsTotal - this.projectionToday;
+            const driftPercent = Math.abs(drift) / Math.max(Math.abs(this.projectionToday), 1) * 100;
+
+            if (driftPercent < 5) return 'positive';  // 0-5%: on track
+            if (driftPercent < 10) return 'warning';  // 5-10%: amber
+            return 'negative';  // >10%: red
         },
 
         /**
          * Format drift amount
+         * Shows difference between accounts total and projected
          */
         formatDrift() {
-            // TODO: Calculate drift
-            return '+£50';
+            const drift = this.accountsTotal - this.projectionToday;
+            const sign = drift >= 0 ? '+' : '';
+            return sign + formatCurrency(drift, this.settings.base_currency);
         },
 
         // ===== AUTH =====
