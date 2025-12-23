@@ -18,7 +18,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="app()">
 
     <!-- Header -->
     <header class="header">
@@ -80,7 +80,7 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Accounts</h2>
-                        <button class="btn-section-action" @click="switchScreen('accounts')">View All →</button>
+                        <button class="btn-section-action" @click="switchScreen('accounts')">MANAGE</button>
                     </div>
                     <div class="accounts-list">
                         <template x-for="account in accounts.slice(0, 3)" :key="account.id">
@@ -104,6 +104,7 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Projection</h2>
+                        <button class="btn-section-action" @click="switchScreen('projection')">VIEW ALL</button>
                     </div>
                     <div class="projection-summary">
                         <div class="summary-item">
@@ -560,25 +561,6 @@
         </button>
     </nav>
 
-    <!-- Bottom Tab Navigation -->
-    <nav class="tab-bar">
-        <button class="tab-btn" :class="{ 'active': currentScreen === 'dashboard' }" @click="switchScreen('dashboard')">
-            <span class="tab-icon">📊</span>
-            <span class="tab-label">Dashboard</span>
-        </button>
-        <button class="tab-btn" :class="{ 'active': currentScreen === 'projection' }" @click="switchScreen('projection')">
-            <span class="tab-icon">📈</span>
-            <span class="tab-label">Projection</span>
-        </button>
-        <button class="tab-btn" :class="{ 'active': currentScreen === 'accounts' }" @click="switchScreen('accounts')">
-            <span class="tab-icon">💰</span>
-            <span class="tab-label">Accounts</span>
-        </button>
-        <button class="tab-btn" :class="{ 'active': currentScreen === 'settings' }" @click="switchScreen('settings')">
-            <span class="tab-icon">⚙️</span>
-            <span class="tab-label">Settings</span>
-        </button>
-    </nav>
 
     <!-- Help Modal -->
     <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
@@ -631,7 +613,7 @@
         // Dynamically load Alpine after app is ready
         const alpineScript = document.createElement('script');
         alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
-        alpineScript.defer = true;
+        // Remove defer to prevent double initialization
         document.head.appendChild(alpineScript);
     </script>
 

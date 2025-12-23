@@ -675,48 +675,50 @@ body::before {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 60px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    padding: 0 8px;
+    padding: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
     z-index: 100;
 }
 
-.command-btn {
-    flex: 1;
+.cmd-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--green-bright);
+    padding: 12px 8px;
+    font-family: inherit;
+    font-size: 11px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 8px;
     gap: 4px;
-    font-family: 'JetBrains Mono', monospace;
-    transition: color 0.15s;
+    transition: all 0.15s;
+    cursor: pointer;
 }
 
-.command-btn:hover {
-    color: var(--green-bright);
+.cmd-btn:active {
+    background: var(--green-glow);
+    border-color: var(--green-dim);
 }
 
-.command-btn.active {
-    color: var(--green-bright);
+.cmd-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
-.command-icon {
-    font-size: 20px;
+.cmd-key {
+    font-size: 16px;
+    font-weight: 700;
 }
 
-.command-label {
+.cmd-label {
     font-size: 9px;
-    text-transform: uppercase;
+    color: var(--text-dim);
     letter-spacing: 0.5px;
+    text-transform: uppercase;
 }
 
 /* Empty State */
@@ -1312,55 +1314,6 @@ body::before {
     color: var(--text-bright);
     font-size: 12px;
     font-weight: 600;
-}
-
-/* ===== TAB BAR (Bottom Navigation) ===== */
-
-.tab-bar {
-    position: fixed;
-    bottom: 64px; /* Above command bar */
-    left: 0;
-    right: 0;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    padding: 4px;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
-    z-index: 99;
-}
-
-.tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    padding: 8px 4px;
-    font-family: inherit;
-    font-size: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    transition: all 0.15s;
-    cursor: pointer;
-}
-
-.tab-btn:hover {
-    color: var(--text-bright);
-}
-
-.tab-btn.active {
-    color: var(--green-bright);
-}
-
-.tab-icon {
-    font-size: 20px;
-}
-
-.tab-label {
-    font-size: 9px;
-    letter-spacing: 0.5px;
 }
 
 /* ===== HELP MODAL ===== */
