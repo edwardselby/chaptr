@@ -154,8 +154,9 @@ async def get_projection(
     starting_balance = Decimal("0")
 
     for acc in accounts:
-        balance = acc.get("current_balance", Decimal("0"))
-        rate_to_base = acc.get("rate_to_base", Decimal("1"))
+        # Convert MongoDB Decimal128 to Python Decimal
+        balance = Decimal(str(acc.get("current_balance", "0")))
+        rate_to_base = Decimal(str(acc.get("rate_to_base", "1")))
         base_balance = convert_to_base_currency(balance, rate_to_base)
         starting_balance += base_balance
 
