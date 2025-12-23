@@ -45,6 +45,7 @@ window.app = function() {
         showAccountModal: false,
         showEventModal: false,
         showUserModal: false,
+        showHelpModal: false,
         accountForm: {},
         eventForm: {},
         userForm: {},
@@ -807,6 +808,124 @@ window.app = function() {
             } finally {
                 this.isSyncing = false;
             }
+        },
+
+        // ===== COMMAND BAR (Context-Sensitive) =====
+
+        /**
+         * Get label for + button based on current screen
+         * @returns {string} Button label
+         */
+        getPlusLabel() {
+            const labels = {
+                dashboard: 'Event',
+                projection: 'To Story',
+                accounts: 'Account',
+                settings: 'User'
+            };
+            return labels[this.currentScreen] || 'Add';
+        },
+
+        /**
+         * Get label for $ button based on current screen
+         * @returns {string} Button label
+         */
+        getDollarLabel() {
+            const labels = {
+                dashboard: 'Balance',
+                projection: 'Funding',
+                accounts: 'Balance',
+                settings: 'Settings'
+            };
+            return labels[this.currentScreen] || 'Update';
+        },
+
+        /**
+         * Handle + button action based on current screen
+         */
+        handlePlusAction() {
+            const actions = {
+                dashboard: () => this.addEvent(),
+                projection: () => this.addEventToStory(),
+                accounts: () => this.openAccountModal(),
+                settings: () => this.openUserModal()
+            };
+
+            const action = actions[this.currentScreen];
+            if (action) {
+                action();
+            } else {
+                console.warn('No + action defined for screen:', this.currentScreen);
+            }
+        },
+
+        /**
+         * Handle $ button action based on current screen
+         */
+        handleDollarAction() {
+            const actions = {
+                dashboard: () => this.updateBalance(),
+                projection: () => this.editFunding(),
+                accounts: () => this.updateBalance(),
+                settings: () => this.updateSettings()
+            };
+
+            const action = actions[this.currentScreen];
+            if (action) {
+                action();
+            } else {
+                console.warn('No $ action defined for screen:', this.currentScreen);
+            }
+        },
+
+        /**
+         * Add event (dashboard context)
+         */
+        addEvent() {
+            // TODO PR2 Stage 4: Implement event creation
+            console.log('Add event - Dashboard context');
+            alert('Add Event - Coming in Stage 4 (CRUD)');
+        },
+
+        /**
+         * Add event to current story (projection context)
+         */
+        addEventToStory() {
+            // TODO PR2 Stage 4: Implement add to story
+            console.log('Add to story - Projection context, view:', this.currentView);
+
+            if (this.currentView === 'all' || this.currentView === 'baseline') {
+                alert('Please select a specific story first');
+                return;
+            }
+
+            const story = this.stories.find(s => s.id === this.currentView);
+            alert(`Add Event to Story: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+        },
+
+        /**
+         * Update account balance (dashboard/accounts context)
+         */
+        updateBalance() {
+            // TODO PR2 Stage 4: Implement balance update
+            console.log('Update balance - Current screen:', this.currentScreen);
+            alert('Update Balance - Coming in Stage 4 (CRUD)');
+        },
+
+        /**
+         * Edit story funding (projection context)
+         */
+        editFunding() {
+            // TODO PR2 Stage 4: Implement funding edit
+            console.log('Edit funding - Projection context, view:', this.currentView);
+
+            if (this.currentView === 'all' || this.currentView === 'baseline') {
+                alert('Please select a specific story first');
+                return;
+            }
+
+            const story = this.stories.find(s => s.id === this.currentView);
+            alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
         }
 
         // ===== FORMATTING HELPERS =====

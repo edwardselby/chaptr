@@ -528,25 +528,87 @@
         </div>
     </div>
 
-    <!-- Command Bar (Bottom Navigation) -->
+    <!-- Command Bar (Context-Sensitive Actions) -->
     <nav class="command-bar">
-        <button class="command-btn" :class="{ 'active': currentScreen === 'dashboard' }" @click="switchScreen('dashboard')">
-            <span class="command-icon">📊</span>
-            <span class="command-label">Dashboard</span>
+        <!-- Context Action 1 (Plus) -->
+        <button class="cmd-btn" @click="handlePlusAction()">
+            <span class="cmd-key">+</span>
+            <span class="cmd-label" x-text="getPlusLabel()"></span>
         </button>
-        <button class="command-btn" :class="{ 'active': currentScreen === 'projection' }" @click="switchScreen('projection')">
-            <span class="command-icon">📈</span>
-            <span class="command-label">Projection</span>
+
+        <!-- Context Action 2 (Dollar) -->
+        <button class="cmd-btn" @click="handleDollarAction()">
+            <span class="cmd-key">$</span>
+            <span class="cmd-label" x-text="getDollarLabel()"></span>
         </button>
-        <button class="command-btn" :class="{ 'active': currentScreen === 'accounts' }" @click="switchScreen('accounts')">
-            <span class="command-icon">💰</span>
-            <span class="command-label">Accounts</span>
+
+        <!-- Sync Button -->
+        <button class="cmd-btn" @click="triggerManualSync()" :disabled="isSyncing">
+            <span class="cmd-key" x-text="isSyncing ? '⏳' : '🔄'"></span>
+            <span class="cmd-label">Sync</span>
         </button>
-        <button class="command-btn" :class="{ 'active': currentScreen === 'settings' }" @click="switchScreen('settings')">
-            <span class="command-icon">⚙️</span>
-            <span class="command-label">Settings</span>
+
+        <!-- Help Button -->
+        <button class="cmd-btn" @click="showHelpModal = true">
+            <span class="cmd-key">?</span>
+            <span class="cmd-label">Help</span>
         </button>
     </nav>
+
+    <!-- Bottom Tab Navigation -->
+    <nav class="tab-bar">
+        <button class="tab-btn" :class="{ 'active': currentScreen === 'dashboard' }" @click="switchScreen('dashboard')">
+            <span class="tab-icon">📊</span>
+            <span class="tab-label">Dashboard</span>
+        </button>
+        <button class="tab-btn" :class="{ 'active': currentScreen === 'projection' }" @click="switchScreen('projection')">
+            <span class="tab-icon">📈</span>
+            <span class="tab-label">Projection</span>
+        </button>
+        <button class="tab-btn" :class="{ 'active': currentScreen === 'accounts' }" @click="switchScreen('accounts')">
+            <span class="tab-icon">💰</span>
+            <span class="tab-label">Accounts</span>
+        </button>
+        <button class="tab-btn" :class="{ 'active': currentScreen === 'settings' }" @click="switchScreen('settings')">
+            <span class="tab-icon">⚙️</span>
+            <span class="tab-label">Settings</span>
+        </button>
+    </nav>
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
+        <div class="modal help-modal" @click.stop>
+            <div class="modal-header">
+                <h2>Help & Tips</h2>
+                <button class="modal-close" @click="showHelpModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>Navigation</h3>
+                    <p>Use the tabs at the bottom to switch between screens.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Command Bar</h3>
+                    <p><strong>+</strong> Add new items (events, accounts, stories)</p>
+                    <p><strong>$</strong> Update balances and funding</p>
+                    <p><strong>🔄</strong> Sync with server</p>
+                    <p><strong>?</strong> Show this help</p>
+                </div>
+                <div class="help-section">
+                    <h3>Dashboard</h3>
+                    <p>View active stories and account summaries. Tap stories to see detailed projections.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Projection</h3>
+                    <p>See timeline of all events. Use filters to view specific stories or baseline only.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Accounts</h3>
+                    <p>Manage accounts and view projected balances. Drift shows difference between actual and projected.</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts - Load Dexie first (needed by modules) -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
