@@ -656,6 +656,28 @@ async def auth_headers_real(sample_user_real):
 
 
 @pytest_asyncio.fixture
+async def settings_with_rates_real(mongodb_real):
+    """
+    Create default settings with currency rates for recurring event tests (real MongoDB).
+
+    Required by generate_recurring_events for rate_to_base calculations.
+    """
+    from api.models import Settings
+    from api.utils.db import generate_id, utc_now
+
+    settings = Settings(
+        id=generate_id(),
+        base_currency="GBP",
+        default_currency="GBP",
+        rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
+        created_at=utc_now(),
+        updated_at=utc_now()
+    )
+    await mongodb_real["settings"].insert_one(settings.model_dump(mode="json"))
+    return settings
+
+
+@pytest_asyncio.fixture
 async def sample_regular_user(user_repo):
     """
     Pre-created regular (non-admin) user for authorization testing.

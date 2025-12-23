@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task 223: Comprehensive fixture selection guide in conftest.py documenting when to use mongomock vs real MongoDB
 
 ### Changed
+- CPTR-57034d01: test_recurring_generation.py migrated to use real MongoDB fixtures (Task 225) - ALL 8 TESTS PASSING
+- CPTR-57034d01: Added settings_with_rates_real fixture for recurring event tests with real MongoDB
+- CPTR-57034d01: Updated all 8 recurring generation tests to use mongodb_real, clean_database_real, settings_with_rates_real
+- CPTR-57034d01: Added @pytest.mark.integration to all recurring generation tests
 - CPTR-5c895d99: test_sync_integration.py migrated to use real MongoDB fixtures (Task 224)
 - CPTR-5c895d99: Added *_real fixture variants (sample_user_real, sample_settings_real, auth_headers_real) for integration tests
 - CPTR-5c895d99: Updated all repository, client, and auth fixtures in test_sync_integration.py to use real MongoDB
