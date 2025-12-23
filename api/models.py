@@ -764,6 +764,139 @@ class ChangeLogEntry(BaseModel):
         return self
 
 
+# ==================== Sync Protocol Models ====================
+
+class SyncChange(BaseModel):
+    """
+    Client change to push to server during sync.
+
+    Represents a single entity modification (create/update/delete)
+    that the client wants to apply to the server during the push phase.
+
+    For conflict detection, updates and deletes include base_updated_at
+    to compare against server's current updated_at timestamp.
+    """
+    entity_type: EntityType = Field(..., description="Type of entity being changed")
+    entity_id: UUID = Field(..., description="ID of the entity")
+    action: ChangeAction = Field(..., description="Type of modification")
+    data: Optional[dict] = Field(
+        default=None,
+        description="Full entity data (null for deletes, required for creates/updates)"
+    )
+    base_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Client's last known updated_at for conflict detection (updates/deletes only)"
+    )
+
+
+class SyncRequest(BaseModel):
+    """
+    Request payload for POST /api/sync endpoint.
+
+    Bidirectional sync protocol:
+    1. Push phase: Apply client changes to server
+    2. Pull phase: Get changes from other clients since last_sync_at
+
+    Client must track last_sync_at from previous sync response.
+    First sync sends last_sync_at=None to indicate full sync needed.
+    """
+    client_id: str = Field(
+        ...,
+        min_length=1,
+        description="Unique identifier for this client/device"
+    )
+    last_sync_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp of last successful sync (None = first sync)"
+    )
+    changes: list[SyncChange] = Field(
+        default=[],
+        description="Client changes to push to server"
+    )
+
+
+class SyncConflict(BaseModel):
+    """
+    Conflict detected during push phase.
+
+    Three conflict types:
+    - edit_edit: Client and server both modified entity
+    - delete_edit: Client deleted, server modified (or vice versa)
+    - business_rule: Change violates business logic (e.g., delete account with events)
+
+    Both versions included for client-side resolution UI.
+    """
+    entity_type: EntityType = Field(..., description="Type of conflicting entity")
+    entity_id: UUID = Field(..., description="ID of conflicting entity")
+    conflict_type: str = Field(
+        ...,
+        description="Conflict category: edit_edit, delete_edit, business_rule"
+    )
+    client_version: Optional[dict] = Field(
+        default=None,
+        description="Client's version of the entity (null if client deleted)"
+    )
+    server_version: Optional[dict] = Field(
+        default=None,
+        description="Server's current version of the entity (null if server deleted)"
+    )
+
+
+class SyncServerChange(BaseModel):
+    """
+    Change from server to pull to client.
+
+    Represents modifications made by other clients since last_sync_at.
+    Client applies these changes to local database and updates UI.
+    """
+    entity_type: EntityType = Field(..., description="Type of entity changed")
+    entity_id: UUID = Field(..., description="ID of changed entity")
+    action: ChangeAction = Field(..., description="Type of modification")
+    data: Optional[dict] = Field(
+        default=None,
+        description="Full entity snapshot (null for deletes)"
+    )
+
+
+class SyncResponse(BaseModel):
+    """
+    Response from POST /api/sync endpoint.
+
+    Returns:
+    - applied: Successfully applied client changes
+    - conflicts: Changes that couldn't be applied (need resolution)
+    - server_changes: Changes from other clients to pull
+    - sync_timestamp: New last_sync_at for next sync
+    - full_sync_required: True if client is stale (missing change log entries)
+
+    Client should:
+    1. Store sync_timestamp for next sync
+    2. Handle conflicts with user intervention
+    3. Apply server_changes to local database
+    4. If full_sync_required=true, call GET /api/sync/full
+    """
+    applied: list[UUID] = Field(
+        default=[],
+        description="entity_ids of successfully applied client changes"
+    )
+    conflicts: list[SyncConflict] = Field(
+        default=[],
+        description="Changes that conflicted and need resolution"
+    )
+    server_changes: list[SyncServerChange] = Field(
+        default=[],
+        description="Changes from other clients to apply locally"
+    )
+    sync_timestamp: datetime = Field(
+        ...,
+        description="Current server time - use as last_sync_at for next sync"
+    )
+    full_sync_required: bool = Field(
+        default=False,
+        description="True if client is stale and should call GET /api/sync/full"
+    )
+
+
 """
 Required MongoDB Indexes for change_log Collection:
 
