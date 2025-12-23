@@ -17,12 +17,18 @@ async def sync():
     """
     Main sync endpoint (push and pull).
 
-    TODO Phase 3:
+    TODO Phase 2-3:
     - Receive client changes (creates, updates, deletes)
     - Process each change with conflict detection
-    - Generate recurring events within window
+    - Generate recurring events within window (Phase 4: use api.utils.recurring.generate_recurring_events)
     - Query change_log for server changes since last_sync_at
     - Return applied changes, conflicts, and server changes
+
+    Phase 4 Integration Point:
+        from api.utils.recurring import generate_recurring_events
+        # Call after push phase, before pull phase:
+        user_id = UUID(current_user["id"])
+        await generate_recurring_events(db, user_id, request.client_id)
 
     Request Body:
         client_id: Device UUID
