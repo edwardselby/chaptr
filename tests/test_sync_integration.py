@@ -547,9 +547,9 @@ async def test_recurring_event_generation_on_sync(
 
     # Edit one generated event
     edited_event_id = generated_events[0]["id"]
-    edited_event = await event_repo.get(UUID(edited_event_id))
+    edited_event = await event_repo_real.get(UUID(edited_event_id))
 
-    await event_repo.update(
+    await event_repo_real.update(
         UUID(edited_event_id),
         EventUpdate(description="EDITED: Custom description"),
         current_user={"id": str(sample_user_real.id)},
@@ -567,7 +567,7 @@ async def test_recurring_event_generation_on_sync(
     assert response_a2.status_code == 200
 
     # Verify edited event preserved
-    edited_event_after = await event_repo.get(UUID(edited_event_id))
+    edited_event_after = await event_repo_real.get(UUID(edited_event_id))
     assert "EDITED" in edited_event_after.description, "Edited event should be preserved"
     assert edited_event_after.updated_at != edited_event_after.created_at, "Edited event should have different timestamps"
 

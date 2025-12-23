@@ -19,25 +19,6 @@ from api.models import RecurringRule, Event, Frequency, Settings
 from api.utils.db import generate_id, utc_now
 
 
-@pytest_asyncio.fixture(scope="function")
-async def settings_with_rates_real_real(mongodb_real):
-    """
-    Create default settings with currency rates for recurring event tests (real MongoDB).
-
-    Required by generate_recurring_events for rate_to_base calculations.
-    """
-    settings = Settings(
-        id=generate_id(),
-        base_currency="GBP",
-        default_currency="GBP",
-        rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
-        created_at=utc_now(),
-        updated_at=utc_now()
-    )
-    await mongodb_real["settings"].insert_one(settings.model_dump(mode="json"))
-    return settings
-
-
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_generate_monthly_recurring_events(mongodb_real, clean_database_real, settings_with_rates_real):
