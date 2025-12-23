@@ -11,7 +11,7 @@ This guide provides step-by-step curl commands to manually test sync functionali
 ### 1. Start API Server
 
 ```bash
-cd /Users/edward/PycharmProjects/Chaptr2
+# In project root directory
 uvicorn api.main:app --reload
 ```
 
