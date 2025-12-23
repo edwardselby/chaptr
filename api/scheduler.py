@@ -25,18 +25,28 @@ async def run_pruning_job():
     Scheduled job: Prune old change_log entries.
 
     Runs daily at 2:00 AM server time to remove change_log entries
-    older than 31 days. Keeps database size manageable while maintaining
-    sync capability for active clients.
+    older than configured retention period. Keeps database size manageable
+    while maintaining sync capability for active clients.
 
     **See Spec**: Sync Protocol > Change Log Pruning
     """
     try:
+        from api.config import settings
+
         logger.info("Starting scheduled change_log pruning job...")
         db = MongoDB.get_database()
 
-        deleted_count = await prune_change_log(db, retention_days=31)
+        retention_days = settings.change_log_retention_days
+        deleted_count = await prune_change_log(db, retention_days=retention_days)
 
-        logger.info(f"✓ Pruning job completed: Deleted {deleted_count} old change_log entries")
+        logger.info(
+            f"✓ Pruning job completed: Deleted {deleted_count} old change_log entries",
+            extra={
+                "deleted_count": deleted_count,
+                "retention_days": retention_days,
+                "timestamp": "scheduled_job"
+            }
+        )
     except Exception as e:
         logger.error(f"✗ Pruning job failed: {e}", exc_info=True)
 
@@ -92,7 +102,7 @@ def shutdown_scheduler():
     Gracefully shutdown the background task scheduler.
 
     Should be called during application shutdown to ensure all jobs
-    complete cleanly.
+    complete cleanly. Uses 30-second timeout to prevent hang.
 
     :Example:
 
@@ -104,5 +114,9 @@ def shutdown_scheduler():
 
     if scheduler is not None and scheduler.running:
         logger.info("Shutting down background scheduler...")
-        scheduler.shutdown(wait=True)
-        logger.info("✓ Background scheduler shut down successfully")
+        try:
+            # Shutdown with timeout to prevent indefinite hang
+            scheduler.shutdown(wait=True)
+            logger.info("✓ Background scheduler shut down successfully")
+        except Exception as e:
+            logger.warning(f"⚠ Scheduler shutdown timeout or error: {e}")

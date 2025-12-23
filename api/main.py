@@ -71,6 +71,10 @@ async def lifespan(app: FastAPI):
             # Unique index on username for authentication performance + uniqueness enforcement
             await db.users.create_index([("username", 1)], unique=True)
             logger.info("✓ Created unique index on users.username")
+
+            # Change log indexes for sync and pruning performance
+            await db.change_log.create_index([("changed_at", 1)])
+            logger.info("✓ Created index on change_log.changed_at (for pruning queries)")
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
