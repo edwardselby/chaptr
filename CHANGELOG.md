@@ -25,9 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task 223: Comprehensive fixture selection guide in conftest.py documenting when to use mongomock vs real MongoDB
 
 ### Changed
-- CPTR-cfce2518 (Task 226): Migrate test_pruning.py to real MongoDB - all 6 tests passing
-- CPTR-57034d01 (Task 225): Migrate test_recurring_generation.py to real MongoDB - all 8 tests passing
-- CPTR-5c895d99 (Task 224): Migrate test_sync_integration.py to real MongoDB - 3 tests revealing sync bugs
+- CPTR-cfce2518, CPTR-57034d01, CPTR-5c895d99 (Tasks 224-226): Migrate integration tests to real MongoDB - 14/17 passing
 - CPTR-6969cf85: Navigation aligned with mockup design (removed icon-based tab bar, added MANAGE and VIEW ALL action buttons)
 - CPTR-6969cf85: Command bar styling updated to match mockup (grid layout, background/borders on buttons, proper spacing)
 - CPTR-6969cf85: Account resolution hierarchy implemented (user-selected → story default → global default)
