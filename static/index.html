@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="CHAPTR - Personal finance projection system">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>CHAPTR</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body x-data="app()" x-init="init()">
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <button class="btn-back" x-show="currentScreen !== 'dashboard'" @click="switchScreen('dashboard')">
+                <span>←</span>
+            </button>
+            <div class="logo">
+                <span class="logo-text">CHAPTR</span>
+                <span class="logo-context" x-text="screenTitle"></span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="sync-indicator" x-show="isSyncing">
+                <span class="sync-dot"></span>
+                <span class="sync-text">syncing</span>
+            </div>
+            <button class="btn-settings" @click="switchScreen('settings')">
+                <span>⚙</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+
+        <!-- Dashboard Screen -->
+        <div class="screen" x-show="currentScreen === 'dashboard'" x-cloak>
+            <div class="screen-content">
+
+                <!-- Stories Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Stories</h2>
+                    </div>
+                    <div class="stories-list">
+                        <template x-for="story in stories" :key="story.id">
+                            <div class="story-item" @click="viewStoryProjection(story.id)">
+                                <div class="story-item-left">
+                                    <div class="story-name" x-text="story.name"></div>
+                                    <div class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></div>
+                                </div>
+                                <div class="story-item-right">
+                                    <div class="story-status" :class="getStoryStatusClass(story)" x-text="getStoryStatus(story)"></div>
+                                </div>
+                            </div>
+                        </template>
+                        <div class="empty-state" x-show="stories.length === 0">
+                            <p>No active stories</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Accounts Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Accounts</h2>
+                        <button class="btn-section-action" @click="switchScreen('accounts')">View All →</button>
+                    </div>
+                    <div class="accounts-list">
+                        <template x-for="account in accounts.slice(0, 3)" :key="account.id">
+                            <div class="account-item">
+                                <div class="account-item-left">
+                                    <div class="account-name">
+                                        <span x-text="account.name"></span>
+                                        <span class="tag" x-show="account.is_default">[default]</span>
+                                    </div>
+                                    <div class="account-updated" x-text="'Updated ' + formatRelativeTime(account.balance_updated_at)"></div>
+                                </div>
+                                <div class="account-item-right">
+                                    <div class="account-balance" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <!-- Projection Summary -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Projection</h2>
+                    </div>
+                    <div class="projection-summary">
+                        <div class="summary-item">
+                            <div class="summary-label">Today</div>
+                            <div class="summary-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">End of Month</div>
+                            <div class="summary-value" x-text="formatCurrency(projectionEndOfMonth, settings.base_currency)"></div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Drift</div>
+                            <div class="summary-value" :class="getDriftClass()" x-text="formatDrift()"></div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Projection Screen -->
+        <div class="screen" x-show="currentScreen === 'projection'" x-cloak>
+            <div class="screen-content no-padding">
+
+                <!-- Filter Chips -->
+                <div class="filters-bar">
+                    <div class="filters-scroll">
+                        <button class="filter-chip" :class="{ 'active': currentView === 'all' }" @click="setView('all')">ALL</button>
+                        <button class="filter-chip" :class="{ 'active': currentView === 'baseline' }" @click="setView('baseline')">Baseline</button>
+                        <template x-for="story in stories" :key="story.id">
+                            <button class="filter-chip" :class="{ 'active': currentView === story.id }" @click="setView(story.id)" x-text="story.name"></button>
+                        </template>
+                    </div>
+                    <button class="currency-toggle" x-show="currentView === 'all'" @click="toggleDisplayCurrency()">
+                        <span x-text="displayCurrency || settings.base_currency"></span>
+                    </button>
+                </div>
+
+                <!-- Projection Header -->
+                <div class="projection-header">
+                    <div class="projection-title" x-text="getProjectionTitle()"></div>
+                    <div class="projection-dates" x-text="formatDateRange(projectionStartDate, projectionEndDate)"></div>
+                    <div class="projection-balance">
+                        <span class="balance-label">Starting:</span>
+                        <span class="balance-value" x-text="formatCurrency(projectionStartingBalance, displayCurrency || settings.base_currency)"></span>
+                    </div>
+                </div>
+
+                <!-- Timeline -->
+                <div class="timeline">
+                    <template x-for="row in projectionRows" :key="row.id || row.date + row.description">
+                        <div>
+                            <!-- Regular Event Row -->
+                            <div class="timeline-row" x-show="!row.isGap" :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }">
+                                <div class="timeline-date" x-text="formatDate(row.date)"></div>
+                                <div class="timeline-event">
+                                    <span x-text="row.description"></span>
+                                    <span class="tag" x-show="row.source" x-text="'[' + row.source + ']'"></span>
+                                </div>
+                                <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
+                                <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
+                            </div>
+
+                            <!-- TODAY Divider -->
+                            <div class="today-divider" x-show="row.showTodayDivider">
+                                <span>━━━ TODAY ━━━</span>
+                            </div>
+
+                            <!-- Gap Indicator Row -->
+                            <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span x-text="row.gapDays + ' days'"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="empty-state" x-show="projectionRows.length === 0">
+                        <p>No events in this view</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Accounts Screen -->
+        <div class="screen" x-show="currentScreen === 'accounts'" x-cloak>
+            <div class="screen-content">
+                <div class="empty-state">
+                    <p>Accounts screen - Coming in PR2</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div class="screen" x-show="currentScreen === 'settings'" x-cloak>
+            <div class="screen-content">
+                <div class="empty-state">
+                    <p>Settings screen - Coming in PR2</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Command Bar (Bottom Navigation) -->
+    <nav class="command-bar">
+        <button class="command-btn" :class="{ 'active': currentScreen === 'dashboard' }" @click="switchScreen('dashboard')">
+            <span class="command-icon">📊</span>
+            <span class="command-label">Dashboard</span>
+        </button>
+        <button class="command-btn" :class="{ 'active': currentScreen === 'projection' }" @click="switchScreen('projection')">
+            <span class="command-icon">📈</span>
+            <span class="command-label">Projection</span>
+        </button>
+        <button class="command-btn" :class="{ 'active': currentScreen === 'accounts' }" @click="switchScreen('accounts')">
+            <span class="command-icon">💰</span>
+            <span class="command-label">Accounts</span>
+        </button>
+        <button class="command-btn" :class="{ 'active': currentScreen === 'settings' }" @click="switchScreen('settings')">
+            <span class="command-icon">⚙️</span>
+            <span class="command-label">Settings</span>
+        </button>
+    </nav>
+
+    <!-- Scripts -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+    <script type="module" src="/static/js/db.js"></script>
+    <script type="module" src="/static/js/utils.js"></script>
+    <script type="module" src="/static/js/projection.js"></script>
+    <script type="module" src="/static/js/app.js"></script>
+
+</body>
+</html>
