@@ -1464,7 +1464,7 @@ window.app = function() {
 
             const story = this.stories.find(s => s.id === this.currentView);
             alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
-        }
+        },
 
         // ===== FORMATTING HELPERS =====
 
