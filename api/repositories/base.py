@@ -5,7 +5,7 @@ Provides generic CRUD operations for all entity repositories
 using the Repository Pattern for separation of concerns.
 """
 
-from typing import Generic, TypeVar, Type, Optional
+from typing import Generic, TypeVar, Type, Optional, Dict, Any
 from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -70,16 +70,23 @@ class ChangeLogMixin:
         ...     client_id=None  # Direct API call
         ... )
         """
-        await self.db["change_log"].insert_one({
+        # Build entry, omitting None values per MongoDB best practice
+        entry = {
             "id": str(generate_id()),
             "entity_type": entity_type,
             "entity_id": str(entity_id),
             "action": action,
             "data": data,
-            "changed_by_user": str(user_id) if user_id else None,
-            "changed_by_client": client_id,
             "changed_at": utc_now().isoformat()
-        })
+        }
+
+        # Only include non-None values for user and client
+        if user_id is not None:
+            entry["changed_by_user"] = str(user_id)
+        if client_id is not None:
+            entry["changed_by_client"] = client_id
+
+        await self.db["change_log"].insert_one(entry)
 
 
 class BaseRepository(Generic[T], ChangeLogMixin):
@@ -127,6 +134,25 @@ class BaseRepository(Generic[T], ChangeLogMixin):
         self.collection = db[collection_name]
         self.model_class = model_class
         self.collection_name = collection_name
+
+    def _get_user_id(self, current_user: Optional[Dict[str, Any]]) -> Optional[UUID]:
+        """
+        Extract user UUID from current_user dict.
+
+        Helper method to reduce code duplication across repositories.
+        Repositories call this instead of repeating the extraction logic.
+
+        :param current_user: Current user dict from JWT token (contains 'id' key)
+        :type current_user: Optional[Dict[str, Any]]
+        :return: User UUID or None
+        :rtype: Optional[UUID]
+
+        :Example:
+
+        >>> user_id = self._get_user_id(current_user)
+        >>> await self.log_change("event", event.id, "create", data, user_id, client_id)
+        """
+        return UUID(current_user["id"]) if current_user else None
 
     async def get(self, resource_id: UUID) -> T:
         """

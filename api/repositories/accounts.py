@@ -103,13 +103,12 @@ class AccountRepository(BaseRepository[Account]):
         await self.collection.insert_one(account.model_dump(mode="json"))
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "account",
             account.id,
             "create",
             account.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
@@ -182,13 +181,12 @@ class AccountRepository(BaseRepository[Account]):
         updated_account = await self.get(account_id)
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "account",
             account_id,
             "update",
             updated_account.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
@@ -243,13 +241,12 @@ class AccountRepository(BaseRepository[Account]):
         updated_account = await self.get(account_id)
 
         # Log change for sync (archiving is an update, not delete)
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "account",
             account_id,
             "update",
             updated_account.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 

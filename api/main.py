@@ -12,6 +12,7 @@ from datetime import datetime
 
 from api.config import settings, MongoDB
 from api.utils.indexes import create_change_log_indexes
+from api.utils.db import utc_now
 
 # Configure logging
 logging.basicConfig(
@@ -123,7 +124,7 @@ async def health_check():
         "database": "connected" if db_connected else "disconnected",
         "version": "0.1.0",
         "environment": settings.environment,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": utc_now().isoformat()
     }
 
 

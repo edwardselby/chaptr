@@ -121,7 +121,7 @@ class EventRepository(BaseRepository[Event]):
             rate = data.rate_to_base
 
         # Extract user ID from current_user if authenticated
-        user_id = UUID(current_user["id"]) if current_user else None
+        user_id = self._get_user_id(current_user)
 
         # Create event with resolved account and locked rate
         event = Event(
@@ -232,13 +232,12 @@ class EventRepository(BaseRepository[Event]):
         updated_event = await self.get(event_id)
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "event",
             event_id,
             "update",
             updated_event.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
@@ -281,13 +280,12 @@ class EventRepository(BaseRepository[Event]):
             )
 
         # Log change BEFORE deletion (to capture entity snapshot)
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "event",
             event_id,
             "delete",
             event.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 

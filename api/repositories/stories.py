@@ -92,7 +92,7 @@ class StoryRepository(BaseRepository[Story]):
                 )
 
         # Extract user ID from current_user if authenticated
-        user_id = UUID(current_user["id"]) if current_user else None
+        user_id = self._get_user_id(current_user)
 
         # Create story with generated ID and timestamps
         story = Story(
@@ -194,13 +194,12 @@ class StoryRepository(BaseRepository[Story]):
         updated_story = await self.get(story_id)
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "story",
             story_id,
             "update",
             updated_story.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
@@ -236,13 +235,12 @@ class StoryRepository(BaseRepository[Story]):
         story = await self.get(story_id)
 
         # Log change BEFORE deletion (to capture entity snapshot)
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "story",
             story_id,
             "delete",
             story.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 

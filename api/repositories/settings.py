@@ -150,8 +150,8 @@ class SettingsRepository(BaseRepository[Settings]):
         # Get updated settings for change log
         updated_settings = await self.get_or_create_default()
 
-        # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else updated_by
+        # Log change for sync (prefer current_user, fallback to updated_by)
+        user_id = self._get_user_id(current_user) or updated_by
         await self.log_change(
             "settings",
             existing.id,

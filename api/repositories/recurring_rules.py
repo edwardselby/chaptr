@@ -102,7 +102,7 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             )
 
         # Extract user ID from current_user if authenticated
-        user_id = UUID(current_user["id"]) if current_user else None
+        user_id = self._get_user_id(current_user)
 
         # Create recurring rule with generated ID and timestamps
         rule = RecurringRule(
@@ -198,13 +198,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         updated_rule = await self.get(rule_id)
 
         # Log change for sync
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "recurring_rule",
             rule_id,
             "update",
             updated_rule.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
@@ -241,13 +240,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         rule = await self.get(rule_id)
 
         # Log change BEFORE deletion (to capture entity snapshot)
-        user_id = UUID(current_user["id"]) if current_user else None
         await self.log_change(
             "recurring_rule",
             rule_id,
             "delete",
             rule.model_dump(mode="json"),
-            user_id,
+            self._get_user_id(current_user),
             client_id
         )
 
