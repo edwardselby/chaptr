@@ -193,6 +193,9 @@ async def calculate_global_projection(
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
 
+        # Remove MongoDB _id field (not JSON serializable)
+        result_event.pop("_id", None)
+
         # Step 5: Add display currency conversion if requested
         if display_currency and settings:
             display_amount = convert_from_base_currency(
@@ -454,6 +457,8 @@ async def calculate_story_projection(
         # Hidden events still affect running_balance but aren't displayed
         if is_visible:
             result_event = {**event, "running_balance": running_balance}
+            # Remove MongoDB _id field (not JSON serializable)
+            result_event.pop("_id", None)
             results.append(result_event)
             visible_event_ids.add(event["_id"])
 
@@ -598,6 +603,8 @@ async def calculate_account_projection(
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
+        # Remove MongoDB _id field (not JSON serializable)
+        result_event.pop("_id", None)
         results.append(result_event)
 
     return results
