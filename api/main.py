@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 
 from api.config import settings, MongoDB
+from api.utils.indexes import create_change_log_indexes
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
             # Unique index on username for authentication performance + uniqueness enforcement
             await db.users.create_index([("username", 1)], unique=True)
             logger.info("✓ Created unique index on users.username")
+
+            # Create change_log indexes for sync protocol
+            await create_change_log_indexes(db)
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:

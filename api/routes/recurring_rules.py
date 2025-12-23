@@ -140,7 +140,7 @@ async def create_recurring_rule(
       }'
     ```
     """
-    return await repo.create(data, current_user=current_user)
+    return await repo.create(data, current_user=current_user, client_id=None)
 
 
 @router.put("/recurring-rules/{rule_id}", response_model=RecurringRule)
@@ -191,7 +191,7 @@ async def update_recurring_rule(
       }'
     ```
     """
-    return await repo.update(rule_id, data, current_user=current_user)
+    return await repo.update(rule_id, data, current_user=current_user, client_id=None)
 
 
 @router.delete("/recurring-rules/{rule_id}", status_code=204)
@@ -224,5 +224,5 @@ async def delete_recurring_rule(
     curl -X DELETE http://localhost:8000/api/recurring-rules/{rule-id}
     ```
     """
-    await repo.delete(rule_id)
+    await repo.delete(rule_id, current_user=current_user, client_id=None)
     return None

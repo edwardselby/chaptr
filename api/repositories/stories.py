@@ -50,7 +50,8 @@ class StoryRepository(BaseRepository[Story]):
     async def create(
         self,
         data: StoryCreate,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Story:
         """
         Create new story.
@@ -106,13 +107,24 @@ class StoryRepository(BaseRepository[Story]):
         # Insert into MongoDB
         await self.collection.insert_one(story.model_dump(mode="json"))
 
+        # Log change for sync
+        await self.log_change(
+            "story",
+            story.id,
+            "create",
+            story.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
         return story
 
     async def update(
         self,
         story_id: UUID,
         data: StoryUpdate,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Story:
         """
         Update existing story with partial update validation.
@@ -178,10 +190,29 @@ class StoryRepository(BaseRepository[Story]):
                       for k, v in update_dict.items()}}
         )
 
-        # Return updated story
-        return await self.get(story_id)
+        # Get updated story for change log
+        updated_story = await self.get(story_id)
 
-    async def delete(self, story_id: UUID) -> bool:
+        # Log change for sync
+        user_id = UUID(current_user["id"]) if current_user else None
+        await self.log_change(
+            "story",
+            story_id,
+            "update",
+            updated_story.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
+        # Return updated story
+        return updated_story
+
+    async def delete(
+        self,
+        story_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
         """
         Hard delete story and cascade to events.
 
@@ -201,8 +232,19 @@ class StoryRepository(BaseRepository[Story]):
         >>> await repo.delete(story_id)
         True
         """
-        # Verify story exists
-        await self.get(story_id)
+        # Verify story exists and get snapshot for change log
+        story = await self.get(story_id)
+
+        # Log change BEFORE deletion (to capture entity snapshot)
+        user_id = UUID(current_user["id"]) if current_user else None
+        await self.log_change(
+            "story",
+            story_id,
+            "delete",
+            story.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
 
         # CASCADE: Delete all events belonging to this story
         await self.db['events'].delete_many({

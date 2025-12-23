@@ -200,7 +200,7 @@ async def create_event(
       }'
     ```
     """
-    return await repo.create(data, story_id=story_id, current_user=current_user)
+    return await repo.create(data, story_id=story_id, current_user=current_user, client_id=None)
 
 
 @router.put("/events/{event_id}", response_model=Event)
@@ -245,7 +245,7 @@ async def update_event(
       -d '{"event_date": "2025-06-12"}'
     ```
     """
-    return await repo.update(event_id, data, current_user=current_user)
+    return await repo.update(event_id, data, current_user=current_user, client_id=None)
 
 
 @router.delete("/events/{event_id}", status_code=204)
@@ -275,5 +275,5 @@ async def delete_event(
     curl -X DELETE http://localhost:8000/api/events/{event-id}
     ```
     """
-    await repo.delete(event_id)
+    await repo.delete(event_id, current_user=current_user, client_id=None)
     return None

@@ -16,7 +16,73 @@ from api.utils.errors import ResourceNotFoundError
 T = TypeVar('T')
 
 
-class BaseRepository(Generic[T]):
+class ChangeLogMixin:
+    """
+    Automatic change logging for sync support.
+
+    Provides log_change() method to record all mutations (create/update/delete)
+    to the change_log collection for multi-device sync distribution.
+
+    Change log entries include full entity snapshots (not deltas) to enable
+    conflict detection and resolution during sync.
+    """
+
+    async def log_change(
+        self,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,  # create, update, delete
+        data: Optional[dict],
+        user_id: Optional[UUID] = None,
+        client_id: Optional[str] = None
+    ) -> None:
+        """
+        Record change to change_log collection for sync distribution.
+
+        Automatically called after all mutation operations (create/update/delete)
+        to enable multi-device sync. Stores full entity snapshot for conflict
+        detection based on updated_at comparison.
+
+        :param entity_type: Type of entity (event, story, account, etc.)
+        :type entity_type: str
+        :param entity_id: UUID of the affected entity
+        :type entity_id: UUID
+        :param action: Type of change (create, update, delete)
+        :type action: str
+        :param data: Full entity snapshot as dict (None for delete)
+        :type data: Optional[dict]
+        :param user_id: User who made the change (from JWT token)
+        :type user_id: Optional[UUID]
+        :param client_id: Device/client that made the change (None for direct API)
+        :type client_id: Optional[str]
+        :return: None
+        :rtype: None
+
+        :Example:
+
+        >>> # After creating an event
+        >>> await self.log_change(
+        ...     "event",
+        ...     event.id,
+        ...     "create",
+        ...     event.model_dump(mode="json"),
+        ...     user_id=UUID(current_user["id"]),
+        ...     client_id=None  # Direct API call
+        ... )
+        """
+        await self.db["change_log"].insert_one({
+            "id": str(generate_id()),
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "action": action,
+            "data": data,
+            "changed_by_user": str(user_id) if user_id else None,
+            "changed_by_client": client_id,
+            "changed_at": utc_now().isoformat()
+        })
+
+
+class BaseRepository(Generic[T], ChangeLogMixin):
     """
     Generic base repository providing common CRUD operations.
 

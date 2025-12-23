@@ -87,7 +87,9 @@ class SettingsRepository(BaseRepository[Settings]):
     async def update_singleton(
         self,
         data: SettingsUpdate,
-        updated_by: Optional[UUID] = None
+        updated_by: Optional[UUID] = None,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> Settings:
         """
         Update the singleton settings document.
@@ -145,5 +147,19 @@ class SettingsRepository(BaseRepository[Settings]):
             {"$set": {k: convert_decimals(v) for k, v in update_dict.items()}}
         )
 
+        # Get updated settings for change log
+        updated_settings = await self.get_or_create_default()
+
+        # Log change for sync
+        user_id = UUID(current_user["id"]) if current_user else updated_by
+        await self.log_change(
+            "settings",
+            existing.id,
+            "update",
+            updated_settings.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
         # Return updated settings
-        return await self.get_or_create_default()
+        return updated_settings

@@ -134,7 +134,7 @@ async def create_account(
       }'
     ```
     """
-    return await repo.create(data)
+    return await repo.create(data, client_id=None)
 
 
 @router.put("/accounts/{account_id}", response_model=Account)
@@ -177,7 +177,7 @@ async def update_account(
       -d '{"is_default": true}'
     ```
     """
-    return await repo.update(account_id, data)
+    return await repo.update(account_id, data, client_id=None)
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
@@ -211,5 +211,5 @@ async def delete_account(
     curl -X DELETE http://localhost:8000/api/accounts/{account-id}
     ```
     """
-    await repo.archive(account_id)
+    await repo.archive(account_id, client_id=None)
     return None
