@@ -167,10 +167,10 @@ export async function apiRequest(url, options = {}) {
 
     const response = await fetch(url, { ...options, headers });
 
-    // Handle 401 Unauthorized - redirect to login
+    // Handle 401 Unauthorized - clear auth and reload to show login screen
     if (response.status === 401) {
-        localStorage.removeItem('jwt_token');
-        window.location.href = '/login';
+        clearAuth();
+        window.location.reload();
         throw new Error('Unauthorized');
     }
 
@@ -182,7 +182,7 @@ export async function apiRequest(url, options = {}) {
  * @param {string} token - JWT token
  */
 export function storeToken(token) {
-    localStorage.setItem('jwt_token', token);
+    localStorage.setItem('auth_token', token);
 }
 
 /**
@@ -190,14 +190,14 @@ export function storeToken(token) {
  * @returns {string|null} JWT token or null
  */
 export function getToken() {
-    return localStorage.getItem('jwt_token');
+    return localStorage.getItem('auth_token');
 }
 
 /**
  * Clear authentication (logout)
  */
 export function clearAuth() {
-    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
 }
 
