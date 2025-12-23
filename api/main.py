@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting CHAPTR API...")
 
+    # Start background scheduler for maintenance jobs
+    from api.scheduler import start_scheduler
+    start_scheduler()
+
     # Validate SECRET_KEY in production
     if settings.environment == "production" and settings.secret_key == "dev-secret-key-change-in-production":
         logger.critical("❌ CRITICAL: Using default SECRET_KEY in production environment!")
@@ -76,6 +80,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down CHAPTR API...")
+
+    # Shutdown background scheduler
+    from api.scheduler import shutdown_scheduler
+    shutdown_scheduler()
+
     MongoDB.close()
 
 

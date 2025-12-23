@@ -12,11 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: client_id parameter on all repository mutation methods
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: _get_user_id() helper in BaseRepository for DRY user extraction
+- CPTR-b5002098: Change log pruning job (prune_change_log function with 31-day retention)
+- CPTR-b5002098: APScheduler background scheduler for daily maintenance tasks
+- CPTR-b5002098: Scheduled pruning job running daily at 2:00 AM server time
+- CPTR-b5002098: Graceful scheduler shutdown on application termination
 
 ### Changed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All repositories log changes to change_log collection after create/update/delete operations
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All route handlers pass client_id=None for backward compatibility with REST API
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: log_change() omits None values per MongoDB best practice (reduces document size)
+- CPTR-b5002098: Main application startup integrates scheduler initialization
 
 ### Fixed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Replaced deprecated datetime.utcnow() with utc_now() for timezone-aware timestamps
