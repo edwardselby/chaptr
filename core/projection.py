@@ -11,7 +11,7 @@ See spec: Projection Engine
 """
 
 from typing import List, Dict, Optional
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
@@ -130,8 +130,9 @@ async def calculate_global_projection(
     starting_balance = Decimal("0")
 
     for acc in accounts:
-        balance = acc.get("current_balance", Decimal("0"))
-        rate_to_base = acc.get("rate_to_base", Decimal("1"))
+        # Convert MongoDB Decimal128 to Python Decimal
+        balance = Decimal(str(acc.get("current_balance", "0")))
+        rate_to_base = Decimal(str(acc.get("rate_to_base", "1")))
 
         # Convert to base currency
         base_balance = convert_to_base_currency(balance, rate_to_base)
@@ -139,8 +140,12 @@ async def calculate_global_projection(
 
     # Step 2: Fetch events in date range
     # Phase 2.2: Filter at database level for performance (Task 255)
+    # MongoDB stores dates as strings (YYYY-MM-DD format)
     query_filter = {
-        "date": {"$gte": start_date, "$lte": end_date}
+        "date": {
+            "$gte": start_date.isoformat(),
+            "$lte": end_date.isoformat()
+        }
     }
 
     # For ALL view, exclude hypothetical unless include_hypothetical=True
@@ -157,8 +162,9 @@ async def calculate_global_projection(
     # Use base_amount for sorting to handle mixed currencies correctly
     events_with_base = []
     for event in events:
-        amount = event.get("amount", Decimal("0"))
-        rate_to_base = event.get("rate_to_base", Decimal("1"))
+        # Convert MongoDB Decimal128 to Python Decimal
+        amount = Decimal(str(event.get("amount", "0")))
+        rate_to_base = Decimal(str(event.get("rate_to_base", "1")))
         base_amount = convert_to_base_currency(amount, rate_to_base)
 
         events_with_base.append({
@@ -180,11 +186,17 @@ async def calculate_global_projection(
 
     for event in events_with_base:
         # Add event base_amount to running balance
-        base_amount = event.get("base_amount", Decimal("0"))
+        # base_amount is already a Decimal from conversion above
+        base_amount = event["base_amount"]
         running_balance += base_amount
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
+
+        # Remove MongoDB _id field (not JSON serializable)
+        # TODO: Consider whitelist pattern instead of blacklist (pop)
+        #       Create explicit field list to return for better robustness
+        result_event.pop("_id", None)
 
         # Step 5: Add display currency conversion if requested
         if display_currency and settings:
@@ -359,14 +371,16 @@ async def calculate_story_projection(
         rates = settings.get("rates", {})
 
         funding_currency = story.get("display_currency", base_currency)
-        funding_amount = story.get("funding_amount", Decimal("0"))
+        # Convert MongoDB Decimal128 to Python Decimal
+        funding_amount = Decimal(str(story.get("funding_amount", "0")))
 
         # Calculate rate_to_base for funding currency
         if funding_currency == base_currency:
             rate_to_base = Decimal("1")
         else:
             # Rate from settings: 1 display_currency = X base_currency
-            rate_to_base = rates.get(funding_currency, Decimal("1"))
+            # Convert rate from MongoDB Decimal128 to Python Decimal
+            rate_to_base = Decimal(str(rates.get(funding_currency, "1")))
 
         # Convert funding amount to base currency
         base_amount = convert_to_base_currency(funding_amount, rate_to_base)
@@ -378,6 +392,7 @@ async def calculate_story_projection(
 
         funding_event = {
             "_id": funding_event_id,
+            "id": str(funding_event_id),
             "date": story.get("start_date"),
             "description": f"Story funding: {story.get('name')}",
             "amount": funding_amount,
@@ -395,8 +410,12 @@ async def calculate_story_projection(
 
     # Step 4: Fetch ALL events in date range (not just baseline + this story)
     # Per spec: "running_balance += ALL events (including hidden stories)"
+    # MongoDB stores dates as strings (YYYY-MM-DD format)
     all_events_query = {
-        "date": {"$gte": start_date, "$lte": end_date}
+        "date": {
+            "$gte": start_date.isoformat(),
+            "$lte": end_date.isoformat()
+        }
     }
     all_events = await db.events.find(all_events_query).to_list()
 
@@ -419,12 +438,20 @@ async def calculate_story_projection(
         )
     )
 
+    # Remove MongoDB _id field from all events before processing
+    # This prevents ObjectId from appearing in any results
+    # TODO: Consider whitelist pattern instead of blacklist (pop)
+    #       Create explicit field list to return for better robustness
+    #       (prevents future MongoDB fields from leaking if non-serializable)
+    for event in all_events_with_funding:
+        event.pop("_id", None)
+
     # Step 6: Calculate running balance using ALL events, but only display visible ones
     # Visible events: baseline OR this story
     # Hidden events: other stories (not baseline, not this story)
     running_balance = starting_balance
     results = []
-    visible_event_ids = set()
+    visible_event_ids = set()  # Track using UUID 'id' field, not ObjectId '_id'
 
     for event in all_events_with_funding:
         # Add event to running balance (ALL events affect balance)
@@ -442,7 +469,8 @@ async def calculate_story_projection(
         if is_visible:
             result_event = {**event, "running_balance": running_balance}
             results.append(result_event)
-            visible_event_ids.add(event["_id"])
+            # Track visible event IDs using UUID 'id' field
+            visible_event_ids.add(event.get("id"))
 
     # Step 7: Add gap indicators (Phase 2.4 - Tasks 2, 3, 4)
     # Get settings for currency conversion
@@ -464,8 +492,8 @@ async def calculate_story_projection(
     )
 
     # Step 8: Attach gap metadata to visible events
-    # Build index of visible events by ID for fast lookup
-    visible_events_by_id = {e["_id"]: e for e in results}
+    # Build index of visible events by ID for fast lookup (using UUID 'id' field)
+    visible_events_by_id = {e["id"]: e for e in results}
 
     for gap in gaps:
         after_event_id = gap["after_event_id"]
@@ -534,22 +562,28 @@ async def calculate_account_projection(
         return []
 
     # Step 2: Starting balance (convert to base currency)
+    # Convert MongoDB Decimal128 to Python Decimal
     starting_balance = convert_to_base_currency(
-        account.get("current_balance", Decimal("0")),
-        account.get("rate_to_base", Decimal("1"))
+        Decimal(str(account.get("current_balance", "0"))),
+        Decimal(str(account.get("rate_to_base", "1")))
     )
 
     # Step 3: Query events assigned to this account
+    # MongoDB stores dates as strings (YYYY-MM-DD format)
     events = await db.events.find({
         "account_id": UUID(account_id),
-        "date": {"$gte": start_date, "$lte": end_date}
+        "date": {
+            "$gte": start_date.isoformat(),
+            "$lte": end_date.isoformat()
+        }
     }).to_list()
 
     # Step 4: Convert to base currency and add base_amount field
     events_with_base = []
     for event in events:
-        amount = event.get("amount", Decimal("0"))
-        rate_to_base = event.get("rate_to_base", Decimal("1"))
+        # Convert MongoDB Decimal128 to Python Decimal
+        amount = Decimal(str(event.get("amount", "0")))
+        rate_to_base = Decimal(str(event.get("rate_to_base", "1")))
         base_amount = convert_to_base_currency(amount, rate_to_base)
 
         events_with_base.append({
@@ -573,11 +607,16 @@ async def calculate_account_projection(
 
     for event in events_with_base:
         # Add event base_amount to running balance
-        base_amount = event.get("base_amount", Decimal("0"))
+        # base_amount is already a Decimal from conversion above
+        base_amount = event["base_amount"]
         running_balance += base_amount
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
+        # Remove MongoDB _id field (not JSON serializable)
+        # TODO: Consider whitelist pattern instead of blacklist (pop)
+        #       Create explicit field list to return for better robustness
+        result_event.pop("_id", None)
         results.append(result_event)
 
     return results
@@ -671,7 +710,8 @@ def detect_gaps_between_visible_events(
     hidden_events_accumulator = []
 
     for event in all_events_sorted:
-        event_id = event["_id"]
+        # Use UUID 'id' field instead of ObjectId '_id' (which was removed)
+        event_id = event.get("id")
         is_visible = event_id in visible_event_ids
 
         if is_visible:
@@ -686,7 +726,7 @@ def detect_gaps_between_visible_events(
                     # Record gap metadata
                     gaps.append({
                         "type": "gap_indicator",
-                        "after_event_id": last_visible_event["_id"],
+                        "after_event_id": last_visible_event.get("id"),
                         "before_event_id": event_id,
                         "hidden_event_count": len(hidden_events_accumulator),
                         "hidden_events": list(hidden_events_accumulator),
@@ -710,7 +750,7 @@ def detect_gaps_between_visible_events(
         if delta_base != Decimal("0"):
             gaps.append({
                 "type": "gap_indicator",
-                "after_event_id": last_visible_event["_id"],
+                "after_event_id": last_visible_event.get("id"),
                 "before_event_id": None,  # No next visible event
                 "hidden_event_count": len(hidden_events_accumulator),
                 "hidden_events": list(hidden_events_accumulator),

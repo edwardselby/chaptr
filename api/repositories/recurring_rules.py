@@ -142,9 +142,14 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         Business Rules:
         - Partial updates supported
         - account_id must exist and not be archived if being updated
-        - Modification affects future events only (Phase 7 will implement event regeneration)
+        - Modification affects future events only
         - Past generated events remain unchanged
         - Always update timestamp and updated_by (if user authenticated)
+
+        TODO: Spec compliance (lines 1319-1350) - Regenerate future events after rule update
+        Current behavior: Future events retain old rule values until next generation window
+        Spec requirement: "Modification: Future generated events updated"
+        Implementation needed: Delete future unedited instances and regenerate from updated rule
 
         :param rule_id: Recurring rule UUID to update
         :type rule_id: UUID
@@ -217,29 +222,47 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         client_id: Optional[str] = None
     ) -> bool:
         """
-        Delete recurring rule.
+        Delete recurring rule and future unedited instances.
 
         Business Rules:
         - Removes the rule definition
-        - Future events no longer generated (Phase 7)
-        - Past generated events retained
+        - Deletes only FUTURE event instances that haven't been edited
+        - Past events and edited instances retained
+        - Edited instance detection: updated_at != created_at
         - Hard delete (permanent)
 
         :param rule_id: Recurring rule UUID to delete
         :type rule_id: UUID
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
+        :param client_id: Client ID for change_log tracking
+        :type client_id: Optional[str]
         :return: True if deleted successfully
         :rtype: bool
         :raises ResourceNotFoundError: If rule not found
 
         :Example:
 
-        >>> await repo.delete(rule_id)
+        >>> await repo.delete(rule_id, current_user=user, client_id="client-a")
         True
         """
-        # Verify rule exists and get snapshot for change log
+        from datetime import date
+
+        # Verify rule exists and get snapshot for change log (before deletion)
         rule = await self.get(rule_id)
 
-        # Log change BEFORE deletion (to capture entity snapshot)
+        # Delete only FUTURE instances that haven't been edited
+        today = date.today()
+        await self.db["events"].delete_many({
+            "recurring_rule_id": to_str(rule_id),
+            "event_date": {"$gt": today.isoformat()},
+            "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
+        })
+
+        # Delete the rule itself
+        await self.collection.delete_one({"id": to_str(rule_id)})
+
+        # Log change for sync
         await self.log_change(
             "recurring_rule",
             rule_id,
@@ -248,8 +271,5 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             self._get_user_id(current_user),
             client_id
         )
-
-        # Hard delete (no cascade in Phase 1.4 - event generation in Phase 7)
-        await self.collection.delete_one({"id": to_str(rule_id)})
 
         return True

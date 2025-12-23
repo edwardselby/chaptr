@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # CORS
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
 
+    # Change Log Pruning Configuration
+    change_log_retention_days: int = 31
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False

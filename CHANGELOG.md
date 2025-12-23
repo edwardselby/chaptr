@@ -7,11 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6] - 2025-12-22
+
 ### Added
+- CPTR-4ab09b87: Regression test suite for projection MongoDB bugs (6 tests: Decimal conversion, date queries, end-to-end integration)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Change logging foundation for sync - ChangeLogMixin in BaseRepository
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: client_id parameter on all repository mutation methods
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: _get_user_id() helper in BaseRepository for DRY user extraction
+- CPTR-b5002098: Change log pruning infrastructure (configurable retention via CHANGE_LOG_RETENTION_DAYS, default 31 days)
+- CPTR-b5002098: APScheduler background scheduler with daily 2AM pruning job, graceful shutdown, and timeout protection
+- CPTR-b5002098: Database index on change_log.changed_at for efficient pruning queries
+- CPTR-3735f384, CPTR-0b7b3ed8, CPTR-b6c582ef: Recurring event generation utility (api/utils/recurring.py) with ±1 month window
+- CPTR-3735f384: Recurring event generation uses dateutil.rrule for WEEKLY, MONTHLY, YEARLY frequencies
+- CPTR-0b7b3ed8: Generated events include recurring_rule_id link to parent rule
+- CPTR-b6c582ef: All generated events logged to change_log for sync distribution
+- CPTR-2bd3eea9, CPTR-739bf665: Recurring rules repository client_id parameter and change logging
+- CPTR-739bf665: Smart deletion logic removes only future unedited instances (MongoDB $expr query)
+- CPTR-3735f384: Test suite for recurring event generation (8 tests: monthly, weekly, annual, duplicates, edited instances, end dates, multiple rules, empty rules)
 - CPTR-e6875013, CPTR-59348847: Sync protocol models (SyncChange, SyncRequest, SyncConflict, SyncServerChange, SyncResponse, FullSyncResponse)
 - CPTR-e6875013, CPTR-59348847: POST /api/sync endpoint with bidirectional push/pull phases and conflict detection
 - CPTR-e6875013, CPTR-59348847: GET /api/sync/full endpoint for stale client recovery with user-filtered dataset
@@ -22,10 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All repositories log changes to change_log collection after create/update/delete operations
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All route handlers pass client_id=None for backward compatibility with REST API
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: log_change() omits None values per MongoDB best practice (reduces document size)
+- CPTR-b5002098: Main application startup integrates scheduler initialization and creates change_log indexes
+- CPTR-b5002098: Pruning job uses configurable retention period from Settings
+- CPTR-2bd3eea9, CPTR-739bf665: Recurring rules routes pass client_id=None to repository methods
+- CPTR-3735f384: Recurring event generation fetches currency rates from settings for rate_to_base field
+- CPTR-2bd3eea9: Edited instance preservation via existing instance check (updated_at != created_at detection)
 - CPTR-e6875013, CPTR-59348847: Pull phase explicitly includes REST API changes (client_id=None) and other clients' changes via $or query
 - CPTR-e6875013, CPTR-59348847: Full sync endpoint filters all entities by created_by field to prevent cross-user data leakage
 
 ### Fixed
+- CPTR-4ab09b87: MongoDB Decimal128 to Python Decimal conversion in projection functions (7 locations) and API route (2 locations)
+- CPTR-4ab09b87: MongoDB date query format changed from datetime.combine() to .isoformat() for string comparison (3 locations)
+- CPTR-4ab09b87: MongoDB ObjectId serialization error by removing _id field from projection results (3 locations)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Replaced deprecated datetime.utcnow() with utc_now() for timezone-aware timestamps
 - CPTR-e6875013, CPTR-59348847: Settings access in full sync uses get_or_create_default() singleton pattern
 - CPTR-e6875013, CPTR-59348847: handle_update returns None for idempotency when entity already deleted by another client
