@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098: Change log pruning infrastructure (configurable retention via CHANGE_LOG_RETENTION_DAYS, default 31 days)
 - CPTR-b5002098: APScheduler background scheduler with daily 2AM pruning job, graceful shutdown, and timeout protection
 - CPTR-b5002098: Database index on change_log.changed_at for efficient pruning queries
+- CPTR-3735f384, CPTR-0b7b3ed8, CPTR-b6c582ef: Recurring event generation utility (api/utils/recurring.py) with ±1 month window
+- CPTR-3735f384: Recurring event generation uses dateutil.rrule for WEEKLY, MONTHLY, YEARLY frequencies
+- CPTR-0b7b3ed8: Generated events include recurring_rule_id link to parent rule
+- CPTR-b6c582ef: All generated events logged to change_log for sync distribution
+- CPTR-2bd3eea9, CPTR-739bf665: Recurring rules repository client_id parameter and change logging
+- CPTR-739bf665: Smart deletion logic removes only future unedited instances (MongoDB $expr query)
+- CPTR-3735f384: Test suite for recurring event generation (8 tests: monthly, weekly, annual, duplicates, edited instances, end dates, multiple rules, empty rules)
 
 ### Changed
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: All repositories log changes to change_log collection after create/update/delete operations
@@ -23,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: log_change() omits None values per MongoDB best practice (reduces document size)
 - CPTR-b5002098: Main application startup integrates scheduler initialization and creates change_log indexes
 - CPTR-b5002098: Pruning job uses configurable retention period from Settings
+- CPTR-2bd3eea9, CPTR-739bf665: Recurring rules routes pass client_id=None to repository methods
+- CPTR-3735f384: Recurring event generation fetches currency rates from settings for rate_to_base field
+- CPTR-2bd3eea9: Edited instance preservation via existing instance check (updated_at != created_at detection)
 
 ### Fixed
 - CPTR-4ab09b87: MongoDB Decimal128 to Python Decimal conversion in projection functions (7 locations) and API route (2 locations)

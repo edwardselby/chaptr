@@ -57,7 +57,8 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
     async def create(
         self,
         data: RecurringRuleCreate,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> RecurringRule:
         """
         Create new recurring rule.
@@ -116,13 +117,24 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Insert into MongoDB
         await self.collection.insert_one(rule.model_dump(mode="json"))
 
+        # Log change for sync
+        await self.log_change(
+            "recurring_rule",
+            rule.id,
+            "create",
+            rule.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
         return rule
 
     async def update(
         self,
         rule_id: UUID,
         data: RecurringRuleUpdate,
-        current_user: Optional[dict] = None
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
     ) -> RecurringRule:
         """
         Update existing recurring rule.
@@ -182,34 +194,79 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
                       for k, v in update_dict.items()}}
         )
 
-        # Return updated rule
-        return await self.get(rule_id)
+        # Get updated rule for change log
+        updated = await self.get(rule_id)
 
-    async def delete(self, rule_id: UUID) -> bool:
+        # Log change for sync
+        user_id = UUID(current_user["id"]) if current_user else None
+        await self.log_change(
+            "recurring_rule",
+            rule_id,
+            "update",
+            updated.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
+
+        # Return updated rule
+        return updated
+
+    async def delete(
+        self,
+        rule_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
         """
-        Delete recurring rule.
+        Delete recurring rule and future unedited instances.
 
         Business Rules:
         - Removes the rule definition
-        - Future events no longer generated (Phase 7)
-        - Past generated events retained
+        - Deletes only FUTURE event instances that haven't been edited
+        - Past events and edited instances retained
+        - Edited instance detection: updated_at != created_at
         - Hard delete (permanent)
 
         :param rule_id: Recurring rule UUID to delete
         :type rule_id: UUID
+        :param current_user: Current authenticated user (from JWT token)
+        :type current_user: Optional[dict]
+        :param client_id: Client ID for change_log tracking
+        :type client_id: Optional[str]
         :return: True if deleted successfully
         :rtype: bool
         :raises ResourceNotFoundError: If rule not found
 
         :Example:
 
-        >>> await repo.delete(rule_id)
+        >>> await repo.delete(rule_id, current_user=user, client_id="client-a")
         True
         """
-        # Verify rule exists
-        await self.get(rule_id)
+        from datetime import date
 
-        # Hard delete (no cascade in Phase 1.4 - event generation in Phase 7)
+        # Get rule for change log (before deletion)
+        rule = await self.get(rule_id)
+
+        # Delete only FUTURE instances that haven't been edited
+        today = date.today()
+        await self.db["events"].delete_many({
+            "recurring_rule_id": to_str(rule_id),
+            "event_date": {"$gt": today.isoformat()},
+            "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
+        })
+
+        # Delete the rule itself
         await self.collection.delete_one({"id": to_str(rule_id)})
+
+        # Log change for sync
+        user_id = UUID(current_user["id"]) if current_user else None
+        await self.log_change(
+            "recurring_rule",
+            rule_id,
+            "delete",
+            rule.model_dump(mode="json"),
+            user_id,
+            client_id
+        )
 
         return True
