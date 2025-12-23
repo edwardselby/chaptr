@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- CPTR-4ab09b87: MongoDB Decimal128 to Python Decimal conversion in projection functions (7 locations) and API route (2 locations)
+- CPTR-4ab09b87: MongoDB date query format changed from datetime.combine() to .isoformat() for string comparison (3 locations)
+- CPTR-4ab09b87: MongoDB ObjectId serialization error by removing _id field from projection results (3 locations)
+
+### Added
+- CPTR-4ab09b87: Regression test suite for projection MongoDB bugs (6 tests: Decimal conversion, date queries, end-to-end integration)
 
 ## [0.0.5] - 2025-12-22
 
