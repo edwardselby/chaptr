@@ -143,14 +143,9 @@ async def handle_update(
     try:
         existing = await repo.get(change.entity_id)
     except ResourceNotFoundError:
-        # Entity was deleted by another client - return delete/edit conflict
-        return SyncConflict(
-            entity_type=change.entity_type,
-            entity_id=change.entity_id,
-            conflict_type="delete_edit",
-            client_version=change.data,  # Client wants to update
-            server_version=None  # Server deleted it
-        )
+        # Entity was deleted by another client - idempotent, no conflict
+        # Client tried to update something that's already gone, skip silently
+        return None
 
     # Conflict detection: compare timestamps
     if change.base_updated_at and existing.updated_at != change.base_updated_at:
@@ -377,6 +372,6 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
         "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter)],
         "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter)],
         "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter)],
-        "settings": (await settings_repo.get_all()).model_dump(mode="json"),  # Settings are global
-        "sync_timestamp": utc_now().isoformat()
+        "settings": (await settings_repo.get_or_create_default()).model_dump(mode="json"),  # Settings are global
+        "sync_timestamp": utc_now()
     }

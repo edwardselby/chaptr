@@ -964,7 +964,7 @@ class FullSyncResponse(BaseModel):
         ...,
         description="Global settings (shared across users)"
     )
-    sync_timestamp: str = Field(
+    sync_timestamp: datetime = Field(
         ...,
         description="Current server time - use as last_sync_at for next sync"
     )
