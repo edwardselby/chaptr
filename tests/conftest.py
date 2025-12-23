@@ -678,6 +678,54 @@ async def settings_with_rates_real(mongodb_real):
 
 
 @pytest_asyncio.fixture
+async def sample_account_with_user(account_repo_real, sample_user_real):
+    """
+    Pre-created account for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need accounts owned by a specific user.
+    """
+    from api.models import AccountCreate
+
+    account_data = AccountCreate(
+        name="Test Account",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=True
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API
+    )
+    return account
+
+
+@pytest_asyncio.fixture
+async def sample_story_with_user(story_repo_real, sample_user_real, sample_account_with_user):
+    """
+    Pre-created story for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need stories owned by a specific user.
+    """
+    from api.models import StoryCreate
+
+    story_data = StoryCreate(
+        name="Test Story",
+        funding_mode="projected",
+        start_date="2025-01-01",
+        display_currency="GBP"  # Required field for StoryCreate
+    )
+    story = await story_repo_real.create(
+        story_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API
+    )
+    return story
+
+
+@pytest_asyncio.fixture
 async def sample_regular_user(user_repo):
     """
     Pre-created regular (non-admin) user for authorization testing.

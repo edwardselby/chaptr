@@ -26,75 +26,10 @@ from api.repositories.events import EventRepository
 
 
 # ============================================================================
-# Enhanced Mock Database Fixture
+# Test Fixtures - Now using conftest.py fixtures instead of local overrides
 # ============================================================================
 
-@pytest_asyncio.fixture
-async def sample_account_with_user(account_repo_real, sample_user_real):
-    """Account with created_by set to sample_user for sync tests."""
-    from api.models import AccountCreate
-    from datetime import datetime, timezone
-    account_data = AccountCreate(
-        name="Test Account",
-        currency="GBP",
-        current_balance=Decimal("1000.00"),
-        balance_updated_at=datetime.now(timezone.utc),
-        is_default=True,
-        is_archived=False,
-        pending_reconciliation=False
-    )
-    account = await account_repo_real.create(
-        account_data,
-        current_user={"id": str(sample_user_real.id)},
-        client_id="test-setup"
-    )
-    return account
-
-
-@pytest_asyncio.fixture
-async def sample_story_with_user(story_repo_real, sample_account_with_user, sample_user_real):
-    """Story with created_by set to sample_user for sync tests."""
-    from api.models import StoryCreate
-    story_data = StoryCreate(
-        name="Test Story",
-        start_date=date(2024, 12, 1),
-        end_date=date(2025, 1, 31),
-        default_account_id=sample_account_with_user.id,
-        funding_mode=FundingMode.PROJECTED,
-        funding_amount=None,
-        goal_type=GoalType.NONE,
-        goal_amount=None,
-        display_currency="GBP"
-    )
-    story = await story_repo_real.create(
-        story_data,
-        current_user={"id": str(sample_user_real.id)},
-        client_id="test-setup"
-    )
-    return story
-
-
-@pytest_asyncio.fixture
-async def sample_event_with_user(event_repo_real, sample_account_with_user, sample_settings_real, sample_user_real):
-    """Event with created_by set to sample_user for sync tests."""
-    event_data = EventCreate(
-        event_date=date(2024, 12, 15),
-        description="Test Event",
-        amount=Decimal("-50.00"),
-        currency="GBP",
-        account_id=sample_account_with_user.id,
-        story_id=None,
-        is_baseline=True,
-        is_hypothetical=False,
-        is_auto_adjustment=False
-    )
-    event = await event_repo_real.create(
-        event_data,
-        current_user={"id": str(sample_user_real.id)},
-        client_id="test-setup"
-    )
-    return event
-
+# Removed local fixture overrides - using conftest.py versions with client_id=None
 
 @pytest_asyncio.fixture
 async def sample_recurring_rule_with_user(recurring_rule_repo_real, sample_account_with_user, sample_user_real):
@@ -114,10 +49,11 @@ async def sample_recurring_rule_with_user(recurring_rule_repo_real, sample_accou
         end_date=None
     )
     # Pass current_user so created_by is set
+    # Use client_id=None so fixture creation is NOT logged as a sync client change
     rule = await recurring_rule_repo_real.create(
         rule_data,
         current_user={"id": str(sample_user_real.id)},
-        client_id="test-setup"
+        client_id=None  # Changed from "test-setup" to prevent change_log pollution
     )
     return rule
 
@@ -184,11 +120,11 @@ async def test_two_client_bidirectional_sync(
 
     # Client B: First sync
     # Use timestamp from BEFORE Client A's sync to receive E1 in server_changes
-    # We need a timestamp that's after fixture setup but before Client A's event creation
-    # Solution: Use the earliest change_log entry's timestamp minus 1 second
+    # We use the earliest change_log entry timestamp (after fixtures, before Client A's event)
     from datetime import timezone, timedelta
     earliest_log = await clean_database_real["change_log"].find_one(sort=[("changed_at", 1)])
-    earliest_ts = datetime.fromisoformat(earliest_log["changed_at"]) - timedelta(seconds=1)
+    # Use the timestamp AS-IS (not minus 1 second) to avoid triggering stale client detection
+    earliest_ts = datetime.fromisoformat(earliest_log["changed_at"])
 
     sync_b1 = {
         "client_id": "client-b",
