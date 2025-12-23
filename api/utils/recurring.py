@@ -64,17 +64,13 @@ async def generate_recurring_events(
     # Fetch settings for currency conversion rates
     settings_doc = await db["settings"].find_one({})
     if not settings_doc:
-        # If no settings exist, create default with GBP base
-        settings = Settings(
-            id=generate_id(),
-            base_currency="GBP",
-            default_currency="GBP",
-            rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
-            created_at=utc_now(),
-            updated_at=utc_now()
+        # Settings should exist before recurring events are generated
+        # This should be initialized during app startup or first-time setup
+        raise ValueError(
+            "Settings document not found. Initialize settings before generating recurring events."
         )
-    else:
-        settings = Settings(**settings_doc)
+
+    settings = Settings(**settings_doc)
 
     # Fetch all active recurring rules
     cursor = db["recurring_rules"].find({})

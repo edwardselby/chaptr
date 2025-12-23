@@ -142,9 +142,14 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         Business Rules:
         - Partial updates supported
         - account_id must exist and not be archived if being updated
-        - Modification affects future events only (Phase 7 will implement event regeneration)
+        - Modification affects future events only
         - Past generated events remain unchanged
         - Always update timestamp and updated_by (if user authenticated)
+
+        TODO: Spec compliance (lines 1319-1350) - Regenerate future events after rule update
+        Current behavior: Future events retain old rule values until next generation window
+        Spec requirement: "Modification: Future generated events updated"
+        Implementation needed: Delete future unedited instances and regenerate from updated rule
 
         :param rule_id: Recurring rule UUID to update
         :type rule_id: UUID

@@ -6,17 +6,37 @@ recurring rules as actual event instances within a ±1 month window.
 """
 
 import pytest
+import pytest_asyncio
 from datetime import date, timedelta
 from uuid import uuid4, UUID
 from decimal import Decimal
 
 from api.utils.recurring import generate_recurring_events
-from api.models import RecurringRule, Event, Frequency
+from api.models import RecurringRule, Event, Frequency, Settings
 from api.utils.db import generate_id, utc_now
 
 
+@pytest_asyncio.fixture(scope="function")
+async def settings_with_rates(mongodb_test):
+    """
+    Create default settings with currency rates for recurring event tests.
+
+    Required by generate_recurring_events for rate_to_base calculations.
+    """
+    settings = Settings(
+        id=generate_id(),
+        base_currency="GBP",
+        default_currency="GBP",
+        rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
+        created_at=utc_now(),
+        updated_at=utc_now()
+    )
+    await mongodb_test["settings"].insert_one(settings.model_dump(mode="json"))
+    return settings
+
+
 @pytest.mark.asyncio
-async def test_generate_monthly_recurring_events(mongodb_test, clean_database):
+async def test_generate_monthly_recurring_events(mongodb_test, clean_database, settings_with_rates):
     """
     Test generation of monthly recurring events within window.
 
@@ -79,7 +99,7 @@ async def test_generate_monthly_recurring_events(mongodb_test, clean_database):
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_recurring_events(mongodb_test, clean_database):
+async def test_generate_weekly_recurring_events(mongodb_test, clean_database, settings_with_rates):
     """
     Test generation of weekly recurring events.
 
@@ -125,7 +145,7 @@ async def test_generate_weekly_recurring_events(mongodb_test, clean_database):
 
 
 @pytest.mark.asyncio
-async def test_generate_annual_recurring_events(mongodb_test, clean_database):
+async def test_generate_annual_recurring_events(mongodb_test, clean_database, settings_with_rates):
     """
     Test generation of annual recurring events.
 
@@ -170,7 +190,7 @@ async def test_generate_annual_recurring_events(mongodb_test, clean_database):
 
 
 @pytest.mark.asyncio
-async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_database):
+async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_database, settings_with_rates):
     """
     Test that generation skips existing instances to avoid duplicates.
 
@@ -238,7 +258,7 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_test, clean_d
 
 
 @pytest.mark.asyncio
-async def test_generate_recurring_events_preserves_edited_instances(mongodb_test, clean_database):
+async def test_generate_recurring_events_preserves_edited_instances(mongodb_test, clean_database, settings_with_rates):
     """
     Test that generation preserves manually edited instances.
 
@@ -307,7 +327,7 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_test
 
 
 @pytest.mark.asyncio
-async def test_generate_recurring_events_respects_end_date(mongodb_test, clean_database):
+async def test_generate_recurring_events_respects_end_date(mongodb_test, clean_database, settings_with_rates):
     """
     Test that generation respects rule end_date.
 
@@ -345,7 +365,7 @@ async def test_generate_recurring_events_respects_end_date(mongodb_test, clean_d
 
 
 @pytest.mark.asyncio
-async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_database):
+async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_database, settings_with_rates):
     """
     Test generation with multiple active recurring rules.
 
@@ -422,7 +442,7 @@ async def test_generate_recurring_events_multiple_rules(mongodb_test, clean_data
 
 
 @pytest.mark.asyncio
-async def test_generate_recurring_events_empty_rules(mongodb_test, clean_database):
+async def test_generate_recurring_events_empty_rules(mongodb_test, clean_database, settings_with_rates):
     """
     Test generation with no recurring rules.
 
