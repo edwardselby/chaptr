@@ -115,8 +115,8 @@ def shutdown_scheduler():
     if scheduler is not None and scheduler.running:
         logger.info("Shutting down background scheduler...")
         try:
-            # Shutdown with timeout to prevent indefinite hang
-            scheduler.shutdown(wait=True)
+            # Shutdown with 30-second timeout to prevent indefinite hang
+            scheduler.shutdown(wait=True, timeout=30)
             logger.info("✓ Background scheduler shut down successfully")
         except Exception as e:
             logger.warning(f"⚠ Scheduler shutdown timeout or error: {e}")

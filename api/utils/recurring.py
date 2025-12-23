@@ -72,8 +72,8 @@ async def generate_recurring_events(
 
     settings = Settings(**settings_doc)
 
-    # Fetch all active recurring rules
-    cursor = db["recurring_rules"].find({})
+    # Fetch all active recurring rules for this user
+    cursor = db["recurring_rules"].find({"created_by": str(user_id)})
 
     async for rule_doc in cursor:
         rule = RecurringRule(**rule_doc)
