@@ -56,6 +56,9 @@ window.app = function() {
         projectionToday: 0,
         projectionEndOfMonth: 0,
 
+        // Story goal statuses (cached to avoid expensive recalculation on every render)
+        storyStatuses: {},
+
         // Expanded gaps tracking
         expandedGaps: new Set(),
 
@@ -124,6 +127,9 @@ window.app = function() {
 
                 // Update dashboard projection summary
                 await this.updateDashboardProjection();
+
+                // Calculate story goal statuses
+                await this.calculateStoryStatuses();
             } catch (error) {
                 console.error('Error loading from Dexie:', error);
             }
@@ -156,6 +162,69 @@ window.app = function() {
                 this.projectionEndOfMonth = lastEvent ? lastEvent.balance : 0;
             } catch (error) {
                 console.error('Error updating dashboard projection:', error);
+            }
+        },
+
+        /**
+         * Calculate goal status for all stories
+         */
+        async calculateStoryStatuses() {
+            try {
+                for (const story of this.stories) {
+                    // If no goal, use lifecycle status
+                    if (!story.goal_type || !story.goal_amount) {
+                        this.storyStatuses[story.id] = this.getStoryLifecycleStatus(story);
+                        continue;
+                    }
+
+                    const goalAmount = parseFloat(story.goal_amount || 0);
+                    const currency = story.display_currency || this.settings.base_currency || 'GBP';
+
+                    if (story.goal_type === 'spend_up_to') {
+                        // Calculate total spending in this story
+                        const storyEvents = this.events.filter(e =>
+                            e.story_id === story.id &&
+                            e.amount < 0 &&
+                            e.date >= story.start_date &&
+                            e.date <= story.end_date
+                        );
+
+                        const totalSpent = Math.abs(storyEvents.reduce((sum, e) => sum + e.amount, 0));
+                        const remaining = goalAmount - totalSpent;
+
+                        if (remaining >= 0) {
+                            this.storyStatuses[story.id] = `✓ ${formatCurrency(remaining, currency)} LEFT`;
+                        } else {
+                            this.storyStatuses[story.id] = `⚠ ${formatCurrency(Math.abs(remaining), currency)} OVER`;
+                        }
+                    } else if (story.goal_type === 'end_with_at_least') {
+                        // Run projection to story end date
+                        try {
+                            const projection = await calculateProjection(
+                                story.start_date,
+                                story.end_date,
+                                story.id,
+                                story.id,
+                                currency
+                            );
+
+                            const lastEvent = projection.filter(row => !row.isGap).pop();
+                            const endingBalance = lastEvent ? lastEvent.balance : 0;
+                            const difference = endingBalance - goalAmount;
+
+                            if (difference >= 0) {
+                                this.storyStatuses[story.id] = `✓ ${formatCurrency(difference, currency)} OVER`;
+                            } else {
+                                this.storyStatuses[story.id] = `⚠ ${formatCurrency(Math.abs(difference), currency)} SHORT`;
+                            }
+                        } catch (error) {
+                            console.error(`Error calculating status for story ${story.id}:`, error);
+                            this.storyStatuses[story.id] = `END WITH ${formatCurrency(goalAmount, currency)}`;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error calculating story statuses:', error);
             }
         },
 
@@ -235,8 +304,13 @@ window.app = function() {
          * Switch to a different screen
          * @param {string} screen - Screen name (dashboard, projection, accounts, settings)
          */
-        switchScreen(screen) {
+        async switchScreen(screen) {
             this.currentScreen = screen;
+
+            // Update projection rows when switching to projection screen
+            if (screen === 'projection') {
+                await this.updateProjectionRows();
+            }
         },
 
         /**
@@ -271,34 +345,76 @@ window.app = function() {
          * View story projection
          * @param {string} storyId - Story UUID
          */
-        viewStoryProjection(storyId) {
+        async viewStoryProjection(storyId) {
             this.currentView = storyId;
             this.currentScreen = 'projection';
+            await this.updateProjectionRows();
         },
 
         /**
          * Set projection view (all, baseline, or story ID)
          * @param {string} view - View identifier
          */
-        setView(view) {
+        async setView(view) {
             this.currentView = view;
             // Reset display currency when switching views
             if (view !== 'all') {
                 this.displayCurrency = null;
             }
+            // Update projection rows with new view
+            await this.updateProjectionRows();
         },
 
         /**
          * Toggle display currency (for ALL view only)
          */
-        toggleDisplayCurrency() {
+        async toggleDisplayCurrency() {
             if (this.currentView !== 'all') return;
 
-            // Cycle through available currencies
-            const currencies = ['GBP', 'USD', 'EUR', 'CAD'];
-            const currentIndex = currencies.indexOf(this.displayCurrency || this.settings.base_currency);
+            // Build currency list from settings.rates, with base currency first
+            const baseCurrency = this.settings.base_currency || 'GBP';
+            const rateCurrencies = Object.keys(this.settings.rates || {}).filter(c => c !== baseCurrency);
+            const currencies = [baseCurrency, ...rateCurrencies];
+
+            // Fallback to common currencies if no rates defined
+            if (currencies.length === 1) {
+                currencies.push('USD', 'EUR', 'CAD');
+            }
+
+            const currentIndex = currencies.indexOf(this.displayCurrency || baseCurrency);
             const nextIndex = (currentIndex + 1) % currencies.length;
             this.displayCurrency = currencies[nextIndex];
+
+            // Update projection rows with new currency
+            await this.updateProjectionRows();
+        },
+
+        /**
+         * Update projection rows based on current view and dates
+         */
+        async updateProjectionRows() {
+            try {
+                this.projectionRows = await calculateProjection(
+                    this.projectionStartDate,
+                    this.projectionEndDate,
+                    this.currentView,
+                    this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
+                    this.displayCurrency
+                );
+
+                // Extract starting balance from first row
+                if (this.projectionRows.length > 0 && !this.projectionRows[0].isGap) {
+                    // Starting balance is the balance of the first event minus its amount
+                    const firstEvent = this.projectionRows[0];
+                    this.projectionStartingBalance = firstEvent.balance - firstEvent.amount;
+                } else {
+                    this.projectionStartingBalance = 0;
+                }
+            } catch (error) {
+                console.error('Error updating projection rows:', error);
+                this.projectionRows = [];
+                this.projectionStartingBalance = 0;
+            }
         },
 
         /**
@@ -333,25 +449,12 @@ window.app = function() {
          * @returns {string} Status text
          */
         getStoryStatus(story) {
-            // If no goal, show lifecycle status
-            if (!story.goal_type || !story.goal_amount) {
-                return this.getStoryLifecycleStatus(story);
+            // Return cached status if available
+            if (this.storyStatuses[story.id]) {
+                return this.storyStatuses[story.id];
             }
 
-            // Calculate based on goal type
-            // Note: This is a synchronous approximation for dashboard display
-            // Real calculation would require async projection, which is too expensive per story
-            const goalAmount = parseFloat(story.goal_amount || 0);
-
-            if (story.goal_type === 'spend_up_to') {
-                // For now, show goal amount - will be calculated properly in projection view
-                const currency = story.display_currency || this.settings.base_currency || 'GBP';
-                return `SPEND UP TO ${formatCurrency(goalAmount, currency)}`;
-            } else if (story.goal_type === 'end_with_at_least') {
-                const currency = story.display_currency || this.settings.base_currency || 'GBP';
-                return `END WITH ${formatCurrency(goalAmount, currency)}`;
-            }
-
+            // Fallback to lifecycle status if not yet calculated
             return this.getStoryLifecycleStatus(story);
         },
 
