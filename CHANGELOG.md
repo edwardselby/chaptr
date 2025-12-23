@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2025-12-23
+
 ### Added
 - CPTR-6969cf85: Accounts screen with CRUD operations (create, edit, delete accounts with validation)
 - CPTR-6969cf85: Settings screen with admin-only access (user management, preferences, conversion rates, backup/restore)
