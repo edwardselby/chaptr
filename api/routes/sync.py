@@ -290,18 +290,12 @@ async def sync(
                 server_version={"error": str(e)}
             ))
 
-    # ========== RECURRING EVENT GENERATION ==========
-    # Generate recurring events before pull phase (per spec line 1558)
-    # This ensures newly generated events are included in server_changes
-    from api.utils.recurring import generate_recurring_events
-
-    user_id = UUID(current_user["id"])
-    await generate_recurring_events(db, user_id, request.client_id)
-
     # ========== PULL PHASE: Get changes from other clients ==========
     server_changes: list[SyncServerChange] = []
     full_sync_required = False
 
+    # Check staleness BEFORE generating recurring events
+    # Otherwise newly generated events might change the oldest timestamp
     if request.last_sync_at:
         # Check if client is stale (last_sync_at older than oldest change_log entry)
         oldest_log = await db["change_log"].find_one(sort=[("changed_at", 1)])
@@ -314,26 +308,37 @@ async def sync(
                 # Client is stale - change log was pruned
                 full_sync_required = True
 
-        if not full_sync_required:
-            # Query changes since last_sync_at
-            # Include: REST API changes (client_id=None or missing) and other clients' changes
-            # Exclude: Only this client's own changes
-            cursor = db["change_log"].find({
-                "changed_at": {"$gt": request.last_sync_at.isoformat()},
-                "$or": [
-                    {"changed_by_client": {"$in": [None]}},  # REST API changes (field is null)
-                    {"changed_by_client": {"$exists": False}},  # Field not present (old fixtures)
-                    {"changed_by_client": {"$ne": request.client_id}}  # Other clients
-                ]
-            }).sort("changed_at", 1)
+    # ========== RECURRING EVENT GENERATION ==========
+    # Generate recurring events before querying change_log (per spec line 1558)
+    # This ensures newly generated events are included in server_changes
+    # IMPORTANT: Do this AFTER staleness check to avoid creating new "oldest" entries
+    from api.utils.recurring import generate_recurring_events
 
-            async for log_entry in cursor:
-                server_changes.append(SyncServerChange(
-                    entity_type=EntityType(log_entry["entity_type"]),
-                    entity_id=UUID(log_entry["entity_id"]),
-                    action=ChangeAction(log_entry["action"]),
-                    data=log_entry.get("data")  # None for deletes
-                ))
+    user_id = UUID(current_user["id"])
+    await generate_recurring_events(db, user_id, request.client_id)
+
+    if not full_sync_required and request.last_sync_at:
+        # Query changes since last_sync_at
+        # Include: REST API changes (client_id=None or missing) and other clients' changes
+        # Exclude: Only this client's own changes
+        query = {
+            "changed_at": {"$gt": request.last_sync_at.isoformat()},
+            "$or": [
+                {"changed_by_client": {"$in": [None]}},  # REST API changes (field is null)
+                {"changed_by_client": {"$exists": False}},  # Field not present (old fixtures)
+                {"changed_by_client": {"$ne": request.client_id}}  # Other clients
+            ]
+        }
+
+        cursor = db["change_log"].find(query).sort("changed_at", 1)
+
+        async for log_entry in cursor:
+            server_changes.append(SyncServerChange(
+                entity_type=EntityType(log_entry["entity_type"]),
+                entity_id=UUID(log_entry["entity_id"]),
+                action=ChangeAction(log_entry["action"]),
+                data=log_entry.get("data")  # None for deletes
+            ))
 
     return SyncResponse(
         applied=applied,
@@ -378,10 +383,11 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
     settings_repo = SettingsRepository(db)
 
     # Filter by created_by to ensure user only gets their own data
+    # Note: Accounts don't have created_by field (shared resource in Phase 1)
     user_filter = {"created_by": user_id}
 
     return {
-        "accounts": [a.model_dump(mode="json") for a in await account_repo.list(filters=user_filter)],
+        "accounts": [a.model_dump(mode="json") for a in await account_repo.list()],  # All accounts (no user filter)
         "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter)],
         "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter)],
         "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter)],

@@ -508,9 +508,10 @@ async def test_recurring_event_generation_on_sync(
     assert edited_event_after.updated_at != edited_event_after.created_at, "Edited event should have different timestamps"
 
     # Client B: Sync (should receive generated events in server_changes)
-    # Use timestamp just before earliest change_log entry
+    # Use timestamp at (or slightly after) earliest change_log entry
+    # This ensures we're not marked as stale, but still receive all changes
     earliest_log = await clean_database_real["change_log"].find_one(sort=[("changed_at", 1)])
-    earliest_ts = datetime.fromisoformat(earliest_log["changed_at"]) - timedelta(seconds=1)
+    earliest_ts = datetime.fromisoformat(earliest_log["changed_at"])
 
     sync_b1 = {
         "client_id": "client-b",
