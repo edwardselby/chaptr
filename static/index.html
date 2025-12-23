@@ -172,7 +172,8 @@
                             <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
                                 <div class="gap-line"></div>
                                 <div class="gap-content">
-                                    <span x-text="row.gapDays + ' days'"></span>
+                                    <span x-show="!expandedGaps.has(row.id)" x-text="row.gapDays + ' days'"></span>
+                                    <span x-show="expandedGaps.has(row.id)" x-text="formatDate(row.startDate) + ' → ' + formatDate(row.endDate)"></span>
                                 </div>
                                 <div class="gap-line"></div>
                             </div>

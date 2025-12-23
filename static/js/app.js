@@ -17,6 +17,7 @@ import {
 } from './utils.js';
 
 import { db } from './db.js';
+import { calculateProjection } from './projection.js';
 
 /**
  * Main Alpine.js app component
@@ -120,8 +121,41 @@ window.app = function() {
                 this.settings = settingsDoc || { base_currency: 'GBP' };
 
                 console.log(`Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
+
+                // Update dashboard projection summary
+                await this.updateDashboardProjection();
             } catch (error) {
                 console.error('Error loading from Dexie:', error);
+            }
+        },
+
+        /**
+         * Update Dashboard projection summary (today, end of month)
+         */
+        async updateDashboardProjection() {
+            try {
+                const today = new Date();
+                const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+                // Calculate projection from today to end of month
+                const projection = await calculateProjection(
+                    today.toISOString().split('T')[0],
+                    endOfMonth.toISOString().split('T')[0],
+                    'all',
+                    null,
+                    this.settings.base_currency
+                );
+
+                // Find today's balance (first event on or after today, or last past event)
+                const todayStr = today.toISOString().split('T')[0];
+                const todayEvent = projection.find(row => !row.isGap && row.date >= todayStr);
+                this.projectionToday = todayEvent ? todayEvent.balance : 0;
+
+                // Find end of month balance (last event)
+                const lastEvent = projection.filter(row => !row.isGap).pop();
+                this.projectionEndOfMonth = lastEvent ? lastEvent.balance : 0;
+            } catch (error) {
+                console.error('Error updating dashboard projection:', error);
             }
         },
 
@@ -161,10 +195,25 @@ window.app = function() {
          * @param {Array} serverChanges - Array of change log entries
          */
         async populateDexie(serverChanges) {
+            // Map entity types to Dexie table names
+            const entityTableMap = {
+                'account': 'accounts',
+                'story': 'stories',
+                'event': 'events',
+                'recurring_rule': 'recurring_rules',
+                'user': 'users',
+                'setting': 'settings'
+            };
+
             try {
-                await db.transaction('rw', [db.accounts, db.stories, db.events, db.settings], async () => {
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.settings, db.recurring_rules, db.users], async () => {
                     for (const change of serverChanges) {
-                        const table = change.entity_type + 's'; // accounts, stories, events
+                        const table = entityTableMap[change.entity_type];
+
+                        if (!table) {
+                            console.warn(`Unknown entity type: ${change.entity_type}`);
+                            continue;
+                        }
 
                         if (change.action === 'create' || change.action === 'update') {
                             await db[table].put(change.data);
@@ -284,8 +333,42 @@ window.app = function() {
          * @returns {string} Status text
          */
         getStoryStatus(story) {
-            // TODO: Calculate from projection
-            return '✓ £130 LEFT';
+            // If no goal, show lifecycle status
+            if (!story.goal_type || !story.goal_amount) {
+                return this.getStoryLifecycleStatus(story);
+            }
+
+            // Calculate based on goal type
+            // Note: This is a synchronous approximation for dashboard display
+            // Real calculation would require async projection, which is too expensive per story
+            const goalAmount = parseFloat(story.goal_amount || 0);
+
+            if (story.goal_type === 'spend_up_to') {
+                // For now, show goal amount - will be calculated properly in projection view
+                const currency = story.display_currency || this.settings.base_currency || 'GBP';
+                return `SPEND UP TO ${formatCurrency(goalAmount, currency)}`;
+            } else if (story.goal_type === 'end_with_at_least') {
+                const currency = story.display_currency || this.settings.base_currency || 'GBP';
+                return `END WITH ${formatCurrency(goalAmount, currency)}`;
+            }
+
+            return this.getStoryLifecycleStatus(story);
+        },
+
+        /**
+         * Get story lifecycle status (active, ended, ongoing)
+         * @param {object} story - Story object
+         * @returns {string} Lifecycle status
+         */
+        getStoryLifecycleStatus(story) {
+            const today = new Date().toISOString().split('T')[0];
+            if (story.end_date < today) {
+                return 'ENDED';
+            } else if (story.start_date > today) {
+                return 'UPCOMING';
+            } else {
+                return 'ACTIVE';
+            }
         },
 
         /**
@@ -294,7 +377,16 @@ window.app = function() {
          * @returns {string} CSS class name
          */
         getStoryStatusClass(story) {
-            // TODO: Determine from actual spend vs goal
+            const today = new Date().toISOString().split('T')[0];
+
+            // Lifecycle-based classes
+            if (story.end_date < today) {
+                return 'status-past';
+            } else if (story.start_date > today) {
+                return 'status-upcoming';
+            }
+
+            // Active story - default ok (real calculation in projection view)
             return 'status-ok';
         },
 

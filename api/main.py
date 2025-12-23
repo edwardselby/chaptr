@@ -6,6 +6,8 @@ FastAPI application providing REST API for CHAPTR projection system.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
@@ -151,3 +153,16 @@ app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
 app.include_router(recurring_rules.router, prefix="/api", tags=["recurring-rules"])
 app.include_router(sync.router, prefix="/api", tags=["sync"])
 app.include_router(projection.router, prefix="/api", tags=["projection"])
+
+# Mount static files for frontend
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/app")
+async def serve_app():
+    """
+    Serve the frontend application.
+
+    Returns the main index.html for the CHAPTR PWA.
+    """
+    return FileResponse("static/index.html")
