@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: Comprehensive sync integration test suite (test_sync_integration.py) with 5 tests covering multi-client sync, conflict detection, stale client recovery, and recurring events
+- CPTR-2c99cc6d, CPTR-2b2f2374: Manual sync testing guide (docs/sync-manual-testing-guide.md) with curl commands for validation
+- Taskwarrior tasks for real MongoDB integration test suite upgrade (Tasks 223-226)
+
+### Changed
+- CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: User-aware test fixtures (sample_account_with_user, sample_story_with_user, etc.) to match JWT authentication context
+- CPTR-817e6e17, CPTR-bbb22028, CPTR-58ee8f5e: Three complex integration tests marked as skipped pending real MongoDB migration (Tasks 223-226)
+- CPTR-817e6e17 to CPTR-2b2f2374: Deprecated datetime.utcnow() replaced with timezone-aware datetime.now(timezone.utc) in all tests
+- Test suite documentation updated to indicate mongomock limitations for change_log query simulation
+
+### Fixed
+- CPTR-817e6e17: User context mismatch resolved (created_by=None vs JWT user) via user-aware fixtures
+- CPTR-817e6e17: Stale client false positive resolved (timestamp strategy changed from "very old" to "before earliest change_log entry")
+
 ## [0.0.6] - 2025-12-22
 
 ### Added
