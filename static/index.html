@@ -288,9 +288,178 @@
         <!-- Settings Screen -->
         <div class="screen" x-show="currentScreen === 'settings'" x-cloak>
             <div class="screen-content">
-                <div class="empty-state">
-                    <p>Settings screen - Coming in PR2</p>
-                </div>
+
+                <!-- Admin Check -->
+                <template x-if="!user || !user.is_admin">
+                    <div class="access-denied">
+                        <h2>⚠ Admin Access Required</h2>
+                        <p>Settings are only available to administrators.</p>
+                    </div>
+                </template>
+
+                <!-- Settings Content (Admin Only) -->
+                <template x-if="user && user.is_admin">
+                    <div>
+
+                        <!-- User Management -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>User Management</h2>
+                                <button class="btn-add" @click="openUserModal()">+ Add User</button>
+                            </div>
+                            <div class="users-list">
+                                <template x-if="users.length === 0">
+                                    <div class="empty-state">
+                                        <p>No users configured yet.</p>
+                                    </div>
+                                </template>
+                                <template x-for="user in users" :key="user.id">
+                                    <div class="user-card" @click="editUser(user.id)">
+                                        <div class="user-info">
+                                            <span class="user-name" x-text="user.username"></span>
+                                            <span class="tag" x-show="user.is_admin">[admin]</span>
+                                        </div>
+                                        <div class="user-meta">
+                                            <span class="user-role" x-text="user.role || 'user'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
+
+                        <!-- Preferences -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Preferences</h2>
+                            </div>
+                            <div class="settings-form">
+                                <div class="form-group">
+                                    <label for="base-currency">Base Currency</label>
+                                    <select
+                                        id="base-currency"
+                                        x-model="settingsForm.base_currency"
+                                        @change="updateSettings()"
+                                        class="form-input">
+                                        <option value="GBP">GBP (£)</option>
+                                        <option value="USD">USD ($)</option>
+                                        <option value="EUR">EUR (€)</option>
+                                        <option value="CAD">CAD ($)</option>
+                                    </select>
+                                    <span class="form-hint">All projections use this as the base currency</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="date-format">Date Format</label>
+                                    <select
+                                        id="date-format"
+                                        x-model="settingsForm.date_format"
+                                        @change="updateSettings()"
+                                        class="form-input">
+                                        <option value="DD MMM">DD MMM (18 Dec)</option>
+                                        <option value="MMM DD">MMM DD (Dec 18)</option>
+                                        <option value="YYYY-MM-DD">YYYY-MM-DD (2024-12-18)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="baseline-months">Baseline Display (Months)</label>
+                                    <input
+                                        id="baseline-months"
+                                        type="number"
+                                        x-model="settingsForm.baseline_display_months"
+                                        @change="updateSettings()"
+                                        min="1"
+                                        max="12"
+                                        class="form-input">
+                                    <span class="form-hint">How many months of baseline to show on dashboard</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Conversion Rates -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Conversion Rates</h2>
+                                <button class="btn-add" @click="addConversionRate()">+ Add Rate</button>
+                            </div>
+                            <div class="rates-table">
+                                <div class="table-header">
+                                    <div class="table-col">Currency</div>
+                                    <div class="table-col">Rate to <span x-text="settingsForm.base_currency"></span></div>
+                                    <div class="table-col">Actions</div>
+                                </div>
+                                <template x-for="(rate, currency) in settingsForm.rates" :key="currency">
+                                    <div class="table-row">
+                                        <div class="table-col" x-text="currency"></div>
+                                        <div class="table-col">
+                                            <input
+                                                type="number"
+                                                :value="rate"
+                                                @change="updateRate(currency, $event.target.value)"
+                                                step="0.01"
+                                                class="form-input rate-input">
+                                        </div>
+                                        <div class="table-col">
+                                            <button class="btn-small btn-danger" @click="deleteRate(currency)">Remove</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
+
+                        <!-- Backup / Restore -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Backup & Restore</h2>
+                            </div>
+                            <div class="backup-actions">
+                                <button class="btn-primary" @click="downloadBackup()">
+                                    📥 Download Backup (JSON)
+                                </button>
+                                <div class="form-group">
+                                    <label for="restore-file" class="btn-secondary file-upload-label">
+                                        📤 Upload Backup
+                                        <input
+                                            id="restore-file"
+                                            type="file"
+                                            accept="application/json"
+                                            @change="uploadBackup($event)"
+                                            style="display: none;">
+                                    </label>
+                                    <span class="form-hint">⚠ This will overwrite all existing data</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Sync Settings -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Sync Settings</h2>
+                            </div>
+                            <div class="settings-form">
+                                <div class="form-group">
+                                    <label for="auto-sync">Auto-Sync Interval (seconds)</label>
+                                    <input
+                                        id="auto-sync"
+                                        type="number"
+                                        x-model="settingsForm.auto_sync_interval"
+                                        @change="updateSettings()"
+                                        min="60"
+                                        step="60"
+                                        class="form-input">
+                                    <span class="form-hint">Set to 0 to disable auto-sync</span>
+                                </div>
+                                <div class="sync-status">
+                                    <div class="status-row">
+                                        <span class="status-label">Last Sync:</span>
+                                        <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
+                                    </div>
+                                    <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                </div>
+                            </div>
+                        </section>
+
+                    </div>
+                </template>
+
             </div>
         </div>
 

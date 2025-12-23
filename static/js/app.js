@@ -38,13 +38,17 @@ window.app = function() {
         accounts: [],
         events: [],
         settings: {},
+        users: [],
 
         // UI State
         isSyncing: false,
         showAccountModal: false,
         showEventModal: false,
+        showUserModal: false,
         accountForm: {},
         eventForm: {},
+        userForm: {},
+        settingsForm: {},
         accountsTotal: 0,
 
         // Projection State
@@ -124,8 +128,12 @@ window.app = function() {
                 this.stories = await db.stories.toArray();
                 this.accounts = await db.accounts.toArray();
                 this.events = await db.events.toArray();
+                this.users = await db.users.toArray();
                 const settingsDoc = await db.settings.get(1);
                 this.settings = settingsDoc || { base_currency: 'GBP' };
+
+                // Initialize settings form
+                this.settingsForm = { ...this.settings };
 
                 console.log(`Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
@@ -609,6 +617,196 @@ window.app = function() {
                 date: date.toISOString().split('T')[0],
                 balance: account.current_balance // Mock: just use current balance
             }));
+        },
+
+        // ===== SETTINGS =====
+
+        /**
+         * Open user modal for adding new user
+         */
+        openUserModal() {
+            this.userForm = {
+                username: '',
+                password: '',
+                is_admin: false,
+                role: 'user'
+            };
+            this.showUserModal = true;
+        },
+
+        /**
+         * Edit existing user
+         * @param {string} userId - User UUID
+         */
+        editUser(userId) {
+            const user = this.users.find(u => u.id === userId);
+            if (user) {
+                this.userForm = { ...user };
+                this.showUserModal = true;
+            }
+        },
+
+        /**
+         * Update settings (preferences, sync interval, etc.)
+         */
+        async updateSettings() {
+            try {
+                // For PR2, this will integrate with Dexie + API
+                console.log('Update settings:', this.settingsForm);
+
+                // TODO PR2: Implement settings update
+                // - Write to Dexie settings table
+                // - Call API endpoint
+                // - Reload data
+
+            } catch (error) {
+                console.error('Error updating settings:', error);
+                alert('Failed to update settings');
+            }
+        },
+
+        /**
+         * Add a new conversion rate
+         */
+        addConversionRate() {
+            const currency = prompt('Enter currency code (e.g., EUR, CAD):');
+            if (!currency) return;
+
+            const upperCurrency = currency.toUpperCase();
+            if (upperCurrency.length !== 3) {
+                alert('Currency code must be 3 letters');
+                return;
+            }
+
+            const rate = prompt(`Enter conversion rate for 1 ${upperCurrency} to ${this.settingsForm.base_currency}:`);
+            if (!rate) return;
+
+            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
+            this.updateSettings();
+        },
+
+        /**
+         * Update conversion rate
+         * @param {string} currency - Currency code
+         * @param {string} value - New rate value
+         */
+        updateRate(currency, value) {
+            this.settingsForm.rates[currency] = parseFloat(value);
+            this.updateSettings();
+        },
+
+        /**
+         * Delete conversion rate
+         * @param {string} currency - Currency code
+         */
+        deleteRate(currency) {
+            if (!confirm(`Remove ${currency} conversion rate?`)) return;
+
+            delete this.settingsForm.rates[currency];
+            this.updateSettings();
+        },
+
+        /**
+         * Download backup as JSON
+         */
+        async downloadBackup() {
+            try {
+                // Gather all data
+                const backup = {
+                    version: '1.0',
+                    exported_at: new Date().toISOString(),
+                    accounts: await db.accounts.toArray(),
+                    stories: await db.stories.toArray(),
+                    events: await db.events.toArray(),
+                    users: await db.users.toArray(),
+                    settings: await db.settings.get(1),
+                    recurring_rules: await db.recurring_rules.toArray()
+                };
+
+                // Create download link
+                const dataStr = JSON.stringify(backup, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `chaptr-backup-${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+
+                console.log('Backup downloaded');
+            } catch (error) {
+                console.error('Error downloading backup:', error);
+                alert('Failed to download backup');
+            }
+        },
+
+        /**
+         * Upload and restore backup from JSON
+         * @param {Event} event - File input change event
+         */
+        async uploadBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!confirm('⚠ This will OVERWRITE all existing data. Continue?')) {
+                event.target.value = '';
+                return;
+            }
+
+            try {
+                const text = await file.text();
+                const backup = JSON.parse(text);
+
+                // Validate backup structure
+                if (!backup.version || !backup.accounts) {
+                    throw new Error('Invalid backup file format');
+                }
+
+                // Clear existing data and restore
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.users, db.settings, db.recurring_rules], async () => {
+                    await db.accounts.clear();
+                    await db.stories.clear();
+                    await db.events.clear();
+                    await db.users.clear();
+                    await db.settings.clear();
+                    await db.recurring_rules.clear();
+
+                    await db.accounts.bulkAdd(backup.accounts);
+                    await db.stories.bulkAdd(backup.stories);
+                    await db.events.bulkAdd(backup.events);
+                    await db.users.bulkAdd(backup.users || []);
+                    if (backup.settings) {
+                        await db.settings.put(backup.settings);
+                    }
+                    await db.recurring_rules.bulkAdd(backup.recurring_rules || []);
+                });
+
+                alert('✓ Backup restored successfully');
+                await this.loadFromDexie();
+            } catch (error) {
+                console.error('Error restoring backup:', error);
+                alert('Failed to restore backup: ' + error.message);
+            }
+
+            event.target.value = '';
+        },
+
+        /**
+         * Trigger manual sync
+         */
+        async triggerManualSync() {
+            if (this.isSyncing) return;
+
+            try {
+                this.isSyncing = true;
+                await this.fullSync();
+                alert('✓ Sync complete');
+            } catch (error) {
+                console.error('Sync error:', error);
+                alert('Sync failed');
+            } finally {
+                this.isSyncing = false;
+            }
         }
 
         // ===== FORMATTING HELPERS =====

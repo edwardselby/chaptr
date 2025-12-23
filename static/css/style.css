@@ -1106,3 +1106,183 @@ body::before {
     color: var(--text-dim);
     font-weight: 400;
 }
+
+/* ===== SETTINGS SCREEN STYLES ===== */
+
+/* Access denied */
+.access-denied {
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.access-denied h2 {
+    color: var(--amber);
+    margin-bottom: 12px;
+}
+
+.access-denied p {
+    color: var(--text-dim);
+}
+
+/* User cards */
+.users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.user-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.user-card:hover {
+    border-color: var(--green-dim);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.user-name {
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+.user-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.user-role {
+    text-transform: capitalize;
+}
+
+/* Settings form */
+.settings-form {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 16px;
+}
+
+.settings-form select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3e%3cpolygon fill='%234af626' points='6,9 0,3 12,3'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+/* Rates table */
+.rates-table {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+}
+
+.table-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--text-bright);
+    font-size: 12px;
+}
+
+.table-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+}
+
+.table-row:last-child {
+    border-bottom: none;
+}
+
+.table-col {
+    font-size: 13px;
+    color: var(--text-bright);
+}
+
+.rate-input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 13px;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-bright);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.btn-small:hover {
+    border-color: var(--green-dim);
+}
+
+.btn-small.btn-danger {
+    border-color: var(--red);
+    color: var(--red);
+}
+
+.btn-small.btn-danger:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+/* Backup actions */
+.backup-actions {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.file-upload-label {
+    display: inline-block;
+    cursor: pointer;
+    text-align: center;
+}
+
+/* Sync status */
+.sync-status {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.status-label {
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.status-value {
+    color: var(--text-bright);
+    font-size: 12px;
+    font-weight: 600;
+}
