@@ -774,7 +774,10 @@ window.app = function() {
         async updateStory(storyId, updates) {
             // 0. Get current entity for conflict detection (capture base_updated_at)
             const currentStory = await db.stories.get(storyId);
-            const baseUpdatedAt = currentStory ? currentStory.updated_at : null;
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
+            }
+            const baseUpdatedAt = currentStory.updated_at;
 
             const now = new Date().toISOString();
 
@@ -824,7 +827,10 @@ window.app = function() {
 
             // 0. Get current entity for conflict detection (capture base_updated_at)
             const currentStory = await db.stories.get(storyId);
-            const baseUpdatedAt = currentStory ? currentStory.updated_at : null;
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
+            }
+            const baseUpdatedAt = currentStory.updated_at;
 
             const now = new Date().toISOString();
 
@@ -834,8 +840,8 @@ window.app = function() {
                 updated_at: now
             });
 
-            // 2. Queue for sync (include base_updated_at for conflict detection)
-            await db.queueChange('story', storyId, 'delete', { is_archived: true }, baseUpdatedAt);
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('story', storyId, 'delete', null, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
@@ -938,7 +944,10 @@ window.app = function() {
         async updateEvent(eventId, updates) {
             // 0. Get current entity for conflict detection (capture base_updated_at)
             const currentEvent = await db.events.get(eventId);
-            const baseUpdatedAt = currentEvent ? currentEvent.updated_at : null;
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
+            }
+            const baseUpdatedAt = currentEvent.updated_at;
 
             const now = new Date().toISOString();
 
@@ -982,15 +991,16 @@ window.app = function() {
 
             // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
             const currentEvent = await db.events.get(eventId);
-            const baseUpdatedAt = currentEvent ? currentEvent.updated_at : null;
-
-            const now = new Date().toISOString();
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
+            }
+            const baseUpdatedAt = currentEvent.updated_at;
 
             // 1. Mark as deleted in Dexie (or actually delete)
             await db.events.delete(eventId);
 
-            // 2. Queue for sync (include base_updated_at for conflict detection)
-            await db.queueChange('event', eventId, 'delete', { deleted_at: now }, baseUpdatedAt);
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('event', eventId, 'delete', null, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 

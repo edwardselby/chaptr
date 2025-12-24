@@ -488,7 +488,10 @@ class StorageAdapter {
     async updateAccount_Full(accountId, updateData) {
         // 0. Get current entity for conflict detection (capture base_updated_at)
         const currentAccount = await db.accounts.get(accountId);
-        const baseUpdatedAt = currentAccount ? currentAccount.updated_at : null;
+        if (!currentAccount) {
+            throw new Error(`Account ${accountId} not found`);
+        }
+        const baseUpdatedAt = currentAccount.updated_at;
 
         // 1. Optimistic Dexie update
         await db.accounts.update(accountId, updateData);
@@ -579,7 +582,10 @@ class StorageAdapter {
     async deleteAccount_Full(accountId, now) {
         // 0. Get current entity for conflict detection (capture base_updated_at)
         const currentAccount = await db.accounts.get(accountId);
-        const baseUpdatedAt = currentAccount ? currentAccount.updated_at : null;
+        if (!currentAccount) {
+            throw new Error(`Account ${accountId} not found`);
+        }
+        const baseUpdatedAt = currentAccount.updated_at;
 
         // 1. Soft delete in Dexie (mark as archived)
         await db.accounts.update(accountId, {
@@ -587,8 +593,8 @@ class StorageAdapter {
             updated_at: now
         });
 
-        // 2. Queue for sync (include base_updated_at for conflict detection)
-        await db.queueChange('account', accountId, 'delete', { is_archived: true }, baseUpdatedAt);
+        // 2. Queue for sync (send null data per spec - delete should not send entity data)
+        await db.queueChange('account', accountId, 'delete', null, baseUpdatedAt);
 
         // 3. Queue limit check after write (see createAccount_Full for rationale)
         await this.checkQueueLimit();
