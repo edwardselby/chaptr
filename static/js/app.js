@@ -1448,28 +1448,21 @@ window.app = function() {
         },
 
         /**
-         * Add event (dashboard context)
+         * Add event (dashboard context - baseline auto-assign)
          */
         addEvent() {
-            // TODO PR2 Stage 4: Implement event creation
-            console.log('Add event - Dashboard context');
-            alert('Add Event - Coming in Stage 4 (CRUD)');
+            this.openEventModal();
         },
 
         /**
          * Add event to current story (projection context)
          */
         addEventToStory() {
-            // TODO PR2 Stage 4: Implement add to story
-            console.log('Add to story - Projection context, view:', this.currentView);
-
             if (this.currentView === 'all' || this.currentView === 'baseline') {
                 alert('Please select a specific story first');
                 return;
             }
-
-            const story = this.stories.find(s => s.id === this.currentView);
-            alert(`Add Event to Story: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+            this.openEventModalForStory(this.currentView);
         },
 
         /**
@@ -1495,6 +1488,242 @@ window.app = function() {
 
             const story = this.stories.find(s => s.id === this.currentView);
             alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+        },
+
+        // ===== EVENT MODAL METHODS =====
+
+        /**
+         * Open event modal for adding new event (dashboard context - baseline auto-assign)
+         */
+        openEventModal() {
+            const today = new Date().toISOString().split('T')[0];
+
+            this.eventForm = {
+                event_date: today,
+                description: '',
+                amount: 0,
+                account_id: '', // Will resolve via hierarchy
+                currency: this.settings.base_currency || 'GBP',
+                story_id: '', // Empty = baseline
+                is_baseline: true,
+                is_hypothetical: false,
+                event_type: '',
+                notes: ''
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * Open event modal for adding event to current story (projection context)
+         * @param {string} storyId - Story UUID (from currentView)
+         */
+        openEventModalForStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) {
+                alert('Story not found');
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+
+            // Use story date range if today falls outside
+            let defaultDate = today;
+            if (today < story.start_date) {
+                defaultDate = story.start_date;
+            } else if (story.end_date && today > story.end_date) {
+                defaultDate = story.end_date;
+            }
+
+            this.eventForm = {
+                event_date: defaultDate,
+                description: '',
+                amount: 0,
+                account_id: story.default_account_id || '',
+                currency: story.display_currency || this.settings.base_currency || 'GBP',
+                story_id: storyId,
+                is_baseline: false,
+                is_hypothetical: false,
+                event_type: '',
+                notes: ''
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * View event details for editing (opens edit modal)
+         * @param {string} eventId - Event UUID
+         */
+        viewEventDetails(eventId) {
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) {
+                console.error('Event not found:', eventId);
+                return;
+            }
+
+            this.eventForm = {
+                id: event.id,
+                event_date: event.date,
+                description: event.description,
+                amount: event.amount,
+                account_id: event.account_id,
+                currency: event.currency,
+                story_id: event.story_id || '',
+                is_baseline: event.is_baseline,
+                is_hypothetical: event.is_hypothetical,
+                event_type: event.event_type || '',
+                notes: event.notes || '',
+                updated_at: event.updated_at
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * Save event (create or update) with validation
+         */
+        async saveEvent() {
+            // Validation: Required fields
+            if (!this.eventForm.event_date) {
+                alert('Event date is required');
+                return;
+            }
+
+            if (!this.eventForm.description || this.eventForm.description.trim() === '') {
+                alert('Description is required');
+                return;
+            }
+
+            if (this.eventForm.amount === null || this.eventForm.amount === undefined) {
+                alert('Amount is required');
+                return;
+            }
+
+            // Validation: Currency format
+            if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
+                alert('Currency must be a 3-letter code (e.g., GBP, USD)');
+                return;
+            }
+
+            // Validation: Baseline XOR Story
+            if (this.eventForm.is_baseline && this.eventForm.story_id) {
+                alert('Event cannot be both baseline and assigned to a story');
+                return;
+            }
+
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                this.eventForm.story_id || null
+            );
+
+            if (!resolvedAccountId) {
+                alert('No account available. Please create an account first or select one manually.');
+                return;
+            }
+
+            try {
+                const isEdit = !!this.eventForm.id;
+
+                const eventData = {
+                    date: this.eventForm.event_date,
+                    description: this.eventForm.description.trim(),
+                    amount: parseFloat(this.eventForm.amount),
+                    account_id: resolvedAccountId,
+                    currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                    story_id: this.eventForm.story_id || null,
+                    is_baseline: !this.eventForm.story_id,
+                    is_hypothetical: this.eventForm.is_hypothetical || false,
+                    event_type: this.eventForm.event_type || null,
+                    notes: this.eventForm.notes || ''
+                };
+
+                if (isEdit) {
+                    await this.updateEvent(this.eventForm.id, eventData);
+                } else {
+                    await this.createEvent(eventData);
+                }
+
+                this.showEventModal = false;
+
+            } catch (error) {
+                console.error('Error saving event:', error);
+                alert('Failed to save event: ' + error.message);
+            }
+        },
+
+        /**
+         * Delete event from modal with confirmation
+         */
+        async deleteEventFromModal() {
+            if (!confirm(`Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`)) {
+                return;
+            }
+
+            try {
+                await this.deleteEvent(this.eventForm.id);
+                this.showEventModal = false;
+            } catch (error) {
+                console.error('Error deleting event:', error);
+                alert('Failed to delete event: ' + error.message);
+            }
+        },
+
+        /**
+         * Get account hierarchy hint text for form
+         * Shows which account will be used based on current selections
+         */
+        getAccountHierarchyHint() {
+            if (this.eventForm.account_id) {
+                const account = this.accounts.find(a => a.id === this.eventForm.account_id);
+                return account ? `Will use: ${account.name}` : 'Selected account';
+            }
+
+            if (this.eventForm.story_id) {
+                const story = this.stories.find(s => s.id === this.eventForm.story_id);
+                if (story && story.default_account_id) {
+                    const account = this.accounts.find(a => a.id === story.default_account_id);
+                    if (account) {
+                        return `Will use story default: ${account.name}`;
+                    }
+                }
+            }
+
+            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
+            if (defaultAccount) {
+                return `Will use global default: ${defaultAccount.name}`;
+            }
+
+            return '⚠ No default account available - please select one';
+        },
+
+        /**
+         * Handle story selection change
+         * Auto-updates account and currency based on story defaults
+         */
+        handleStoryChange() {
+            const storyId = this.eventForm.story_id;
+
+            this.eventForm.is_baseline = !storyId;
+
+            if (storyId) {
+                const story = this.stories.find(s => s.id === storyId);
+                if (story) {
+                    if (!this.eventForm.account_id && story.default_account_id) {
+                        this.eventForm.account_id = story.default_account_id;
+
+                        const account = this.accounts.find(a => a.id === story.default_account_id);
+                        if (account) {
+                            this.eventForm.currency = account.currency;
+                        }
+                    }
+
+                    if (story.display_currency && !this.eventForm.currency) {
+                        this.eventForm.currency = story.display_currency;
+                    }
+                }
+            }
         },
 
         // ===== FORMATTING HELPERS =====
