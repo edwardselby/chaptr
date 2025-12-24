@@ -637,7 +637,7 @@ window.app = function() {
             const accountData = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -660,7 +660,7 @@ window.app = function() {
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -745,9 +745,9 @@ window.app = function() {
                 end_date: storyData.end_date,
                 display_currency: storyData.display_currency || this.settings.base_currency,
                 funding_mode: storyData.funding_mode || 'projected',
-                funding_amount: parseFloat(storyData.funding_amount || 0),
+                funding_amount: String(parseFloat(storyData.funding_amount || 0)),
                 goal_type: storyData.goal_type || null,
-                goal_amount: parseFloat(storyData.goal_amount || 0),
+                goal_amount: String(parseFloat(storyData.goal_amount || 0)),
                 default_account_id: storyData.default_account_id || null,
                 is_archived: false,
                 created_at: now,
@@ -772,6 +772,13 @@ window.app = function() {
          * @param {object} updates - Story updates
          */
         async updateStory(storyId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
+            }
+            const baseUpdatedAt = currentStory.updated_at;
+
             const now = new Date().toISOString();
 
             const storyUpdates = {
@@ -782,8 +789,8 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.stories.update(storyId, storyUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'update', storyUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('story', storyId, 'update', storyUpdates, baseUpdatedAt);
 
             console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
@@ -818,6 +825,13 @@ window.app = function() {
                 }
             }
 
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
+            }
+            const baseUpdatedAt = currentStory.updated_at;
+
             const now = new Date().toISOString();
 
             // 1. Mark as archived in Dexie
@@ -826,8 +840,8 @@ window.app = function() {
                 updated_at: now
             });
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'delete', { is_archived: true });
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('story', storyId, 'delete', null, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
@@ -896,7 +910,7 @@ window.app = function() {
             const event = {
                 id: localId,
                 description: eventData.description,
-                amount: parseFloat(eventData.amount),
+                amount: String(parseFloat(eventData.amount)),
                 date: eventData.date,
                 account_id: accountId,
                 currency: currency,
@@ -928,6 +942,13 @@ window.app = function() {
          * @param {object} updates - Event updates
          */
         async updateEvent(eventId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentEvent = await db.events.get(eventId);
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
+            }
+            const baseUpdatedAt = currentEvent.updated_at;
+
             const now = new Date().toISOString();
 
             const eventUpdates = {
@@ -947,8 +968,8 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.events.update(eventId, eventUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'update', eventUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('event', eventId, 'update', eventUpdates, baseUpdatedAt);
 
             console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
@@ -968,13 +989,18 @@ window.app = function() {
                 return;
             }
 
-            const now = new Date().toISOString();
+            // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
+            const currentEvent = await db.events.get(eventId);
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
+            }
+            const baseUpdatedAt = currentEvent.updated_at;
 
             // 1. Mark as deleted in Dexie (or actually delete)
             await db.events.delete(eventId);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'delete', { deleted_at: now });
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('event', eventId, 'delete', null, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 

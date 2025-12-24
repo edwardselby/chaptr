@@ -13,14 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-223ce4b0: Login handler with token storage, user session management, automatic app initialization after login
 - CPTR-c538bb37: Logout button in Settings screen with admin user display
 - CPTR-0057a3be, CPTR-5f9fae48, CPTR-223ce4b0: JWT token management with consistent 'auth_token' localStorage key across all functions
+- CPTR-fa98623d: base_updated_at parameter in queueChange() helper for conflict detection during sync
+- CPTR-2cf0e42d: Enhanced FastAPI validation error logging with detailed request body and error messages
 
 ### Changed
 - CPTR-223ce4b0: App initialization skips data loading if user not authenticated (shows login screen instead)
 - CPTR-c538bb37: Logout function simplified to use window.location.reload() for complete state reset (prevents data leakage between sessions)
 - CPTR-5f9fae48: 401 response handling changed from redirect to reload (fixes non-existent /login URL issue)
+- CPTR-fa98623d: Decimal fields (current_balance, funding_amount, goal_amount, amount) converted to strings for Pydantic compatibility
+- CPTR-fa98623d: Update/delete operations capture entity's current updated_at timestamp before modification for conflict detection
+- CPTR-fa98623d: BaseRepository.delete() signature extended to accept current_user and client_id parameters for change logging
 
 ### Fixed
 - CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
+- CPTR-fa98623d: Decimal type validation error (422) when syncing numeric fields - frontend now sends String(parseFloat()) for Pydantic Decimal fields
+- CPTR-fa98623d: Missing base_updated_at in sync queue causing validation errors - all update/delete operations now include timestamp
+- CPTR-fa98623d: BaseRepository.delete() TypeError in sync protocol - method now logs changes to change_log collection
+- CPTR-2cf0e42d: Validation error handler JSON serialization crash - now properly serializes error details without non-serializable context
 
 ## [0.1.0] - 2025-12-23
 
