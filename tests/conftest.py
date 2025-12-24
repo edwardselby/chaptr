@@ -313,7 +313,7 @@ async def sample_account(account_repo):
         name="Test Account",
         currency="GBP",
         current_balance=Decimal("1000.00"),
-        balance_updated_at=datetime.utcnow(),
+        balance_updated_at=utc_now(),
         is_default=True,
         is_archived=False,
         pending_reconciliation=False
@@ -529,8 +529,8 @@ def valid_account_data():
         "name": "Monzo",
         "currency": "GBP",
         "current_balance": 2500.00,
-        "balance_updated_at": datetime.utcnow().isoformat() + "Z",
-        "is_default": False,
+        "balance_updated_at": utc_now().isoformat(),
+        "is_default": True,
         "is_archived": False,
         "pending_reconciliation": False
     }
@@ -675,6 +675,83 @@ async def settings_with_rates_real(mongodb_real):
     )
     await mongodb_real["settings"].insert_one(settings.model_dump(mode="json"))
     return settings
+
+
+@pytest_asyncio.fixture
+async def sample_account_with_user(account_repo_real, sample_user_real):
+    """
+    Pre-created account for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need accounts owned by a specific user.
+    """
+    from api.models import AccountCreate
+
+    account_data = AccountCreate(
+        name="Test Account",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=True
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API
+    )
+    return account
+
+
+@pytest_asyncio.fixture
+async def sample_story_with_user(story_repo_real, sample_user_real, sample_account_with_user):
+    """
+    Pre-created story for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need stories owned by a specific user.
+    """
+    from api.models import StoryCreate
+
+    story_data = StoryCreate(
+        name="Test Story",
+        funding_mode="projected",
+        start_date="2025-01-01",
+        display_currency="GBP"  # Required field for StoryCreate
+    )
+    story = await story_repo_real.create(
+        story_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API
+    )
+    return story
+
+
+@pytest_asyncio.fixture
+async def sample_event_with_user(event_repo_real, sample_account_with_user, sample_story_with_user, sample_user_real, sample_settings_real):
+    """
+    Pre-created event for integration testing with real MongoDB and user context.
+
+    Created with sample_user_real as the owner (created_by field).
+    Used for sync tests that need events owned by a specific user.
+    Requires sample_settings_real for currency rate lookup.
+    """
+    from api.models import EventCreate
+    from decimal import Decimal
+    from datetime import date
+
+    event_data = EventCreate(
+        event_date=date(2025, 1, 15),
+        description="Test Event",
+        amount=Decimal("-50.00"),
+        currency="GBP",
+        account_id=sample_account_with_user.id,
+        story_id=sample_story_with_user.id
+    )
+    event = await event_repo_real.create(
+        event_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None  # No client_id = created via REST API, not sync
+    )
+    return event
 
 
 @pytest_asyncio.fixture
