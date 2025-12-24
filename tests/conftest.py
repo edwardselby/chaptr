@@ -333,7 +333,7 @@ async def sample_account_usd(account_repo):
         name="USD Account",
         currency="USD",
         current_balance=Decimal("2000.00"),
-        balance_updated_at=datetime.utcnow(),
+        balance_updated_at=utc_now(),
         is_default=False,
         is_archived=False,
         pending_reconciliation=False
@@ -353,7 +353,7 @@ async def sample_archived_account(account_repo):
         name="Archived Account",
         currency="GBP",
         current_balance=Decimal("0.00"),
-        balance_updated_at=datetime.utcnow(),
+        balance_updated_at=utc_now(),
         is_default=False,
         is_archived=True,
         pending_reconciliation=False
