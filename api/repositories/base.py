@@ -219,22 +219,31 @@ class BaseRepository(Generic[T], ChangeLogMixin):
         docs = await cursor.to_list(length=None)
         return [self.model_class(**doc) for doc in docs]
 
-    async def delete(self, resource_id: UUID) -> bool:
+    async def delete(
+        self,
+        resource_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
         """
-        Hard delete entity by ID.
+        Hard delete entity by ID with change logging.
 
-        Permanently removes document from MongoDB.
-        Use with caution - for soft deletes, override in subclass.
+        Permanently removes document from MongoDB and logs the change
+        to change_log for sync protocol.
 
         :param resource_id: UUID of resource to delete
         :type resource_id: UUID
+        :param current_user: Current authenticated user (optional)
+        :type current_user: Optional[dict]
+        :param client_id: Client identifier for sync protocol (optional)
+        :type client_id: Optional[str]
         :return: True if deleted successfully
         :rtype: bool
         :raises ResourceNotFoundError: If entity not found
 
         :Example:
 
-        >>> await story_repo.delete(story_id)
+        >>> await story_repo.delete(story_id, current_user=user, client_id="client-a")
         True
         """
         result = await self.collection.delete_one({"id": to_str(resource_id)})
@@ -243,6 +252,16 @@ class BaseRepository(Generic[T], ChangeLogMixin):
             raise ResourceNotFoundError(
                 f"{self.model_class.__name__} not found"
             )
+
+        # Log change for sync protocol
+        await self.log_change(
+            self.collection_name,
+            resource_id,
+            "delete",
+            None,  # data=None for deletes (entity no longer exists)
+            self._get_user_id(current_user),
+            client_id
+        )
 
         return True
 
