@@ -862,6 +862,35 @@ class StorageAdapter {
 
         showToast('Data updated successfully', 'success');
     }
+
+    /**
+     * Clear pending sync queue
+     *
+     * Useful for development/testing to clear stale queue items
+     * without performing a full database reset.
+     *
+     * Mode behavior:
+     * - Mode 1 (Full): Clears Dexie sync_queue table
+     * - Mode 2 (Sync-Only): Not applicable (no queue in memory mode)
+     * - Mode 3 (Basic): Not applicable (no queue in basic mode)
+     *
+     * @returns {Promise<number>} Number of items cleared
+     */
+    async clearSyncQueue() {
+        if (this.mode !== 'full') {
+            console.warn('[CHAPTR] clearSyncQueue only available in Mode 1 (Full)');
+            showToast('Sync queue only available in full mode', 'warning');
+            return 0;
+        }
+
+        const count = await db.sync_queue.count();
+        await db.clearSyncQueue();
+
+        console.log(`[CHAPTR] Cleared ${count} items from sync queue`);
+        showToast(`Cleared ${count} pending sync items`, 'success');
+
+        return count;
+    }
 }
 
 // Export singleton instance

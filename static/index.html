@@ -528,7 +528,14 @@
                                         <span class="status-label">Last Sync:</span>
                                         <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
                                     </div>
-                                    <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                    <div class="status-row" x-show="storage && storage.mode === 'full'">
+                                        <span class="status-label">Pending Changes:</span>
+                                        <span class="status-value" x-text="syncQueueCount"></span>
+                                    </div>
+                                    <div class="sync-actions">
+                                        <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                        <button class="btn-danger" @click="clearSyncQueue()" x-show="storage && storage.mode === 'full' && syncQueueCount > 0">Clear Queue</button>
+                                    </div>
                                 </div>
                             </div>
                         </section>

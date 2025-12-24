@@ -1299,6 +1299,26 @@ window.app = function() {
             }
         },
 
+        /**
+         * Clear sync queue (Mode 1 only)
+         *
+         * Clears all pending sync queue items without syncing to server.
+         * Useful for development/testing to clear stale queue items.
+         */
+        async clearSyncQueue() {
+            if (!confirm('Clear all pending sync items? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const count = await storage.clearSyncQueue();
+                this.syncQueueCount = await storage.getSyncQueueCount();
+            } catch (error) {
+                console.error('Clear queue error:', error);
+                alert('Failed to clear sync queue');
+            }
+        },
+
         // ===== COMMAND BAR (Context-Sensitive) =====
 
         /**
