@@ -32,6 +32,7 @@ window.app = function() {
 
         // Storage adapter (exposed for UI access)
         storage: storage,
+        storageMode: null,  // Reactive copy of storage.mode for Alpine bindings
 
         // Navigation
         currentScreen: 'dashboard',
@@ -108,6 +109,9 @@ window.app = function() {
 
             // Initialize storage adapter (detects mode and bootstraps)
             await storage.init();
+
+            // Sync storage mode to reactive property for Alpine bindings
+            this.storageMode = storage.mode;
 
             // Add mode-3-active class to body if in Basic mode (for CSS styling)
             if (storage.mode === 'basic') {
@@ -1563,7 +1567,7 @@ window.app = function() {
                 'sync-only': 'Sync-Only (Online required)',
                 'basic': 'Basic (Limited)'
             };
-            return modes[storage.mode] || 'Unknown';
+            return modes[this.storageMode] || 'Unknown';
         },
 
         /**
@@ -1571,8 +1575,8 @@ window.app = function() {
          * @returns {string} HTML string with checkmarks/crosses
          */
         getCapabilitiesDisplay() {
-            const offline = storage.mode === 'full';
-            const sync = storage.mode !== 'basic';
+            const offline = this.storageMode === 'full';
+            const sync = this.storageMode !== 'basic';
 
             const offlineIcon = offline ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
             const syncIcon = sync ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
@@ -1590,7 +1594,7 @@ window.app = function() {
                 'sync-only': 'Memory (cleared on refresh)',
                 'basic': 'Memory (cleared on refresh)'
             };
-            return storageTypes[storage.mode] || 'Unknown';
+            return storageTypes[this.storageMode] || 'Unknown';
         },
 
         // ===== AUTH =====
@@ -1672,6 +1676,9 @@ window.app = function() {
                     // Initialize app components (without re-checking auth)
                     this.setDefaultProjectionDates();
                     await storage.init();
+
+                    // Sync storage mode to reactive property
+                    this.storageMode = storage.mode;
 
                     if (storage.mode === 'basic') {
                         document.body.classList.add('mode-3-active');
