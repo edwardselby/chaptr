@@ -347,7 +347,7 @@
             <div class="screen-content">
 
                 <!-- Admin Check -->
-                <template x-if="!user || !user.is_admin">
+                <template x-if="!user || user.role !== 'admin'">
                     <div class="access-denied">
                         <h2>⚠ Admin Access Required</h2>
                         <p>Settings are only available to administrators.</p>
@@ -355,7 +355,7 @@
                 </template>
 
                 <!-- Settings Content (Admin Only) -->
-                <template x-if="user && user.is_admin">
+                <template x-if="user && user.role === 'admin'">
                     <div>
 
                         <!-- User Management -->
@@ -374,7 +374,7 @@
                                     <div class="user-card" @click="editUser(user.id)">
                                         <div class="user-info">
                                             <span class="user-name" x-text="user.username"></span>
-                                            <span class="tag" x-show="user.is_admin">[admin]</span>
+                                            <span class="tag" x-show="user.role === 'admin'">[admin]</span>
                                         </div>
                                         <div class="user-meta">
                                             <span class="user-role" x-text="user.role || 'user'"></span>
@@ -528,7 +528,14 @@
                                         <span class="status-label">Last Sync:</span>
                                         <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
                                     </div>
-                                    <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                    <div class="status-row" x-show="storage && storage.mode === 'full'">
+                                        <span class="status-label">Pending Changes:</span>
+                                        <span class="status-value" x-text="syncQueueCount"></span>
+                                    </div>
+                                    <div class="sync-actions">
+                                        <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                        <button class="btn-danger" @click="clearSyncQueue()" x-show="storage && storage.mode === 'full' && syncQueueCount > 0">Clear Queue</button>
+                                    </div>
                                 </div>
                             </div>
                         </section>

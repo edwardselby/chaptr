@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-223ce4b0: Login handler with token storage, user session management, automatic app initialization after login
 - CPTR-c538bb37: Logout button in Settings screen with admin user display
 - CPTR-0057a3be, CPTR-5f9fae48, CPTR-223ce4b0: JWT token management with consistent 'auth_token' localStorage key across all functions
+- CPTR-0faffb9e: Clear sync queue button in Settings screen (Mode 1 only, development utility with confirmation dialog)
 - CPTR-fa98623d: base_updated_at parameter in queueChange() helper for conflict detection during sync
 - CPTR-2cf0e42d: Enhanced FastAPI validation error logging with detailed request body and error messages
 
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
+- CPTR-7d470b3e: Admin access to settings screen - changed user.is_admin checks to user.role === 'admin' for frontend-backend field consistency
 - CPTR-fa98623d: Decimal type validation error (422) when syncing numeric fields - frontend now sends String(parseFloat()) for Pydantic Decimal fields
 - CPTR-fa98623d: Missing base_updated_at in sync queue causing validation errors - all update/delete operations now include timestamp
 - CPTR-fa98623d: BaseRepository.delete() TypeError in sync protocol - method now logs changes to change_log collection
