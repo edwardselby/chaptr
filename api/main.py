@@ -6,9 +6,13 @@ FastAPI application providing REST API for CHAPTR projection system.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, Response
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
+import hashlib
+from pathlib import Path
 
 from api.config import settings, MongoDB
 from api.utils.indexes import create_change_log_indexes
@@ -165,3 +169,250 @@ app.include_router(settings_routes.router, prefix="/api", tags=["settings"])
 app.include_router(recurring_rules.router, prefix="/api", tags=["recurring-rules"])
 app.include_router(sync.router, prefix="/api", tags=["sync"])
 app.include_router(projection.router, prefix="/api", tags=["projection"])
+
+# Mount static files for frontend
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+def generate_file_hash(file_path: Path) -> str:
+    """
+    Generate MD5 hash of file contents for cache busting.
+
+    Args:
+        file_path: Path to file to hash
+
+    Returns:
+        str: First 8 characters of MD5 hash
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            return hashlib.md5(content).hexdigest()[:8]
+    except FileNotFoundError:
+        logger.warning(f"File not found for hashing: {file_path}")
+        return "00000000"
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    """
+    Dynamically generate service worker with automatic revision numbers.
+
+    Generates content-based MD5 hashes for each precached file to enable
+    automatic cache invalidation when files change. This eliminates the need
+    for manual revision bumping or cache clearing during development.
+
+    Returns:
+        Response: Service worker JavaScript with hashed revisions
+    """
+    static_dir = Path("static")
+
+    # Files to precache with automatic revision hashing
+    precache_files = [
+        "static/index.html",
+        "static/css/style.css",
+        "static/js/app.js",
+        "static/js/db.js",
+        "static/js/storage-adapter.js",
+        "static/js/utils.js",
+        "static/js/projection.js"
+    ]
+
+    # Generate revision hashes for each file
+    precache_entries = []
+    for file_path in precache_files:
+        full_path = Path(file_path)
+        revision = generate_file_hash(full_path)
+        url = f"/{file_path}"
+        precache_entries.append(f"    {{ url: '{url}', revision: '{revision}' }}")
+
+    precache_list = ",\n".join(precache_entries)
+
+    # Generate service worker content with dynamic revisions
+    sw_content = f"""/**
+ * CHAPTR Service Worker (Dynamically Generated)
+ *
+ * Uses Workbox for caching strategies:
+ * - Cache-First: Static assets (HTML, CSS, JS, images)
+ * - Network-First: API calls (with offline fallback)
+ *
+ * ⚡ AUTOMATIC REVISION NUMBERS:
+ * Revisions are MD5 hashes of file contents, generated on-the-fly.
+ * Cache automatically invalidates when files change - no manual intervention needed.
+ */
+
+// Import Workbox from CDN
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox-sw.js');
+
+const {{ registerRoute }} = workbox.routing;
+const {{ CacheFirst, NetworkFirst }} = workbox.strategies;
+const {{ ExpirationPlugin }} = workbox.expiration;
+const {{ CacheableResponsePlugin }} = workbox.cacheableResponse;
+
+// ==================== APP SHELL PRECACHING ====================
+
+/**
+ * Precache critical app shell files with automatic revisions
+ *
+ * Revision hashes are generated from file contents (MD5).
+ * When a file changes, its hash changes, triggering cache update.
+ */
+workbox.precaching.precacheAndRoute([
+{precache_list}
+]);
+
+// ==================== STATIC ASSETS: CACHE-FIRST ====================
+
+/**
+ * Cache-First strategy for static assets
+ *
+ * Priority: Cache → Network
+ * - Faster loads on repeat visits
+ * - 7-day cache expiration
+ * - Max 60 entries to prevent unbounded growth
+ */
+registerRoute(
+    ({{ request }}) => ['style', 'script', 'image', 'font'].includes(request.destination),
+    new CacheFirst({{
+        cacheName: 'static-assets-v1',
+        plugins: [
+            new CacheableResponsePlugin({{
+                statuses: [0, 200] // Cache successful responses
+            }}),
+            new ExpirationPlugin({{
+                maxEntries: 60,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+            }})
+        ]
+    }})
+);
+
+// ==================== API CALLS: NETWORK-FIRST ====================
+
+/**
+ * Network-First strategy for API calls
+ *
+ * Priority: Network → Cache
+ * - Always try network first for fresh data
+ * - 5-second timeout before falling back to cache
+ * - Cache as offline fallback
+ */
+registerRoute(
+    ({{ url }}) => url.pathname.startsWith('/api/'),
+    new NetworkFirst({{
+        cacheName: 'api-cache-v1',
+        networkTimeoutSeconds: 5,
+        plugins: [
+            new CacheableResponsePlugin({{
+                statuses: [0, 200]
+            }}),
+            new ExpirationPlugin({{
+                maxEntries: 50,
+                maxAgeSeconds: 24 * 60 * 60 // 1 day
+            }})
+        ]
+    }})
+);
+
+// ==================== BACKGROUND SYNC ====================
+
+/**
+ * Background sync listener
+ *
+ * Triggered when:
+ * - App calls registration.sync.register('chaptr-sync')
+ * - Browser detects connectivity restored
+ *
+ * Notifies app to process sync queue.
+ */
+self.addEventListener('sync', (event) => {{
+    if (event.tag === 'chaptr-sync') {{
+        event.waitUntil(notifyClientsToSync());
+    }}
+}});
+
+/**
+ * Notify all clients to trigger sync
+ */
+async function notifyClientsToSync() {{
+    const clients = await self.clients.matchAll({{ type: 'window' }});
+
+    clients.forEach(client => {{
+        client.postMessage({{
+            type: 'BACKGROUND_SYNC',
+            timestamp: new Date().toISOString()
+        }});
+    }});
+}}
+
+// ==================== SERVICE WORKER LIFECYCLE ====================
+
+/**
+ * Install event - precache app shell
+ */
+self.addEventListener('install', (event) => {{
+    console.log('[SW] Service worker installing...');
+    self.skipWaiting(); // Activate immediately
+}});
+
+/**
+ * Activate event - clean old caches
+ */
+self.addEventListener('activate', (event) => {{
+    console.log('[SW] Service worker activating...');
+
+    const cacheWhitelist = ['static-assets-v1', 'api-cache-v1'];
+
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {{
+            return Promise.all(
+                cacheNames.map((cacheName) => {{
+                    if (!cacheWhitelist.includes(cacheName)) {{
+                        console.log('[SW] Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }}
+                }})
+            );
+        }}).then(() => {{
+            return self.clients.claim(); // Take control immediately
+        }})
+    );
+}});
+
+// ==================== FETCH EVENT ====================
+
+/**
+ * Fetch event - handled by Workbox strategies above
+ *
+ * Routes:
+ * - Static assets (CSS, JS, images) → Cache-First
+ * - API calls (/api/*) → Network-First
+ * - Everything else → Network-only
+ */
+self.addEventListener('fetch', (event) => {{
+    // Workbox handles routing via registerRoute() calls above
+    // This listener is just for logging/debugging
+    if (event.request.url.includes('/api/')) {{
+        console.log('[SW] API request:', event.request.url);
+    }}
+}});
+"""
+
+    return Response(
+        content=sw_content,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache"  # Don't cache the SW itself
+        }
+    )
+
+
+@app.get("/app")
+async def serve_app():
+    """
+    Serve the frontend application.
+
+    Returns the main index.html for the CHAPTR PWA.
+    """
+    return FileResponse("static/index.html")

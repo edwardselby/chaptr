@@ -1,10 +1,28 @@
 # CHAPTR Spec Addendum: Sync Implementation
 
-**Version:** 2.8.1  
+**Version:** 3.0  
 **Date:** December 2024  
-**Status:** Implementation guidance for sync system
+**Status:** Implementation guidance for sync system + frontend progressive enhancement
 
-This addendum clarifies the sync implementation approach, building on the existing repository pattern rather than introducing a separate service layer.
+This addendum clarifies the sync implementation approach, building on the existing repository pattern rather than introducing a separate service layer. It also defines the progressive enhancement strategy for the PWA frontend.
+
+---
+
+## Table of Contents
+
+1. [Architecture Overview](#architecture-overview)
+2. [Change Logging](#change-logging)
+3. [Sync Endpoint](#sync-endpoint)
+4. [Change Log Maintenance](#change-log-maintenance)
+5. [Full Sync Handling](#full-sync-handling)
+6. [Repository Changes Summary](#repository-changes-summary)
+7. [Frontend Progressive Enhancement](#frontend-progressive-enhancement)
+8. [Storage Adapter Implementation](#storage-adapter-implementation)
+9. [Mode Detection & Initialization](#mode-detection--initialization)
+10. [Error Handling](#error-handling)
+11. [Queue Management](#queue-management)
+12. [Testing & Development](#testing--development)
+13. [UI Components](#ui-components)
 
 ---
 
@@ -46,6 +64,13 @@ The sync endpoint acts as a **dispatcher** to existing repository methods, addin
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Key Design Decisions
+
+- **Sequential Processing:** Server processes changes in the order received (not parallel)
+- **No Client-Side Compaction:** All queued changes sent to server; server handles deduplication
+- **Audit Trail Preserved:** Each change creates a separate change_log entry
+- **Changes Applied in Order:** Clients apply pulled changes sequentially (create → update → delete)
+
 ---
 
 ## Change Logging
@@ -66,6 +91,7 @@ All mutable entities must log changes:
 - `change_log` (meta, would be recursive)
 - `snapshots` (server-side optimisation, not synced to clients)
 - `conflicts` (client-local, resolved per-device)
+- `users` (admin-only, loaded on-demand)
 
 ### Change Log Schema
 
@@ -283,7 +309,7 @@ class SyncRequest(BaseModel):
 class SyncConflict(BaseModel):
     entity_type: str
     entity_id: UUID
-    conflict_type: str                  # edit_edit | delete_edit | edit_delete
+    conflict_type: str                  # edit_edit | delete_edit | edit_delete | business_rule
     client_version: dict                # What client tried to save
     server_version: dict                # Current server state
 
@@ -315,6 +341,8 @@ async def sync(
     
     Push phase: Apply client changes, detect conflicts
     Pull phase: Return changes from other clients since last_sync_at
+    
+    Changes are processed SEQUENTIALLY in the order received.
     """
     # Initialize repositories
     repos = {
@@ -329,7 +357,7 @@ async def sync(
     conflicts = []
     
     # ─────────────────────────────────────────────
-    # PUSH PHASE: Process client changes
+    # PUSH PHASE: Process client changes (sequential)
     # ─────────────────────────────────────────────
     
     for change in request.changes:
@@ -536,7 +564,9 @@ async def full_sync(
     """
     Return complete dataset for client rebuild.
     
-    Used when client is too stale (missed pruned changes).
+    Used when:
+    - Client is too stale (missed pruned changes)
+    - Mode 1 & 2 initial bootstrap (first visit or empty local storage)
     """
     return {
         "accounts": await AccountRepository(db).list(),
@@ -548,9 +578,11 @@ async def full_sync(
     }
 ```
 
+**Note:** Users collection is NOT included - admin-only data loaded on-demand.
+
 ---
 
-## Summary of Changes to Repositories
+## Repository Changes Summary
 
 | Repository | Method | Changes Required |
 |------------|--------|------------------|
@@ -561,8 +593,582 @@ async def full_sync(
 
 ---
 
+## Frontend Progressive Enhancement
+
+### Overview
+
+CHAPTR serves a single URL that adapts to browser capabilities, gracefully degrading from full PWA experience to basic web app functionality.
+
+**Key Principle:** Same codebase supports desktop browsers, mobile browsers, PWA installations, and limited environments (private browsing, no SSL, etc.)
+
+### Three-Tier Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CHAPTR Web App (Single URL)                                │
+│                                                             │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Feature Detection → Storage Adapter                   │ │
+│  │                                                        │ │
+│  │  ┌─ Mode 1: Full (Dexie + Sync + Offline)      ⭐⭐⭐  │ │
+│  │  ├─ Mode 2: Sync-Only (Sync without Dexie)      ⭐⭐   │ │
+│  │  └─ Mode 3: Basic (CRUD REST endpoints)         ⭐     │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  Backend API:                                               │
+│  ├─ POST /api/sync (Modes 1 & 2)                           │
+│  ├─ GET /api/sync/full (Modes 1 & 2 bootstrap)             │
+│  └─ REST CRUD endpoints (Mode 3 + fallback)                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Mode Definitions
+
+#### Mode 1: Full (Offline-First PWA) ⭐⭐⭐
+
+**Requirements:**
+- HTTPS connection
+- Modern browser with IndexedDB support
+- Dexie.js initialization successful
+
+**Features:**
+- ✅ Offline-first - Works without network connection
+- ✅ Optimistic updates - Immediate UI response
+- ✅ Sync queue - Changes queued when offline
+- ✅ Conflict resolution - Full edit-edit/delete-edit detection
+- ✅ Background sync - Periodic sync in background
+
+**Data Flow:**
+```
+User Action → Write to Dexie (immediate) → Update UI (optimistic)
+                     ↓
+              Queue for sync
+                     ↓
+              POST /api/sync (when online)
+                     ↓
+              Apply server changes + handle conflicts
+```
+
+#### Mode 2: Sync-Only (No Offline Support) ⭐⭐
+
+**Requirements:**
+- Network connection (online-only)
+- Sync endpoint available
+
+**When Used:**
+- Safari/Firefox private browsing (IndexedDB blocked)
+- Dexie initialization failure
+- Browser storage quota exceeded
+
+**Features:**
+- ✅ Sync protocol - Uses POST /api/sync
+- ✅ Conflict detection - Edit-edit conflict handling
+- ❌ No offline - Requires network
+- ❌ No optimistic updates - UI blocks during save
+- ❌ No queue - Changes sent immediately
+
+**Data Flow:**
+```
+User Action → Show loading → POST /api/sync → Update UI
+```
+
+**State Management:**
+- Data stored in memory only (Alpine.js reactive state)
+- On page load: `GET /api/sync/full` to populate state
+- On refresh: Same as first load (fetch from server)
+- No sessionStorage - keeps implementation simple
+
+#### Mode 3: Basic (CRUD REST Endpoints) ⭐
+
+**Requirements:**
+- Network connection (online-only)
+- REST endpoints available
+
+**When Used:**
+- HTTP (no SSL) - IndexedDB requires HTTPS
+- Very old browsers
+- Sync endpoint unavailable
+- Emergency fallback mode
+
+**Features:**
+- ✅ Direct REST calls - Standard CRUD
+- ✅ Broadest compatibility
+- ❌ No offline
+- ❌ No conflict detection - Last write wins
+- ❌ No optimistic updates
+
+**Data Flow:**
+```
+User Action → Show loading → POST /api/accounts → Update UI
+```
+
+**Bootstrap Endpoints (5 sequential calls):**
+- `GET /api/accounts`
+- `GET /api/stories`
+- `GET /api/events`
+- `GET /api/recurring-rules`
+- `GET /api/settings`
+
+### Feature Availability Matrix
+
+| Feature | Mode 1 (Full) | Mode 2 (Sync) | Mode 3 (Basic) |
+|---------|---------------|---------------|----------------|
+| Create/Edit/Delete | ✅ | ✅ | ✅ |
+| Offline access | ✅ | ❌ | ❌ |
+| Optimistic updates | ✅ | ❌ | ❌ |
+| Conflict resolution | ✅ | ✅ | ❌ |
+| Sync queue | ✅ | ❌ | ❌ |
+| Service Worker caching | ✅ | ✅ | ✅ |
+
+### Browser Compatibility
+
+| Environment | Expected Mode | Notes |
+|-------------|---------------|-------|
+| Chrome/Safari/Firefox (HTTPS) | Full | Best experience |
+| Mobile browsers (HTTPS) | Full | Native-like PWA |
+| Private browsing | Basic | IndexedDB blocked |
+| HTTP (no SSL) | Basic | IndexedDB requires HTTPS |
+| IE11 / Old browsers | Basic | No IndexedDB/SW |
+
+---
+
+## Storage Adapter Implementation
+
+### File: `/static/js/storage-adapter.js`
+
+```javascript
+import { db } from './db.js';
+import { apiRequest, getClientId, generateUUID } from './utils.js';
+
+/**
+ * Storage adapter with progressive enhancement.
+ * 
+ * Automatically detects capabilities and routes to appropriate
+ * storage mode (Full, Sync-Only, or Basic).
+ */
+export class StorageAdapter {
+    constructor() {
+        this.mode = null;
+        this.isReady = false;
+        this.lastSyncAt = null;
+        this.isSyncing = false;
+        
+        // In-memory state for Mode 2/3
+        this.accounts = [];
+        this.stories = [];
+        this.events = [];
+        this.recurringRules = [];
+        this.settings = {};
+    }
+
+    /**
+     * Initialize storage adapter and detect mode.
+     * Must complete in <500ms.
+     * 
+     * @returns {Promise<string>} Storage mode: 'full' | 'sync-only' | 'basic'
+     */
+    async init() {
+        // Check for forced mode (query param > localStorage > auto)
+        const forcedMode = this.getForcedMode();
+        if (forcedMode) {
+            this.mode = forcedMode;
+            console.log(`[CHAPTR] Forced mode: ${this.mode}`);
+        } else {
+            // Auto-detect mode
+            this.mode = await this.detectMode();
+        }
+        
+        // Log mode and capabilities
+        console.log('[CHAPTR] Initialized in mode:', this.mode);
+        console.log('[CHAPTR] Capabilities:', {
+            offline: this.mode === 'full',
+            sync: this.mode !== 'basic',
+            storage: this.mode === 'full' ? 'IndexedDB' : 'Memory'
+        });
+        
+        this.isReady = true;
+        return this.mode;
+    }
+    
+    /**
+     * Check for forced mode via query param or localStorage.
+     * Priority: query param > localStorage > null (auto-detect)
+     */
+    getForcedMode() {
+        // Query param takes priority
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryMode = urlParams.get('mode');
+        if (['full', 'sync-only', 'basic'].includes(queryMode)) {
+            return queryMode;
+        }
+        
+        // Then localStorage
+        const storedMode = localStorage.getItem('FORCE_MODE');
+        if (['full', 'sync-only', 'basic'].includes(storedMode)) {
+            return storedMode;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Auto-detect best available mode.
+     */
+    async detectMode() {
+        // Try Mode 1 (Full) first
+        try {
+            await db.open();
+            return 'full';
+        } catch (dexieError) {
+            console.warn('[CHAPTR] Dexie unavailable:', dexieError.message);
+        }
+        
+        // Try Mode 2 (Sync-Only)
+        if (navigator.onLine) {
+            try {
+                await this.testSyncEndpoint();
+                return 'sync-only';
+            } catch (syncError) {
+                console.warn('[CHAPTR] Sync endpoint unavailable:', syncError.message);
+            }
+        }
+        
+        // Fall back to Mode 3 (Basic)
+        console.warn('[CHAPTR] Falling back to Basic mode');
+        return 'basic';
+    }
+    
+    /**
+     * Test if sync endpoint is available.
+     * Times out after 500ms.
+     */
+    async testSyncEndpoint() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 500);
+        
+        try {
+            const response = await apiRequest('/api/sync', {
+                method: 'POST',
+                body: JSON.stringify({
+                    client_id: await getClientId(),
+                    last_sync_at: null,
+                    changes: []
+                }),
+                signal: controller.signal
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Sync endpoint returned ${response.status}`);
+            }
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+    
+    /**
+     * Load initial data (bootstrap).
+     * Called after init() to populate state.
+     */
+    async bootstrap() {
+        switch (this.mode) {
+            case 'full':
+                return await this.bootstrap_Full();
+            case 'sync-only':
+                return await this.bootstrap_SyncOnly();
+            case 'basic':
+                return await this.bootstrap_Basic();
+        }
+    }
+    
+    async bootstrap_Full() {
+        // Check if Dexie has data
+        const accountCount = await db.accounts.count();
+        
+        if (accountCount === 0) {
+            // First visit - fetch from server
+            const data = await this.fetchFullSync();
+            await this.populateDexie(data);
+        }
+        
+        // Load from Dexie into memory for UI
+        this.accounts = await db.accounts.toArray();
+        this.stories = await db.stories.toArray();
+        this.events = await db.events.toArray();
+        this.recurringRules = await db.recurring_rules.toArray();
+        // Settings loaded separately
+    }
+    
+    async bootstrap_SyncOnly() {
+        // Always fetch from server (no local persistence)
+        const data = await this.fetchFullSync();
+        this.accounts = data.accounts;
+        this.stories = data.stories;
+        this.events = data.events;
+        this.recurringRules = data.recurring_rules;
+        this.settings = data.settings;
+        this.lastSyncAt = data.sync_timestamp;
+    }
+    
+    async bootstrap_Basic() {
+        // Sequential REST calls
+        const [accounts, stories, events, rules, settings] = await Promise.all([
+            apiRequest('/api/accounts').then(r => r.json()),
+            apiRequest('/api/stories').then(r => r.json()),
+            apiRequest('/api/events').then(r => r.json()),
+            apiRequest('/api/recurring-rules').then(r => r.json()),
+            apiRequest('/api/settings').then(r => r.json())
+        ]);
+        
+        this.accounts = accounts;
+        this.stories = stories;
+        this.events = events;
+        this.recurringRules = rules;
+        this.settings = settings;
+    }
+    
+    async fetchFullSync() {
+        const response = await apiRequest('/api/sync/full');
+        if (!response.ok) {
+            throw new Error('Failed to fetch initial data');
+        }
+        return await response.json();
+    }
+    
+    async populateDexie(data) {
+        await db.accounts.bulkPut(data.accounts);
+        await db.stories.bulkPut(data.stories);
+        await db.events.bulkPut(data.events);
+        await db.recurring_rules.bulkPut(data.recurring_rules);
+        // Settings stored separately
+    }
+    
+    // ... CRUD methods route to _Full, _SyncOnly, or _Basic variants
+}
+
+export const storage = new StorageAdapter();
+```
+
+---
+
+## Mode Detection & Initialization
+
+### Timing
+
+- `init()` runs during Alpine component initialization (after mount)
+- User sees: "Loading CHAPTR..." spinner with app skeleton visible
+- Mode detection must complete in **<500ms**
+- If detection times out, fall back to Mode 3 (Basic)
+
+### Mode Locking
+
+- **Mode is locked at initialization** - cannot change mid-session
+- If Mode 2 user goes offline: operations fail with error toast
+- No "retry upgrade" button - user can refresh page to re-detect
+- This keeps implementation simple and predictable
+
+### Service Worker Independence
+
+Service Worker is independent of mode detection:
+
+- **Mode 1 without SW:** Still "Full" mode - Dexie works, data syncs. Only loses static asset caching
+- **Mode 2 + SW:** Benefits from HTML/CSS/JS caching
+- **Mode 3 + SW:** Same static caching benefit
+- **SW is NOT required for any mode** - it's a performance enhancement
+
+SW registration failure is logged but doesn't affect mode:
+```javascript
+console.warn('[CHAPTR] Service Worker unavailable - static assets won\'t cache');
+```
+
+---
+
+## Error Handling
+
+### Unified Strategy
+
+All modes use unified error handling via `showToast()` helper:
+
+```javascript
+// Network failure messages by mode
+const errorMessages = {
+    'full': 'Changes queued for sync',           // Auto-retry on reconnect
+    'sync-only': 'Please check connection and try again',
+    'basic': 'Operation failed. Refresh and retry'
+};
+```
+
+### Authentication
+
+- **All modes use same JWT authentication** via `apiRequest()` wrapper
+- JWT expiry handling (401 response):
+  1. `localStorage.removeItem('jwt_token')`
+  2. `window.location.href = '/login'`
+- No mode-specific auth logic
+
+### Mode 2/3 Offline Handling
+
+If user goes offline in Mode 2 or 3:
+- Operations fail immediately
+- Error toast: "Connection required. Please check your internet."
+- No queuing - user must retry when online
+
+---
+
+## Queue Management
+
+### Queue Limits (Mode 1 Only)
+
+| Threshold | Behaviour |
+|-----------|-----------|
+| 0-399 | Normal operation |
+| 400 | Warning toast: "⚠ 400+ pending changes. Sync recommended." |
+| 500 | **Hard block** - Modal dialog blocks operation |
+
+### Hard Block Behaviour (at 500 changes)
+
+1. Modal dialog appears: "Too many pending changes"
+2. Offers "Sync Now" button
+3. If user declines: Operation fails, change not applied
+4. If sync succeeds: Queue cleared, operation retried automatically
+
+### Queue Processing
+
+- **No client-side compaction** - all changes sent in order
+- Example: create → update → delete for same entity = 3 change_log entries
+- Server processes sequentially, final state is deleted
+- Preserves audit trail
+
+---
+
+## Testing & Development
+
+### Forcing Modes
+
+**Priority:** Query param > localStorage > Auto-detection
+
+```javascript
+// Query param (highest priority)
+?mode=basic
+?mode=sync-only
+?mode=full
+
+// localStorage
+localStorage.setItem('FORCE_MODE', 'basic');
+localStorage.setItem('FORCE_MODE', 'sync-only');
+localStorage.setItem('FORCE_MODE', 'full');
+
+// Clear override
+localStorage.removeItem('FORCE_MODE');
+```
+
+### Simulating Modes in DevTools
+
+- **Mode 2:** Settings → Privacy → Block IndexedDB for site
+- **Mode 3:** Serve via `http://localhost` (not `https://`)
+
+### Console Logging
+
+```javascript
+// On successful init
+console.log('[CHAPTR] Initialized in mode:', this.mode);
+console.log('[CHAPTR] Capabilities:', {
+    offline: this.mode === 'full',
+    sync: this.mode !== 'basic',
+    storage: this.mode === 'full' ? 'IndexedDB' : 'Memory'
+});
+
+// On forced mode
+console.log('[CHAPTR] Forced mode:', this.mode);
+
+// On mode detection failure
+console.warn('[CHAPTR] Dexie unavailable:', error.message);
+console.warn('[CHAPTR] Sync endpoint unavailable - using Basic mode');
+
+// On Service Worker failure
+console.warn('[CHAPTR] Service Worker unavailable - static assets won\'t cache');
+```
+
+---
+
+## UI Components
+
+### Mode Indicator (Settings Screen)
+
+Add to Settings screen under "Runtime Information":
+
+**Mode 1 (Full):**
+```
+Runtime Information
+├─ Mode: Full (Offline-capable)
+├─ Capabilities: ✓ Offline sync  ✓ Conflict detection
+└─ Storage: IndexedDB (Dexie)
+```
+
+**Mode 2 (Sync-Only):**
+```
+Runtime Information
+├─ Mode: Sync-Only (Online required)
+├─ Capabilities: ✗ Offline sync  ✓ Conflict detection
+└─ Storage: Memory (cleared on refresh)
+```
+
+**Mode 3 (Basic):**
+```
+Runtime Information
+├─ Mode: Basic (Limited)
+├─ Capabilities: ✗ Offline sync  ✗ Conflict detection
+└─ Storage: Memory (cleared on refresh)
+```
+
+### Mode 3 Warning Banner
+
+Persistent banner at top of app (below header), non-dismissible:
+
+```html
+<div class="warning-banner mode-3-warning">
+    <span class="warning-icon">⚠</span>
+    <span>Limited mode - offline sync unavailable. Use HTTPS for full functionality.</span>
+</div>
+```
+
+**Styling:**
+```css
+.mode-3-warning {
+    background: rgba(255, 170, 0, 0.1);
+    border-bottom: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 8px 16px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+```
+
+### Pending Changes Indicator
+
+Already implemented - amber badge in header showing count, clickable to trigger sync.
+
+### Queue Limit Modal (500 changes)
+
+```html
+<div class="modal queue-limit-modal">
+    <div class="modal-content">
+        <h3>⚠ Too Many Pending Changes</h3>
+        <p>You have 500+ changes waiting to sync. Please sync now to continue.</p>
+        <div class="modal-actions">
+            <button class="btn-primary" onclick="syncNow()">Sync Now</button>
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+```
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0 | Dec 2024 | Major update: Added frontend progressive enhancement strategy (three-tier mode system), storage adapter pattern, mode detection, queue management, error handling, testing guidance, UI components. Clarified sequential change processing and no client-side compaction. |
 | 2.8.1 | Dec 2024 | Sync implementation addendum - repository pattern integration, change logging details, sync endpoint implementation |

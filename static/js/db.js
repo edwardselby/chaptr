@@ -1,0 +1,146 @@
+/**
+ * CHAPTR - Dexie.js Database Configuration
+ *
+ * IndexedDB database using Dexie.js for offline-first storage
+ */
+
+// Initialize Dexie
+const db = new Dexie('CHAPTR');
+
+/**
+ * Database Schema
+ *
+ * Version 1: Initial schema with all core tables
+ */
+db.version(1).stores({
+    // Core entities
+    accounts: 'id, currency, is_default, is_archived',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, date, story_id, account_id, is_baseline, is_hypothetical',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Sync protocol
+    conflicts: 'id, entity_type, entity_id, resolved_at',
+    sync_queue: '++id, entity_type, entity_id, queued_at, action',
+    sync_meta: 'id'
+});
+
+/**
+ * Initialize default settings if not present
+ */
+db.on('ready', async () => {
+    const settingsCount = await db.settings.count();
+    if (settingsCount === 0) {
+        await db.settings.add({
+            id: 1,
+            base_currency: 'GBP',
+            rates: {
+                'GBP': 1.0,
+                'USD': 1.27,
+                'EUR': 1.17,
+                'CAD': 1.72
+            },
+            baseline_display_months: 3,
+            date_format: 'DD MMM',
+            auto_sync_interval: 300000 // 5 minutes
+        });
+        console.log('Default settings initialized');
+    }
+});
+
+/**
+ * Helper: Get all accounts (excluding archived)
+ */
+db.getActiveAccounts = async function() {
+    const all = await db.accounts.toArray();
+    return all.filter(a => !a.is_archived);
+};
+
+/**
+ * Helper: Get all active stories (excluding archived)
+ */
+db.getActiveStories = async function() {
+    const all = await db.stories.toArray();
+    return all.filter(s => !s.is_archived);
+};
+
+/**
+ * Helper: Get events for a date range
+ */
+db.getEventsInRange = async function(startDate, endDate) {
+    return await db.events
+        .where('date')
+        .between(startDate, endDate, true, true)
+        .toArray();
+};
+
+/**
+ * Helper: Get events for a specific story
+ */
+db.getStoryEvents = async function(storyId) {
+    return await db.events.where('story_id').equals(storyId).toArray();
+};
+
+/**
+ * Helper: Get baseline events
+ */
+db.getBaselineEvents = async function() {
+    const all = await db.events.toArray();
+    return all.filter(e => e.is_baseline === true);
+};
+
+/**
+ * Helper: Get default account
+ */
+db.getDefaultAccount = async function() {
+    const all = await db.accounts.toArray();
+    return all.find(a => a.is_default === true);
+};
+
+/**
+ * Helper: Queue an entity change for sync
+ */
+db.queueChange = async function(entityType, entityId, action, data) {
+    await db.sync_queue.add({
+        entity_type: entityType,
+        entity_id: entityId,
+        action: action, // 'create', 'update', 'delete'
+        data: data,
+        queued_at: new Date().toISOString()
+    });
+};
+
+/**
+ * Helper: Get pending sync queue items
+ */
+db.getPendingSyncQueue = async function() {
+    return await db.sync_queue.toArray();
+};
+
+/**
+ * Helper: Clear sync queue after successful sync
+ */
+db.clearSyncQueue = async function() {
+    await db.sync_queue.clear();
+};
+
+/**
+ * Helper: Get unresolved conflicts
+ */
+db.getUnresolvedConflicts = async function() {
+    return await db.conflicts.where('resolved_at').equals(null).toArray();
+};
+
+/**
+ * Helper: Mark conflict as resolved
+ */
+db.resolveConflict = async function(conflictId) {
+    await db.conflicts.update(conflictId, {
+        resolved_at: new Date().toISOString()
+    });
+};
+
+// Export database instance
+export { db };

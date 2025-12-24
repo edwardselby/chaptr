@@ -55,7 +55,8 @@ class EventRepository(BaseRepository[Event]):
         data: EventCreate,
         story_id: Optional[UUID] = None,
         current_user: Optional[dict] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
     ) -> Event:
         """
         Create new event with account resolution and rate locking.
@@ -123,9 +124,12 @@ class EventRepository(BaseRepository[Event]):
         # Extract user ID from current_user if authenticated
         user_id = self._get_user_id(current_user)
 
+        # Use provided entity_id (from sync) or generate new ID
+        event_id = entity_id if entity_id is not None else generate_id()
+
         # Create event with resolved account and locked rate
         event = Event(
-            id=generate_id(),
+            id=event_id,
             event_date=data.event_date,
             description=data.description,
             amount=data.amount,

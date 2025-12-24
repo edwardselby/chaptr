@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="CHAPTR - Personal finance projection system">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>CHAPTR</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body x-data="app()">
+
+    <!-- Login Screen -->
+    <div class="login-screen" x-show="!isAuthenticated" x-cloak>
+        <div class="login-container">
+            <div class="login-header">
+                <h1 class="login-title">CHAPTR</h1>
+                <p class="login-subtitle">Personal Finance Projection</p>
+            </div>
+
+            <form class="login-form" @submit.prevent="handleLogin">
+                <div class="form-group">
+                    <label for="username" class="form-label">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        class="form-input"
+                        x-model="loginForm.username"
+                        placeholder="Enter username"
+                        required
+                        autofocus
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password" class="form-label">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
+                        x-model="loginForm.password"
+                        placeholder="Enter password"
+                        required
+                    >
+                </div>
+
+                <div class="form-error" x-show="loginError" x-text="loginError" x-cloak></div>
+
+                <button
+                    type="submit"
+                    class="btn-login"
+                    :disabled="isLoggingIn"
+                    x-text="isLoggingIn ? 'Logging in...' : 'Login'"
+                ></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <button class="btn-back" x-show="currentScreen !== 'dashboard'" @click="switchScreen('dashboard')">
+                <span>←</span>
+            </button>
+            <div class="logo">
+                <span class="logo-text">CHAPTR</span>
+                <span class="logo-context" x-text="screenTitle"></span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="sync-indicator" x-show="isSyncing">
+                <span class="sync-dot"></span>
+                <span class="sync-text">syncing</span>
+            </div>
+            <div class="sync-pending-indicator" x-show="syncQueueCount > 0 && !isSyncing" @click="manualSync()" title="Click to sync now">
+                <span class="sync-pending-count" x-text="syncQueueCount"></span>
+                <span class="sync-pending-text">pending</span>
+            </div>
+            <button class="btn-settings" @click="switchScreen('settings')">
+                <span>⚙</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mode 3 Warning Banner -->
+    <div class="mode-3-warning" x-show="storage && storage.mode === 'basic'" x-cloak>
+        <span class="warning-icon">⚠</span>
+        <span>Limited mode - offline sync unavailable. Use HTTPS for full functionality.</span>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+
+        <!-- Dashboard Screen -->
+        <div class="screen" x-show="currentScreen === 'dashboard'" x-cloak>
+            <div class="screen-content">
+
+                <!-- Stories Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Stories</h2>
+                    </div>
+                    <div class="stories-list">
+                        <template x-for="story in stories" :key="story.id">
+                            <div class="story-item" @click="viewStoryProjection(story.id)">
+                                <div class="story-item-left">
+                                    <div class="story-name" x-text="story.name"></div>
+                                    <div class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></div>
+                                </div>
+                                <div class="story-item-right">
+                                    <div class="story-status" :class="getStoryStatusClass(story)" x-text="getStoryStatus(story)"></div>
+                                </div>
+                            </div>
+                        </template>
+                        <div class="empty-state" x-show="stories.length === 0">
+                            <p>No active stories</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Accounts Section -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Accounts</h2>
+                        <button class="btn-section-action" @click="switchScreen('accounts')">MANAGE</button>
+                    </div>
+                    <div class="accounts-list">
+                        <template x-for="account in accounts.slice(0, 3)" :key="account.id">
+                            <div class="account-item">
+                                <div class="account-item-left">
+                                    <div class="account-name">
+                                        <span x-text="account.name"></span>
+                                        <span class="tag" x-show="account.is_default">[default]</span>
+                                    </div>
+                                    <div class="account-updated" x-text="'Updated ' + formatRelativeTime(account.balance_updated_at)"></div>
+                                </div>
+                                <div class="account-item-right">
+                                    <div class="account-balance" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <!-- Projection Summary -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Projection</h2>
+                        <button class="btn-section-action" @click="switchScreen('projection')">VIEW ALL</button>
+                    </div>
+                    <div class="projection-summary">
+                        <div class="summary-item">
+                            <div class="summary-label">Today</div>
+                            <div class="summary-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">End of Month</div>
+                            <div class="summary-value" x-text="formatCurrency(projectionEndOfMonth, settings.base_currency)"></div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">Drift</div>
+                            <div class="summary-value" :class="getDriftClass()" x-text="formatDrift()"></div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Projection Screen -->
+        <div class="screen" x-show="currentScreen === 'projection'" x-cloak>
+            <div class="screen-content no-padding">
+
+                <!-- Filter Chips -->
+                <div class="filters-bar">
+                    <div class="filters-scroll">
+                        <button class="filter-chip" :class="{ 'active': currentView === 'all' }" @click="setView('all')">ALL</button>
+                        <button class="filter-chip" :class="{ 'active': currentView === 'baseline' }" @click="setView('baseline')">Baseline</button>
+                        <template x-for="story in stories" :key="story.id">
+                            <button class="filter-chip" :class="{ 'active': currentView === story.id }" @click="setView(story.id)" x-text="story.name"></button>
+                        </template>
+                    </div>
+                    <button class="currency-toggle" x-show="currentView === 'all'" @click="toggleDisplayCurrency()">
+                        <span x-text="displayCurrency || settings.base_currency"></span>
+                    </button>
+                </div>
+
+                <!-- Projection Header -->
+                <div class="projection-header">
+                    <div class="projection-title" x-text="getProjectionTitle()"></div>
+                    <div class="projection-dates" x-text="formatDateRange(projectionStartDate, projectionEndDate)"></div>
+                    <div class="projection-balance">
+                        <span class="balance-label">Starting:</span>
+                        <span class="balance-value" x-text="formatCurrency(projectionStartingBalance, displayCurrency || settings.base_currency)"></span>
+                    </div>
+                </div>
+
+                <!-- Timeline -->
+                <div class="timeline">
+                    <template x-for="row in projectionRows" :key="row.id || row.date + row.description">
+                        <div>
+                            <!-- Regular Event Row -->
+                            <div class="timeline-row" x-show="!row.isGap" :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }">
+                                <div class="timeline-date" x-text="formatDate(row.date)"></div>
+                                <div class="timeline-event">
+                                    <span x-text="row.description"></span>
+                                    <span class="tag" x-show="row.source" x-text="'[' + row.source + ']'"></span>
+                                </div>
+                                <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
+                                <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
+                            </div>
+
+                            <!-- TODAY Divider -->
+                            <div class="today-divider" x-show="row.showTodayDivider">
+                                <span>━━━ TODAY ━━━</span>
+                            </div>
+
+                            <!-- Gap Indicator Row -->
+                            <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span x-show="!expandedGaps.has(row.id)" x-text="row.gapDays + ' days'"></span>
+                                    <span x-show="expandedGaps.has(row.id)" x-text="formatDate(row.startDate) + ' → ' + formatDate(row.endDate)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="empty-state" x-show="projectionRows.length === 0">
+                        <p>No events in this view</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Accounts Screen -->
+        <div class="screen" x-show="currentScreen === 'accounts'" x-cloak>
+            <div class="screen-content">
+
+                <!-- Accounts List -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Accounts</h2>
+                        <button class="btn-add" @click="openAccountModal()">+ Add</button>
+                    </div>
+                    <div class="accounts-list">
+                        <template x-if="accounts.length === 0">
+                            <div class="empty-state">
+                                <p>No accounts yet. Add your first account to get started.</p>
+                            </div>
+                        </template>
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <div class="account-card" @click="viewAccountDetails(account.id)">
+                                <div class="account-card-header">
+                                    <div class="account-name-row">
+                                        <span class="account-name" x-text="account.name"></span>
+                                        <span class="tag tag-default" x-show="account.is_default">[default]</span>
+                                    </div>
+                                    <div class="account-meta">
+                                        <span class="account-currency" x-text="account.currency"></span>
+                                        <span class="account-updated" x-text="'Updated ' + formatRelativeTime(account.updated_at)"></span>
+                                    </div>
+                                </div>
+                                <div class="account-card-balance">
+                                    <span class="balance-label">Current</span>
+                                    <span class="balance-value" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></span>
+                                </div>
+                                <div class="account-pending" x-show="account.pending_reconciliation">
+                                    <span class="pending-indicator">⚠ Pending reconciliation</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <!-- Projection vs Reality -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Projection vs Reality</h2>
+                    </div>
+                    <div class="drift-panel">
+                        <div class="drift-row">
+                            <span class="drift-label">Accounts Total</span>
+                            <span class="drift-value" x-text="formatCurrency(accountsTotal, settings.base_currency)"></span>
+                        </div>
+                        <div class="drift-row">
+                            <span class="drift-label">Projected NOW</span>
+                            <span class="drift-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></span>
+                        </div>
+                        <div class="drift-row drift-highlight">
+                            <span class="drift-label">Drift</span>
+                            <span class="drift-value" :class="getDriftClass()" x-text="formatDrift()"></span>
+                        </div>
+                        <div class="drift-explanation">
+                            <p class="drift-note" x-show="Math.abs(accountsTotal - projectionToday) > 0">
+                                <template x-if="accountsTotal > projectionToday">
+                                    <span>💡 Accounts show more money than projection expected</span>
+                                </template>
+                                <template x-if="accountsTotal < projectionToday">
+                                    <span>💡 Accounts show less money than projection expected</span>
+                                </template>
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Per-Account Projections (Future Dates) -->
+                <section class="section" x-show="accounts.length > 0">
+                    <div class="section-header">
+                        <h2>Projected Balances</h2>
+                        <span class="section-subtitle">Next 30 days</span>
+                    </div>
+                    <div class="account-projections">
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <div class="projection-card">
+                                <div class="projection-card-header" x-text="account.name"></div>
+                                <div class="projection-dates">
+                                    <template x-for="(projection, index) in getAccountProjections(account.id)" :key="index">
+                                        <div class="projection-date-row">
+                                            <span class="projection-date" x-text="formatDate(projection.date)"></span>
+                                            <span class="projection-balance" :class="projection.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projection.balance, account.currency)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div class="screen" x-show="currentScreen === 'settings'" x-cloak>
+            <div class="screen-content">
+
+                <!-- Admin Check -->
+                <template x-if="!user || !user.is_admin">
+                    <div class="access-denied">
+                        <h2>⚠ Admin Access Required</h2>
+                        <p>Settings are only available to administrators.</p>
+                    </div>
+                </template>
+
+                <!-- Settings Content (Admin Only) -->
+                <template x-if="user && user.is_admin">
+                    <div>
+
+                        <!-- User Management -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>User Management</h2>
+                                <button class="btn-add" @click="openUserModal()">+ Add User</button>
+                            </div>
+                            <div class="users-list">
+                                <template x-if="users.length === 0">
+                                    <div class="empty-state">
+                                        <p>No users configured yet.</p>
+                                    </div>
+                                </template>
+                                <template x-for="user in users" :key="user.id">
+                                    <div class="user-card" @click="editUser(user.id)">
+                                        <div class="user-info">
+                                            <span class="user-name" x-text="user.username"></span>
+                                            <span class="tag" x-show="user.is_admin">[admin]</span>
+                                        </div>
+                                        <div class="user-meta">
+                                            <span class="user-role" x-text="user.role || 'user'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
+
+                        <!-- Runtime Information -->
+                        <section class="section">
+                            <div class="runtime-info">
+                                <h3>Runtime Information</h3>
+                                <div class="info-row">
+                                    <span class="label">Mode:</span>
+                                    <span class="value" x-text="getModeDisplay()"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Capabilities:</span>
+                                    <span class="value" x-html="getCapabilitiesDisplay()"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Storage:</span>
+                                    <span class="value" x-text="getStorageDisplay()"></span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Preferences -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Preferences</h2>
+                            </div>
+                            <div class="settings-form">
+                                <div class="form-group">
+                                    <label for="base-currency">Base Currency</label>
+                                    <select
+                                        id="base-currency"
+                                        x-model="settingsForm.base_currency"
+                                        @change="updateSettings()"
+                                        class="form-input">
+                                        <option value="GBP">GBP (£)</option>
+                                        <option value="USD">USD ($)</option>
+                                        <option value="EUR">EUR (€)</option>
+                                        <option value="CAD">CAD ($)</option>
+                                    </select>
+                                    <span class="form-hint">All projections use this as the base currency</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="date-format">Date Format</label>
+                                    <select
+                                        id="date-format"
+                                        x-model="settingsForm.date_format"
+                                        @change="updateSettings()"
+                                        class="form-input">
+                                        <option value="DD MMM">DD MMM (18 Dec)</option>
+                                        <option value="MMM DD">MMM DD (Dec 18)</option>
+                                        <option value="YYYY-MM-DD">YYYY-MM-DD (2024-12-18)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="baseline-months">Baseline Display (Months)</label>
+                                    <input
+                                        id="baseline-months"
+                                        type="number"
+                                        x-model="settingsForm.baseline_display_months"
+                                        @change="updateSettings()"
+                                        min="1"
+                                        max="12"
+                                        class="form-input">
+                                    <span class="form-hint">How many months of baseline to show on dashboard</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Conversion Rates -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Conversion Rates</h2>
+                                <button class="btn-add" @click="addConversionRate()">+ Add Rate</button>
+                            </div>
+                            <div class="rates-table">
+                                <div class="table-header">
+                                    <div class="table-col">Currency</div>
+                                    <div class="table-col">Rate to <span x-text="settingsForm.base_currency"></span></div>
+                                    <div class="table-col">Actions</div>
+                                </div>
+                                <template x-for="(rate, currency) in settingsForm.rates" :key="currency">
+                                    <div class="table-row">
+                                        <div class="table-col" x-text="currency"></div>
+                                        <div class="table-col">
+                                            <input
+                                                type="number"
+                                                :value="rate"
+                                                @change="updateRate(currency, $event.target.value)"
+                                                step="0.01"
+                                                class="form-input rate-input">
+                                        </div>
+                                        <div class="table-col">
+                                            <button class="btn-small btn-danger" @click="deleteRate(currency)">Remove</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </section>
+
+                        <!-- Backup / Restore -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Backup & Restore</h2>
+                            </div>
+                            <div class="backup-actions">
+                                <button class="btn-primary" @click="downloadBackup()">
+                                    📥 Download Backup (JSON)
+                                </button>
+                                <div class="form-group">
+                                    <label for="restore-file" class="btn-secondary file-upload-label">
+                                        📤 Upload Backup
+                                        <input
+                                            id="restore-file"
+                                            type="file"
+                                            accept="application/json"
+                                            @change="uploadBackup($event)"
+                                            style="display: none;">
+                                    </label>
+                                    <span class="form-hint">⚠ This will overwrite all existing data</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Sync Settings -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Sync Settings</h2>
+                            </div>
+                            <div class="settings-form">
+                                <div class="form-group">
+                                    <label for="auto-sync">Auto-Sync Interval (seconds)</label>
+                                    <input
+                                        id="auto-sync"
+                                        type="number"
+                                        x-model="settingsForm.auto_sync_interval"
+                                        @change="updateSettings()"
+                                        min="60"
+                                        step="60"
+                                        class="form-input">
+                                    <span class="form-hint">Set to 0 to disable auto-sync</span>
+                                </div>
+                                <div class="sync-status">
+                                    <div class="status-row">
+                                        <span class="status-label">Last Sync:</span>
+                                        <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
+                                    </div>
+                                    <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Logout -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Account</h2>
+                            </div>
+                            <div class="backup-actions">
+                                <button class="btn-danger" @click="logout()" style="width: 100%;">
+                                    Logout
+                                </button>
+                            </div>
+                        </section>
+
+                    </div>
+                </template>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Account Modal -->
+    <div class="modal-overlay" x-show="showAccountModal" @click="showAccountModal = false" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
+                <button class="modal-close" @click="showAccountModal = false">✕</button>
+            </div>
+            <form @submit.prevent="saveAccount" class="modal-body">
+                <div class="form-group">
+                    <label for="account-name">Account Name</label>
+                    <input
+                        id="account-name"
+                        type="text"
+                        x-model="accountForm.name"
+                        placeholder="e.g., Monzo, HSBC"
+                        required
+                        class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="account-currency">Currency</label>
+                    <input
+                        id="account-currency"
+                        type="text"
+                        x-model="accountForm.currency"
+                        pattern="[A-Z]{3}"
+                        placeholder="GBP, USD, EUR"
+                        maxlength="3"
+                        required
+                        class="form-input"
+                        style="text-transform: uppercase">
+                    <span class="form-hint">3-letter currency code (e.g., GBP)</span>
+                </div>
+                <div class="form-group">
+                    <label for="account-balance">Current Balance</label>
+                    <input
+                        id="account-balance"
+                        type="number"
+                        x-model="accountForm.current_balance"
+                        step="0.01"
+                        placeholder="0.00"
+                        required
+                        class="form-input">
+                    <span class="form-hint">Negative values allowed for overdrafts</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-checkbox">
+                        <input type="checkbox" x-model="accountForm.is_default">
+                        <span>Set as default account</span>
+                    </label>
+                    <span class="form-hint">Default account used for new events</span>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showAccountModal = false">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Account</button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        x-show="accountForm.id"
+                        @click="deleteAccount()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Command Bar (Context-Sensitive Actions) -->
+    <nav class="command-bar">
+        <!-- Context Action 1 (Plus) -->
+        <button class="cmd-btn" @click="handlePlusAction()">
+            <span class="cmd-key">+</span>
+            <span class="cmd-label" x-text="getPlusLabel()"></span>
+        </button>
+
+        <!-- Context Action 2 (Dollar) -->
+        <button class="cmd-btn" @click="handleDollarAction()">
+            <span class="cmd-key">$</span>
+            <span class="cmd-label" x-text="getDollarLabel()"></span>
+        </button>
+
+        <!-- Sync Button -->
+        <button class="cmd-btn" @click="triggerManualSync()" :disabled="isSyncing">
+            <span class="cmd-key" x-text="isSyncing ? '⏳' : '🔄'"></span>
+            <span class="cmd-label">Sync</span>
+        </button>
+
+        <!-- Help Button -->
+        <button class="cmd-btn" @click="showHelpModal = true">
+            <span class="cmd-key">?</span>
+            <span class="cmd-label">Help</span>
+        </button>
+    </nav>
+
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
+        <div class="modal help-modal" @click.stop>
+            <div class="modal-header">
+                <h2>Help & Tips</h2>
+                <button class="modal-close" @click="showHelpModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>Navigation</h3>
+                    <p>Use the tabs at the bottom to switch between screens.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Command Bar</h3>
+                    <p><strong>+</strong> Add new items (events, accounts, stories)</p>
+                    <p><strong>$</strong> Update balances and funding</p>
+                    <p><strong>🔄</strong> Sync with server</p>
+                    <p><strong>?</strong> Show this help</p>
+                </div>
+                <div class="help-section">
+                    <h3>Dashboard</h3>
+                    <p>View active stories and account summaries. Tap stories to see detailed projections.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Projection</h3>
+                    <p>See timeline of all events. Use filters to view specific stories or baseline only.</p>
+                </div>
+                <div class="help-section">
+                    <h3>Accounts</h3>
+                    <p>Manage accounts and view projected balances. Drift shows difference between actual and projected.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts - Load Dexie first (needed by modules) -->
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+
+    <!-- Load app modules and Alpine -->
+    <script type="module">
+        // Import app.js which will set window.app
+        await import('/static/js/app.js');
+
+        // Wait for app to be defined
+        if (typeof window.app !== 'function') {
+            console.error('app() not defined after importing app.js');
+        }
+
+        // Dynamically load Alpine after app is ready
+        const alpineScript = document.createElement('script');
+        alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
+        // Remove defer to prevent double initialization
+        document.head.appendChild(alpineScript);
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('[CHAPTR] Service Worker registered:', registration.scope);
+
+                        // Listen for background sync messages
+                        navigator.serviceWorker.addEventListener('message', event => {
+                            if (event.data.type === 'BACKGROUND_SYNC') {
+                                console.log('[CHAPTR] Background sync triggered');
+                                // Trigger Alpine.js manual sync if app is available
+                                if (window.Alpine && window.Alpine.store) {
+                                    const appInstance = document.querySelector('[x-data]');
+                                    if (appInstance) {
+                                        appInstance.__x.$data.manualSync();
+                                    }
+                                }
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.warn('[CHAPTR] Service Worker registration failed:', error.message);
+                        console.warn('[CHAPTR] Static assets won\'t cache - app will still work');
+                    });
+            });
+        } else {
+            console.warn('[CHAPTR] Service Worker not supported - static assets won\'t cache');
+        }
+    </script>
+
+</body>
+</html>

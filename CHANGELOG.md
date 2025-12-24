@@ -7,9 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-0057a3be: Login screen UI with username/password form, terminal aesthetic styling, error display
+- CPTR-5f9fae48: Authentication check on app initialization (checkAuth() verifies JWT token with /api/auth/me)
+- CPTR-223ce4b0: Login handler with token storage, user session management, automatic app initialization after login
+- CPTR-c538bb37: Logout button in Settings screen with admin user display
+- CPTR-0057a3be, CPTR-5f9fae48, CPTR-223ce4b0: JWT token management with consistent 'auth_token' localStorage key across all functions
+
+### Changed
+- CPTR-223ce4b0: App initialization skips data loading if user not authenticated (shows login screen instead)
+- CPTR-c538bb37: Logout function simplified to use window.location.reload() for complete state reset (prevents data leakage between sessions)
+- CPTR-5f9fae48: 401 response handling changed from redirect to reload (fixes non-existent /login URL issue)
+
+### Fixed
+- CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
+
+## [0.1.0] - 2025-12-23
+
+### Added
+- CPTR-6969cf85: Accounts screen with CRUD operations (create, edit, delete accounts with validation)
+- CPTR-6969cf85: Settings screen with admin-only access (user management, preferences, conversion rates, backup/restore)
+- CPTR-6969cf85: Command bar with context-sensitive actions (+ Event/Account, $ Balance/Funding, 🔄 Sync, ? Help)
+- CPTR-6969cf85: Account modal with validation (name, currency, balance, default flag)
+- CPTR-6969cf85: User management modal for admin users (username, admin flag editing)
+- CPTR-6969cf85: Backup/restore functionality with JSON download/upload and validation
+- CPTR-6969cf85: Pending sync UI indicator (amber badge in header showing queued changes count, clickable to trigger sync)
+- CPTR-6969cf85: Auto-retry on network reconnection (window 'online' event listener triggers sync if queue not empty)
+- CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: Comprehensive sync integration test suite (test_sync_integration.py) with 5 tests covering multi-client sync, conflict detection, stale client recovery, and recurring events
+- CPTR-2c99cc6d, CPTR-2b2f2374: Manual sync testing guide (docs/sync-manual-testing-guide.md) with curl commands for validation
+- Taskwarrior tasks for real MongoDB integration test suite upgrade (Tasks 223-226)
+- Task 223 (CPTR-298): Real MongoDB fixtures (mongodb_real, clean_database_real, test_app_real, async_client_real) for complex integration tests
+- Task 223: Worker-based database naming (chaptr_test_integration_{worker_id}) for parallel test isolation
+- Task 223: pytest.ini integration marker for separating integration tests from unit tests
+- Task 223: Comprehensive fixture selection guide in conftest.py documenting when to use mongomock vs real MongoDB
+
+### Changed
+- CPTR-cfce2518, CPTR-57034d01, CPTR-5c895d99 (Tasks 224-226): Migrate integration tests to real MongoDB - 17/17 passing (all tests migrated successfully)
+- CPTR-6969cf85: Navigation aligned with mockup design (removed icon-based tab bar, added MANAGE and VIEW ALL action buttons)
+- CPTR-6969cf85: Command bar styling updated to match mockup (grid layout, background/borders on buttons, proper spacing)
+- CPTR-6969cf85: Account resolution hierarchy implemented (user-selected → story default → global default)
+- CPTR-6969cf85: Event rate_to_base calculation changed to lookup from settings.rates[currency] instead of account field
+- CPTR-6969cf85: Account update changed from partial db.update() to full db.put() to preserve all server fields
+- CPTR-6969cf85: Removed last_updated field from accounts (using only updated_at per spec)
+- CPTR-6969cf85: Alpine.js initialization fixed (removed explicit x-init to prevent double initialization)
+- CPTR-817e6e17, CPTR-3e40d90a, CPTR-30f74f13, CPTR-bbb22028, CPTR-58ee8f5e: User-aware test fixtures (sample_account_with_user, sample_story_with_user, etc.) to match JWT authentication context
+- CPTR-817e6e17, CPTR-bbb22028, CPTR-58ee8f5e: Three complex integration tests marked as skipped pending real MongoDB migration (Tasks 223-226)
+- CPTR-817e6e17 to CPTR-2b2f2374: Deprecated datetime.utcnow() replaced with timezone-aware datetime.now(timezone.utc) in all tests
+- Test suite documentation updated to indicate mongomock limitations for change_log query simulation
+
+### Fixed
+- CPTR-6969cf85: JavaScript syntax error (missing comma after editFunding method)
+- CPTR-6969cf85: Command bar class name mismatch (HTML used .cmd-btn, CSS expected .command-btn - reverted to .cmd-btn per mockup)
+- CPTR-6969cf85: Backup restore validation added (10MB file size limit, comprehensive schema validation for version, arrays, field types)
+- CPTR-6969cf85: Currency input auto-uppercase (added text-transform: uppercase CSS)
+- CPTR-6969cf85: Sync queue count tracking (updates after CRUD operations and successful API syncs)
+- CPTR-817e6e17: User context mismatch resolved (created_by=None vs JWT user) via user-aware fixtures
+- CPTR-817e6e17: Stale client false positive resolved (timestamp strategy changed from "very old" to "before earliest change_log entry")
+
 ## [0.0.6] - 2025-12-22
 
 ### Added
+- CPTR-6969cf85: Frontend foundation - HTML shell with Alpine.js structure (Dashboard, Projection, Accounts, Settings screens)
+- CPTR-6969cf85: Terminal aesthetic CSS with #4af626 green on #000 black, JetBrains Mono font, scanline overlay effect
+- CPTR-6969cf85: PWA manifest.json for mobile installation
+- CPTR-6969cf85: Utility functions (formatCurrency, formatDate, API request wrapper with JWT auth)
+- CPTR-6969cf85: Alpine.js reactive state management (navigation, data loading, projection state)
+- CPTR-6969cf85: Dexie.js IndexedDB schema (9 tables: accounts, stories, events, recurring_rules, users, settings, conflicts, sync_queue, sync_meta)
+- CPTR-6969cf85: Dashboard screen (stories list with status, accounts quick view, projection summary)
+- CPTR-6969cf85: Projection screen (filter chips, timeline, gap indicators, TODAY divider, currency toggle)
+- CPTR-6969cf85: Client-side projection logic ported from Python (running balance calculation, gap detection, multi-currency conversion)
+- CPTR-6969cf85: Data loading from backend (/api/sync integration, Dexie population, auto-sync on first load)
 - CPTR-4ab09b87: Regression test suite for projection MongoDB bugs (6 tests: Decimal conversion, date queries, end-to-end integration)
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Change logging foundation for sync - ChangeLogMixin in BaseRepository
 - CPTR-b5002098, CPTR-22072224, CPTR-251d2d7e: Database indexes for change_log collection (sync_pull_idx, pruning_idx, client_filter_idx)
@@ -141,48 +208,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-10 to CPTR-15: All Decimal fields add precision constraints (max_digits=19, decimal_places=4/8)
 
 ### Fixed
-- CPTR-23, CPTR-24, CPTR-25: ValueError for unknown funding modes (fail-fast validation)
-- CPTR-21, CPTR-47: Decimal encoding for JSON serialization in test suite
-- CPTR-23, CPTR-24, CPTR-25: UUID string handling in story projection queries
-- CPTR-23, CPTR-24, CPTR-25: Settings document validation (requires base_currency and rates)
-- CPTR-23, CPTR-24, CPTR-25: Restored funding event creation per spec lines 163-182
-- CPTR-23, CPTR-24, CPTR-25: Story filtering alignment with spec (visible vs hidden events)
-- CPTR-31, CPTR-32, CPTR-33: Test assertions for multi-currency conversion accuracy
-- CPTR-12: Missing ValidationError import in EventRepository
+- CPTR-10: Event.account_id serialization from UUID to string (MongoDB compatibility)
+- CPTR-11: Story model includes description field per spec
+- CPTR-13: RecurringRuleUpdate model includes description field for updates
+- CPTR-13: Recurring rule validators for frequency/day relationships and end_date validation
+- CPTR-10 to CPTR-15: UUID/Decimal serialization for MongoDB compatibility
+- CPTR-15: Settings model default values for base_currency and default_currency
 
 
-## [0.0.1] - 2025-12-19
+## [0.0.1] - 2025-12-20
 
 ### Added
-- CPTR-1: Project directory structure: api, routes, core, tests
-- CPTR-2: Python virtual environment with FastAPI, Motor, Pydantic, Pytest dependencies
-- CPTR-3, CPTR-4: MongoDB connection configuration and health check endpoint
-- CPTR-4: FastAPI application with CORS, lifespan management, OpenAPI docs
-- CPTR-2, CPTR-3: Environment-based configuration with .env.example template
-- CPTR-291: Route stubs for accounts, stories, events, sync (19 endpoints total)
-- CPTR-290: Core module stubs for projection engine and reconciliation system
-- CPTR-20: Pydantic model enums: FundingMode, GoalType, Frequency, UserRole, ConflictType
-- CPTR-15: Settings Pydantic model with currency rates and preferences validation
-- CPTR-14: User Pydantic model with role enum validation (minimal per spec, external auth assumed)
-- CPTR-10: Account Pydantic model with three-tier pattern and field validation
-- CPTR-13: RecurringRule Pydantic model with frequency and date validation (includes RecurringRuleUpdate)
-- CPTR-11: Story Pydantic model with funding mode and goal validation (includes StoryUpdate validators)
-- CPTR-12: Event Pydantic model with Pydantic alias for spec-compliant date field
-- CPTR-42 to CPTR-44: Test framework stubs with pytest-asyncio
-
-### Changed
-- CPTR-12: Event model date field uses Pydantic alias to maintain spec compliance while avoiding type shadowing
-- CPTR-12: Event models add ConfigDict for proper alias/serialization behavior
-- CPTR-13: Added RecurringRuleUpdate model for partial updates with validators
-- CPTR-11: Added business logic validators to StoryUpdate model (date range, funding, goal)
-- CPTR-11: StoryUpdate documentation clarifies API-level validation requirements for partial updates
-- CPTR-15: Added rate validation to SettingsUpdate model for consistency
-- CPTR-15: Settings.rates validator enforces decimal precision (8 decimal places maximum)
-- CPTR-10: Account balance_updated_at changed to optional (new accounts may not have initial timestamp)
-- CPTR-14: User model extended with username and created_at for UI identity and proper user tracking
-- CPTR-10 to CPTR-15: All Decimal fields add precision constraints (max_digits=19, decimal_places=4 for amounts, 8 for rates)
-- CPTR-10 to CPTR-15: All full models define id/created_at/updated_at as required fields (generated by API layer in Phase 1.4)
-- CPTR-11, CPTR-12: Story and Event created_by/updated_by fields changed to Optional (auth not implemented until Phase 1.5)
-- CPTR-11: Removed StoryUpdate.validate_funding and validate_goal validators (cannot work in partial update context, validation moved to API layer)
-- CPTR-12: Added Event baseline/story exclusivity validator (baseline events cannot have story_id)
-- CPTR-15: Settings.rates validator now validates currency code format in dictionary keys (3 uppercase letters)
+- CPTR-1, CPTR-2, CPTR-3, CPTR-4: Project structure with FastAPI backend, MongoDB integration, Pydantic models
+- CPTR-291, CPTR-290: API route stubs and core module stubs
+- Comprehensive data models: Account, Story, Event, RecurringRule, Settings, User, ChangeLogEntry
+- MongoDB async connection with Motor driver
+- Health check endpoint
+- Development environment configuration

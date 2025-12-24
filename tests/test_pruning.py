@@ -3,6 +3,9 @@ Tests for change_log pruning functionality.
 
 Tests the scheduled maintenance job that removes old change_log entries
 to prevent unbounded database growth.
+
+**Uses real MongoDB** for accurate timestamp-based query simulation.
+Mark tests with @pytest.mark.integration for selective execution.
 """
 
 import pytest
@@ -13,8 +16,9 @@ from api.utils.db import utc_now, generate_id
 from api.utils.pruning import prune_change_log
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_removes_old_entries(mongodb_test, clean_database):
+async def test_prune_change_log_removes_old_entries(mongodb_real, clean_database_real):
     """
     Test that prune_change_log removes entries older than retention period.
 
@@ -75,19 +79,19 @@ async def test_prune_change_log_removes_old_entries(mongodb_test, clean_database
     ]
 
     # Insert all entries
-    await mongodb_test["change_log"].insert_many(old_entries + recent_entries)
+    await mongodb_real["change_log"].insert_many(old_entries + recent_entries)
 
     # Act: Run pruning with 31-day retention
-    deleted_count = await prune_change_log(mongodb_test, retention_days=31)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=31)
 
     # Assert: Old entries deleted, recent entries kept
     assert deleted_count == 2, "Should delete 2 old entries"
 
-    remaining = await mongodb_test["change_log"].count_documents({})
+    remaining = await mongodb_real["change_log"].count_documents({})
     assert remaining == 2, "Should keep 2 recent entries"
 
     # Verify which entries remain
-    remaining_docs = await mongodb_test["change_log"].find({}).to_list(length=None)
+    remaining_docs = await mongodb_real["change_log"].find({}).to_list(length=None)
     remaining_ids = {doc["id"] for doc in remaining_docs}
 
     for entry in recent_entries:
@@ -97,8 +101,9 @@ async def test_prune_change_log_removes_old_entries(mongodb_test, clean_database
         assert entry["id"] not in remaining_ids, f"Old entry {entry['id']} should be deleted"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_empty_collection(mongodb_test, clean_database):
+async def test_prune_change_log_empty_collection(mongodb_real, clean_database_real):
     """
     Test that prune_change_log handles empty change_log collection.
 
@@ -106,14 +111,15 @@ async def test_prune_change_log_empty_collection(mongodb_test, clean_database):
     **Expected**: Returns 0 deleted count, no errors
     """
     # Act: Run pruning on empty collection
-    deleted_count = await prune_change_log(mongodb_test, retention_days=31)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=31)
 
     # Assert: No errors, zero deletions
     assert deleted_count == 0, "Should delete 0 entries from empty collection"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_all_entries_recent(mongodb_test, clean_database):
+async def test_prune_change_log_all_entries_recent(mongodb_real, clean_database_real):
     """
     Test that prune_change_log keeps all entries when none are old enough.
 
@@ -147,20 +153,21 @@ async def test_prune_change_log_all_entries_recent(mongodb_test, clean_database)
         }
     ]
 
-    await mongodb_test["change_log"].insert_many(recent_entries)
+    await mongodb_real["change_log"].insert_many(recent_entries)
 
     # Act: Run pruning
-    deleted_count = await prune_change_log(mongodb_test, retention_days=31)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=31)
 
     # Assert: No deletions
     assert deleted_count == 0, "Should delete 0 entries (all recent)"
 
-    remaining = await mongodb_test["change_log"].count_documents({})
+    remaining = await mongodb_real["change_log"].count_documents({})
     assert remaining == 2, "Should keep all 2 entries"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_custom_retention_period(mongodb_test, clean_database):
+async def test_prune_change_log_custom_retention_period(mongodb_real, clean_database_real):
     """
     Test that prune_change_log respects custom retention periods.
 
@@ -194,20 +201,21 @@ async def test_prune_change_log_custom_retention_period(mongodb_test, clean_data
         }
     ]
 
-    await mongodb_test["change_log"].insert_many(entries)
+    await mongodb_real["change_log"].insert_many(entries)
 
     # Act: Run pruning with 7-day retention
-    deleted_count = await prune_change_log(mongodb_test, retention_days=7)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=7)
 
     # Assert: One old entry deleted
     assert deleted_count == 1, "Should delete 1 entry older than 7 days"
 
-    remaining = await mongodb_test["change_log"].count_documents({})
+    remaining = await mongodb_real["change_log"].count_documents({})
     assert remaining == 1, "Should keep 1 entry within 7 days"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_boundary_case(mongodb_test, clean_database):
+async def test_prune_change_log_boundary_case(mongodb_real, clean_database_real):
     """
     Test pruning behavior near retention boundary.
 
@@ -230,20 +238,21 @@ async def test_prune_change_log_boundary_case(mongodb_test, clean_database):
         "changed_at": (now - timedelta(days=30, hours=23)).isoformat()
     }
 
-    await mongodb_test["change_log"].insert_one(boundary_entry)
+    await mongodb_real["change_log"].insert_one(boundary_entry)
 
     # Act: Run pruning
-    deleted_count = await prune_change_log(mongodb_test, retention_days=31)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=31)
 
     # Assert: Entry within retention period is NOT deleted
     assert deleted_count == 0, "Should NOT delete entry just under 31 days old"
 
-    remaining = await mongodb_test["change_log"].count_documents({})
+    remaining = await mongodb_real["change_log"].count_documents({})
     assert remaining == 1, "Entry within retention period should be kept"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_prune_change_log_preserves_different_clients(mongodb_test, clean_database):
+async def test_prune_change_log_preserves_different_clients(mongodb_real, clean_database_real):
     """
     Test that pruning works correctly across multiple clients.
 
@@ -287,13 +296,13 @@ async def test_prune_change_log_preserves_different_clients(mongodb_test, clean_
         }
     ]
 
-    await mongodb_test["change_log"].insert_many(old_entries)
+    await mongodb_real["change_log"].insert_many(old_entries)
 
     # Act: Run pruning
-    deleted_count = await prune_change_log(mongodb_test, retention_days=31)
+    deleted_count = await prune_change_log(mongodb_real, retention_days=31)
 
     # Assert: All old entries deleted regardless of client
     assert deleted_count == 3, "Should delete all 3 old entries from different clients"
 
-    remaining = await mongodb_test["change_log"].count_documents({})
+    remaining = await mongodb_real["change_log"].count_documents({})
     assert remaining == 0, "No entries should remain"
