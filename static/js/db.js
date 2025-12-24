@@ -101,13 +101,20 @@ db.getDefaultAccount = async function() {
 
 /**
  * Helper: Queue an entity change for sync
+ *
+ * @param {string} entityType - Type of entity (account, story, event, etc.)
+ * @param {string} entityId - UUID of the entity
+ * @param {string} action - Action type: 'create', 'update', or 'delete'
+ * @param {object} data - Entity data (null for deletes)
+ * @param {string} baseUpdatedAt - Last known updated_at timestamp (for conflict detection on updates/deletes)
  */
-db.queueChange = async function(entityType, entityId, action, data) {
+db.queueChange = async function(entityType, entityId, action, data, baseUpdatedAt = null) {
     await db.sync_queue.add({
         entity_type: entityType,
         entity_id: entityId,
         action: action, // 'create', 'update', 'delete'
         data: data,
+        base_updated_at: baseUpdatedAt, // For conflict detection (update/delete only)
         queued_at: new Date().toISOString()
     });
 };
