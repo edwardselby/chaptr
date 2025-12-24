@@ -772,6 +772,10 @@ window.app = function() {
          * @param {object} updates - Story updates
          */
         async updateStory(storyId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            const baseUpdatedAt = currentStory ? currentStory.updated_at : null;
+
             const now = new Date().toISOString();
 
             const storyUpdates = {
@@ -782,8 +786,8 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.stories.update(storyId, storyUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'update', storyUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('story', storyId, 'update', storyUpdates, baseUpdatedAt);
 
             console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
@@ -818,6 +822,10 @@ window.app = function() {
                 }
             }
 
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            const baseUpdatedAt = currentStory ? currentStory.updated_at : null;
+
             const now = new Date().toISOString();
 
             // 1. Mark as archived in Dexie
@@ -826,8 +834,8 @@ window.app = function() {
                 updated_at: now
             });
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'delete', { is_archived: true });
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('story', storyId, 'delete', { is_archived: true }, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
@@ -928,6 +936,10 @@ window.app = function() {
          * @param {object} updates - Event updates
          */
         async updateEvent(eventId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentEvent = await db.events.get(eventId);
+            const baseUpdatedAt = currentEvent ? currentEvent.updated_at : null;
+
             const now = new Date().toISOString();
 
             const eventUpdates = {
@@ -947,8 +959,8 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.events.update(eventId, eventUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'update', eventUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('event', eventId, 'update', eventUpdates, baseUpdatedAt);
 
             console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
@@ -968,13 +980,17 @@ window.app = function() {
                 return;
             }
 
+            // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
+            const currentEvent = await db.events.get(eventId);
+            const baseUpdatedAt = currentEvent ? currentEvent.updated_at : null;
+
             const now = new Date().toISOString();
 
             // 1. Mark as deleted in Dexie (or actually delete)
             await db.events.delete(eventId);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'delete', { deleted_at: now });
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('event', eventId, 'delete', { deleted_at: now }, baseUpdatedAt);
 
             console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 

@@ -142,12 +142,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     except Exception:
         logger.error("Could not parse request body")
 
+    # Convert errors to serializable format (remove 'ctx' which may contain non-serializable objects)
+    serializable_errors = []
+    for error in exc.errors():
+        serializable_error = {
+            "type": error["type"],
+            "loc": error["loc"],
+            "msg": error["msg"],
+            "input": str(error.get("input", ""))  # Convert to string for safety
+        }
+        serializable_errors.append(serializable_error)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "detail": exc.errors(),
-            "body": exc.body if hasattr(exc, 'body') else None
-        }
+        content={"detail": serializable_errors}
     )
 
 
