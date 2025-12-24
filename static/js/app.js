@@ -883,7 +883,7 @@ window.app = function() {
             console.log(`[CHAPTR] Created story with entity_id: ${localId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -915,7 +915,7 @@ window.app = function() {
             console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -966,7 +966,7 @@ window.app = function() {
             console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         // ===== EVENTS =====
