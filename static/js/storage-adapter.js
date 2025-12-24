@@ -296,7 +296,7 @@ class StorageAdapter {
     async getAccounts() {
         switch (this.mode) {
             case 'full':
-                return await db.accounts.where({ is_archived: 0 }).toArray();
+                return await db.accounts.filter(a => !a.is_archived).toArray();
             case 'sync-only':
             case 'basic':
                 return this.memoryStore.accounts.filter(a => !a.is_archived);
