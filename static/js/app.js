@@ -1233,16 +1233,24 @@ window.app = function() {
          * Clear sync queue (Mode 1 only)
          *
          * Clears all pending sync queue items without syncing to server.
+         * Also deletes any entities that were created locally but never synced.
          * Useful for development/testing to clear stale queue items.
          */
         async clearSyncQueue() {
-            if (!confirm('Clear all pending sync items? This cannot be undone.')) {
+            if (!confirm('Clear all pending sync items?\n\nThis will delete unsynced entities (events, accounts, etc.) and cannot be undone.')) {
                 return;
             }
 
             try {
                 const count = await storage.clearSyncQueue();
                 await this.updateSyncQueueCount();
+
+                // Recalculate projection to reflect deletion of unsynced entities
+                // This ensures drift updates correctly
+                if (this.currentScreen === 'dashboard') {
+                    await this.updateProjectionRows();
+                }
+
                 showToast(`Cleared ${count} pending sync items`, 'success');
             } catch (error) {
                 console.error('Clear queue error:', error);

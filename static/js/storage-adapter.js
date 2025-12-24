@@ -876,13 +876,17 @@ class StorageAdapter {
     }
 
     /**
-     * Clear pending sync queue
+     * Clear pending sync queue and delete unsynced entities
      *
      * Useful for development/testing to clear stale queue items
      * without performing a full database reset.
      *
+     * This method now also deletes entities that were created locally
+     * but never synced to the server. This ensures drift and projections
+     * reflect the actual server state after clearing the queue.
+     *
      * Mode behavior:
-     * - Mode 1 (Full): Clears Dexie sync_queue table
+     * - Mode 1 (Full): Clears Dexie sync_queue table and deletes unsynced entities
      * - Mode 2 (Sync-Only): Not applicable (no queue in memory mode)
      * - Mode 3 (Basic): Not applicable (no queue in basic mode)
      *
@@ -895,10 +899,42 @@ class StorageAdapter {
             return 0;
         }
 
-        const count = await db.sync_queue.count();
+        // Get all pending queue items before clearing
+        const queueItems = await db.getPendingSyncQueue();
+        const count = queueItems.length;
+
+        // Map entity types to Dexie table names
+        const tableMap = {
+            'account': 'accounts',
+            'story': 'stories',
+            'event': 'events',
+            'recurring_rule': 'recurring_rules',
+            'settings': 'settings'
+        };
+
+        // Delete entities that were created locally but never synced
+        let deletedCount = 0;
+        for (const item of queueItems) {
+            if (item.action === 'create') {
+                const tableName = tableMap[item.entity_type];
+                if (tableName) {
+                    try {
+                        await db[tableName].delete(item.entity_id);
+                        deletedCount++;
+                        console.log(`[CHAPTR] Deleted unsynced ${item.entity_type}: ${item.entity_id}`);
+                    } catch (error) {
+                        console.error(`[CHAPTR] Failed to delete ${item.entity_type} ${item.entity_id}:`, error);
+                    }
+                }
+            }
+            // Note: We don't handle 'update' or 'delete' actions as reverting them
+            // would require storing original state. For now, only 'create' is handled.
+        }
+
+        // Clear the sync queue
         await db.clearSyncQueue();
 
-        console.log(`[CHAPTR] Cleared ${count} items from sync queue`);
+        console.log(`[CHAPTR] Cleared ${count} items from sync queue (${deletedCount} entities deleted)`);
 
         return count;
     }
