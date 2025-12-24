@@ -60,10 +60,12 @@ window.app = function() {
         isSyncing: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
         showAccountModal: false,
+        showStoryModal: false,
         showEventModal: false,
         showUserModal: false,
         showHelpModal: false,
         accountForm: {},
+        storyForm: {},
         eventForm: {},
         userForm: {},
         settingsForm: {},
@@ -706,6 +708,125 @@ window.app = function() {
             }
         },
 
+        // ===== STORIES =====
+
+        /**
+         * Open story modal for adding new story
+         */
+        openStoryModal() {
+            this.storyForm = {
+                name: '',
+                start_date: new Date().toISOString().split('T')[0],
+                end_date: '',
+                default_account_id: '',
+                display_currency: '',
+                funding_mode: 'projected',
+                funding_amount: '0',
+                goal_type: 'none',
+                goal_amount: '0'
+            };
+            this.showStoryModal = true;
+        },
+
+        /**
+         * View story details (open edit modal)
+         * @param {string} storyId - Story UUID
+         */
+        viewStoryDetails(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (story) {
+                this.storyForm = {
+                    ...story,
+                    end_date: story.end_date || '',
+                    default_account_id: story.default_account_id || '',
+                    display_currency: story.display_currency || '',
+                    goal_type: story.goal_type || 'none',
+                    funding_amount: story.funding_amount || '0',
+                    goal_amount: story.goal_amount || '0',
+                    is_archived: story.is_archived
+                };
+                this.showStoryModal = true;
+            }
+        },
+
+        /**
+         * Save story (create or update)
+         */
+        async saveStory() {
+            // Validation
+            if (this.storyForm.end_date && this.storyForm.end_date < this.storyForm.start_date) {
+                alert('End date must be after start date');
+                return;
+            }
+
+            if ((this.storyForm.funding_mode === 'fixed' || this.storyForm.funding_mode === 'projected_plus')
+                && !this.storyForm.funding_amount) {
+                alert('Funding amount is required for this funding mode');
+                return;
+            }
+
+            if (this.storyForm.goal_type && this.storyForm.goal_type !== 'none' && !this.storyForm.goal_amount) {
+                alert('Goal amount is required when goal type is set');
+                return;
+            }
+
+            if (this.storyForm.display_currency && !/^[A-Z]{3}$/.test(this.storyForm.display_currency.toUpperCase())) {
+                alert('Display currency must be a 3-letter code (e.g., GBP, USD)');
+                return;
+            }
+
+            try {
+                const isEdit = !!this.storyForm.id;
+
+                const storyData = {
+                    name: this.storyForm.name,
+                    start_date: this.storyForm.start_date,
+                    end_date: this.storyForm.end_date || null,
+                    default_account_id: this.storyForm.default_account_id || null,
+                    display_currency: this.storyForm.display_currency ?
+                        this.storyForm.display_currency.toUpperCase() : null,
+                    funding_mode: this.storyForm.funding_mode,
+                    funding_amount: this.storyForm.funding_mode !== 'projected' ?
+                        String(parseFloat(this.storyForm.funding_amount || 0)) : null,
+                    goal_type: this.storyForm.goal_type,
+                    goal_amount: this.storyForm.goal_type !== 'none' ?
+                        String(parseFloat(this.storyForm.goal_amount || 0)) : null
+                };
+
+                if (isEdit) {
+                    await this.updateStory(this.storyForm.id, storyData);
+                } else {
+                    await this.createStory(storyData);
+                }
+
+                this.showStoryModal = false;
+
+            } catch (error) {
+                console.error('Error saving story:', error);
+                alert('Failed to save story');
+            }
+        },
+
+        /**
+         * Delete story from modal
+         */
+        async deleteStoryFromModal() {
+            try {
+                await this.deleteStory(this.storyForm.id);
+                this.showStoryModal = false;
+            } catch (error) {
+                console.error('Error deleting story:', error);
+                alert('Failed to delete story');
+            }
+        },
+
+        /**
+         * Navigate to stories management (opens modal for now)
+         */
+        openStoriesManage() {
+            this.openStoryModal();
+        },
+
         /**
          * Get projected balances for an account at 3 future dates
          * Uses filtered projection to show account-specific balances
@@ -767,7 +888,7 @@ window.app = function() {
             console.log(`[CHAPTR] Created story with entity_id: ${localId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -799,7 +920,7 @@ window.app = function() {
             console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -850,7 +971,7 @@ window.app = function() {
             console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         // ===== EVENTS =====

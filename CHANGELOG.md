@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CPTR-f6b216a0: Story modal UI with create/edit/delete functionality following Account modal pattern
+- CPTR-7dd9d58f: Alpine.js state (showStoryModal, storyForm) and methods (openStoryModal, viewStoryDetails, saveStory, deleteStoryFromModal, openStoriesManage)
+- CPTR-1b6356d3: MANAGE button in Dashboard Stories section for creating/editing stories
+- CPTR-f6b216a0: Story form with conditional field visibility (funding_mode → funding_amount, goal_type → goal_amount)
+- CPTR-7dd9d58f: Story form validation (date constraints, required fields for funding modes, currency code format)
 - CPTR-0057a3be: Login screen UI with username/password form, terminal aesthetic styling, error display
 - CPTR-5f9fae48: Authentication check on app initialization (checkAuth() verifies JWT token with /api/auth/me)
 - CPTR-223ce4b0: Login handler with token storage, user session management, automatic app initialization after login
