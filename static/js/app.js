@@ -1534,33 +1534,39 @@ window.app = function() {
          */
         async checkAuth() {
             const token = localStorage.getItem('auth_token');
+            console.log('[AUTH] Checking authentication, token present:', !!token);
 
             if (!token) {
+                console.log('[AUTH] No token found');
                 this.isAuthenticated = false;
                 return;
             }
 
             try {
                 // Verify token with backend
+                console.log('[AUTH] Verifying token with /api/auth/me');
                 const response = await fetch('/api/auth/me', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
 
+                console.log('[AUTH] Token verification response status:', response.status);
+
                 if (response.ok) {
                     const user = await response.json();
                     this.user = user;
                     this.isAuthenticated = true;
-                    console.log('Authenticated as:', user.username);
+                    console.log('[AUTH] Authenticated as:', user.username);
                 } else {
                     // Token invalid or expired
+                    console.log('[AUTH] Token verification failed - clearing auth');
                     this.isAuthenticated = false;
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('user');
                 }
             } catch (error) {
-                console.error('Auth check failed:', error);
+                console.error('[AUTH] Auth check error:', error);
                 this.isAuthenticated = false;
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('user');
@@ -1596,8 +1602,21 @@ window.app = function() {
                     this.user = data.user;
                     this.isAuthenticated = true;
 
-                    // Reinitialize app
-                    await this.init();
+                    // Initialize app components (without re-checking auth)
+                    this.setDefaultProjectionDates();
+                    await storage.init();
+
+                    if (storage.mode === 'basic') {
+                        document.body.classList.add('mode-3-active');
+                    }
+
+                    await this.loadData();
+                    await this.updateSyncQueueCount();
+
+                    // Auto-sync if there are pending changes
+                    if (this.syncQueueCount > 0) {
+                        await this.manualSync();
+                    }
                 } else {
                     const error = await response.json();
                     this.loginError = error.detail || 'Invalid credentials';
@@ -1615,17 +1634,8 @@ window.app = function() {
          */
         logout() {
             clearAuth();
-            this.user = null;
-            this.isAuthenticated = false;
-            this.loginForm = { username: '', password: '' };
-            this.loginError = '';
-
-            // Clear all data
-            this.stories = [];
-            this.accounts = [];
-            this.events = [];
-            this.settings = {};
-            this.users = [];
+            // Reload page to reset all state and show login screen
+            window.location.reload();
         }
     };
 };
