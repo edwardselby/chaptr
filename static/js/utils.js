@@ -155,7 +155,7 @@ export async function getClientId() {
  * @returns {Promise<Response>} Fetch response
  */
 export async function apiRequest(url, options = {}) {
-    const token = localStorage.getItem('jwt_token');
+    const token = localStorage.getItem('auth_token');
     const headers = {
         'Content-Type': 'application/json',
         ...options.headers
