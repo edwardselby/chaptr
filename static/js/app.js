@@ -742,7 +742,8 @@ window.app = function() {
                     display_currency: story.display_currency || '',
                     goal_type: story.goal_type || 'none',
                     funding_amount: story.funding_amount || '0',
-                    goal_amount: story.goal_amount || '0'
+                    goal_amount: story.goal_amount || '0',
+                    is_archived: story.is_archived
                 };
                 this.showStoryModal = true;
             }
@@ -786,10 +787,10 @@ window.app = function() {
                         this.storyForm.display_currency.toUpperCase() : null,
                     funding_mode: this.storyForm.funding_mode,
                     funding_amount: this.storyForm.funding_mode !== 'projected' ?
-                        String(parseFloat(this.storyForm.funding_amount || 0)) : '0',
+                        String(parseFloat(this.storyForm.funding_amount || 0)) : null,
                     goal_type: this.storyForm.goal_type,
                     goal_amount: this.storyForm.goal_type !== 'none' ?
-                        String(parseFloat(this.storyForm.goal_amount || 0)) : '0'
+                        String(parseFloat(this.storyForm.goal_amount || 0)) : null
                 };
 
                 if (isEdit) {
