@@ -1238,10 +1238,11 @@ window.app = function() {
 
             try {
                 const count = await storage.clearSyncQueue();
-                this.syncQueueCount = await storage.getSyncQueueCount();
+                await this.updateSyncQueueCount();
+                showToast(`Cleared ${count} pending sync items`, 'success');
             } catch (error) {
                 console.error('Clear queue error:', error);
-                alert('Failed to clear sync queue');
+                showToast('Failed to clear sync queue', 'error');
             }
         },
 

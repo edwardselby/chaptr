@@ -899,7 +899,6 @@ class StorageAdapter {
         await db.clearSyncQueue();
 
         console.log(`[CHAPTR] Cleared ${count} items from sync queue`);
-        showToast(`Cleared ${count} pending sync items`, 'success');
 
         return count;
     }
