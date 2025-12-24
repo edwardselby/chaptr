@@ -706,7 +706,7 @@
                 <div class="form-group">
                     <label for="story-goal-type">Goal Type</label>
                     <select id="story-goal-type" x-model="storyForm.goal_type" class="form-input">
-                        <option value="">-- No Goal --</option>
+                        <option value="none">-- No Goal --</option>
                         <option value="spend_up_to">Spend Up To (budget limit)</option>
                         <option value="end_with_at_least">End With At Least (target balance)</option>
                     </select>
@@ -714,7 +714,7 @@
                 </div>
 
                 <!-- Goal Amount (Conditional: goal_type set) -->
-                <div class="form-group" x-show="storyForm.goal_type && storyForm.goal_type !== ''">
+                <div class="form-group" x-show="storyForm.goal_type && storyForm.goal_type !== 'none'">
                     <label for="story-goal-amount">Goal Amount</label>
                     <input id="story-goal-amount" type="number" x-model="storyForm.goal_amount"
                         step="0.01" placeholder="0.00" class="form-input">

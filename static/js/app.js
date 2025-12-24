@@ -722,7 +722,7 @@ window.app = function() {
                 display_currency: '',
                 funding_mode: 'projected',
                 funding_amount: '0',
-                goal_type: '',
+                goal_type: 'none',
                 goal_amount: '0'
             };
             this.showStoryModal = true;
@@ -740,7 +740,7 @@ window.app = function() {
                     end_date: story.end_date || '',
                     default_account_id: story.default_account_id || '',
                     display_currency: story.display_currency || '',
-                    goal_type: story.goal_type || '',
+                    goal_type: story.goal_type || 'none',
                     funding_amount: story.funding_amount || '0',
                     goal_amount: story.goal_amount || '0'
                 };
@@ -764,7 +764,7 @@ window.app = function() {
                 return;
             }
 
-            if (this.storyForm.goal_type && !this.storyForm.goal_amount) {
+            if (this.storyForm.goal_type && this.storyForm.goal_type !== 'none' && !this.storyForm.goal_amount) {
                 alert('Goal amount is required when goal type is set');
                 return;
             }
@@ -787,8 +787,8 @@ window.app = function() {
                     funding_mode: this.storyForm.funding_mode,
                     funding_amount: this.storyForm.funding_mode !== 'projected' ?
                         String(parseFloat(this.storyForm.funding_amount || 0)) : '0',
-                    goal_type: this.storyForm.goal_type || null,
-                    goal_amount: this.storyForm.goal_type ?
+                    goal_type: this.storyForm.goal_type,
+                    goal_amount: this.storyForm.goal_type !== 'none' ?
                         String(parseFloat(this.storyForm.goal_amount || 0)) : '0'
                 };
 
