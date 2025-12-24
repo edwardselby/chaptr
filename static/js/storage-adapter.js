@@ -280,7 +280,7 @@ class StorageAdapter {
         });
 
         // Store sync timestamp
-        await db.sync_meta.put({ key: 'lastSyncAt', value: data.sync_timestamp });
+        await db.sync_meta.put({ id: 'lastSyncAt', value: data.sync_timestamp });
         this.lastSyncAt = data.sync_timestamp;
 
         console.log('[CHAPTR] Dexie populated from full sync');
@@ -406,32 +406,13 @@ class StorageAdapter {
         // 2. Queue for sync
         await db.queueChange('account', localId, 'create', fullData);
 
-        // 3. Immediate API attempt if online
-        if (navigator.onLine) {
-            try {
-                const response = await apiRequest('/api/accounts', {
-                    method: 'POST',
-                    body: JSON.stringify(accountData)
-                });
+        // 3. Check queue limit AFTER write (intentional design choice):
+        // Allows user's current operation to complete (501st item allowed)
+        // Then blocks future operations, forcing sync before continuing
+        // This ensures user doesn't lose their current work
+        await this.checkQueueLimit();
 
-                if (response.ok) {
-                    const serverData = await response.json();
-                    // Replace temp ID with server ID
-                    await db.accounts.delete(localId);
-                    await db.accounts.put(serverData);
-                    await db.sync_queue.where({ entity_id: localId }).delete();
-                    return serverData;
-                }
-            } catch (error) {
-                console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
-                // Check queue limit AFTER write (intentional design choice):
-                // Allows user's current operation to complete (501st item allowed)
-                // Then blocks future operations, forcing sync before continuing
-                // This ensures user doesn't lose their current work
-                await this.checkQueueLimit();
-            }
-        }
-
+        console.log(`[CHAPTR] Created account with entity_id: ${localId} (queued for sync)`);
         return fullData;
     }
 
@@ -511,27 +492,10 @@ class StorageAdapter {
         // 2. Queue for sync
         await db.queueChange('account', accountId, 'update', updateData);
 
-        // 3. Immediate API attempt if online
-        if (navigator.onLine) {
-            try {
-                const response = await apiRequest(`/api/accounts/${accountId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(updateData)
-                });
+        // 3. Queue limit check after write (see createAccount_Full for rationale)
+        await this.checkQueueLimit();
 
-                if (response.ok) {
-                    const serverData = await response.json();
-                    await db.accounts.put(serverData);
-                    await db.sync_queue.where({ entity_id: accountId, action: 'update' }).delete();
-                    return serverData;
-                }
-            } catch (error) {
-                console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
-                // Queue limit check after write (see createAccount_Full for rationale)
-                await this.checkQueueLimit();
-            }
-        }
-
+        console.log(`[CHAPTR] Updated account ${accountId} (queued for sync)`);
         return await db.accounts.get(accountId);
     }
 
@@ -618,22 +582,10 @@ class StorageAdapter {
         // 2. Queue for sync
         await db.queueChange('account', accountId, 'delete', { is_archived: true });
 
-        // 3. Immediate API attempt if online
-        if (navigator.onLine) {
-            try {
-                const response = await apiRequest(`/api/accounts/${accountId}`, {
-                    method: 'DELETE'
-                });
+        // 3. Queue limit check after write (see createAccount_Full for rationale)
+        await this.checkQueueLimit();
 
-                if (response.ok) {
-                    await db.sync_queue.where({ entity_id: accountId, action: 'delete' }).delete();
-                }
-            } catch (error) {
-                console.warn('[CHAPTR] API call failed, queued for sync:', error.message);
-                // Queue limit check after write (see createAccount_Full for rationale)
-                await this.checkQueueLimit();
-            }
-        }
+        console.log(`[CHAPTR] Deleted account ${accountId} (queued for sync)`);
     }
 
     async deleteAccount_SyncOnly(accountId) {
@@ -727,6 +679,9 @@ class StorageAdapter {
         console.log('[CHAPTR] Starting manual sync...');
 
         try {
+            // 0. Clean up stale queue items first
+            await this.cleanStaleQueueItems();
+
             // 1. Get pending changes from sync_queue
             const pending = await db.getPendingSyncQueue();
 
@@ -781,6 +736,49 @@ class StorageAdapter {
     }
 
     /**
+     * Clean up stale queue items for entities that no longer exist locally
+     *
+     * Removes orphaned queue items where:
+     * - Entity was deleted from Dexie but queue item remains
+     * - Action is not 'delete' (delete actions are allowed for missing entities)
+     *
+     * @returns {Promise<number>} Number of items cleaned
+     */
+    async cleanStaleQueueItems() {
+        if (this.mode !== 'full') return 0;
+
+        const queue = await db.sync_queue.toArray();
+        let cleaned = 0;
+
+        const tableMap = {
+            'account': 'accounts',
+            'story': 'stories',
+            'event': 'events',
+            'recurring_rule': 'recurring_rules'
+        };
+
+        for (const item of queue) {
+            const tableName = tableMap[item.entity_type];
+            if (!tableName) continue;
+
+            // Check if entity still exists locally
+            const exists = await db[tableName].get(item.entity_id);
+
+            if (!exists && item.action !== 'delete') {
+                // Entity was removed but queue item remains - orphaned
+                await db.sync_queue.delete(item.id);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            console.log(`[CHAPTR] Cleaned ${cleaned} stale queue items`);
+        }
+
+        return cleaned;
+    }
+
+    /**
      * Process sync response from server
      *
      * @param {Object} syncData - Response from POST /api/sync
@@ -827,7 +825,7 @@ class StorageAdapter {
 
         // Update sync metadata
         this.lastSyncAt = syncData.sync_timestamp;
-        await db.sync_meta.put({ key: 'lastSyncAt', value: syncData.sync_timestamp });
+        await db.sync_meta.put({ id: 'lastSyncAt', value: syncData.sync_timestamp });
 
         // Handle full sync if required
         if (syncData.full_sync_required) {

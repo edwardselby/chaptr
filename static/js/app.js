@@ -760,28 +760,9 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('story', localId, 'create', story);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest('/api/stories', {
-                        method: 'POST',
-                        body: JSON.stringify(story)
-                    });
+            console.log(`[CHAPTR] Created story with entity_id: ${localId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.stories.update(localId, {
-                            id: serverData.id,
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: localId }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadFromDexie();
         },
 
@@ -804,27 +785,9 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('story', storyId, 'update', storyUpdates);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/stories/${storyId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify(storyUpdates)
-                    });
+            console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.stories.update(storyId, {
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: storyId, action: 'update' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadFromDexie();
         },
 
@@ -866,22 +829,9 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('story', storyId, 'delete', { is_archived: true });
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/stories/${storyId}`, {
-                        method: 'DELETE'
-                    });
+            console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
-                    if (response.ok) {
-                        await db.sync_queue.where({ entity_id: storyId, action: 'delete' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadFromDexie();
         },
 
@@ -966,28 +916,9 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('event', localId, 'create', event);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest('/api/events', {
-                        method: 'POST',
-                        body: JSON.stringify(event)
-                    });
+            console.log(`[CHAPTR] Created event with entity_id: ${localId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.events.update(localId, {
-                            id: serverData.id,
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: localId }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadFromDexie();
         },
 
@@ -1019,27 +950,9 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('event', eventId, 'update', eventUpdates);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/events/${eventId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify(eventUpdates)
-                    });
+            console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.events.update(eventId, {
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: eventId, action: 'update' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadFromDexie();
         },
 
@@ -1063,20 +976,7 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('event', eventId, 'delete', { deleted_at: now });
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/events/${eventId}`, {
-                        method: 'DELETE'
-                    });
-
-                    if (response.ok) {
-                        await db.sync_queue.where({ entity_id: eventId, action: 'delete' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
+            console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 
             // 4. Reload data
             await this.loadFromDexie();
