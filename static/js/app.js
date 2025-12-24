@@ -36,6 +36,15 @@ window.app = function() {
         // Navigation
         currentScreen: 'dashboard',
 
+        // Authentication
+        isAuthenticated: false,
+        loginForm: {
+            username: '',
+            password: ''
+        },
+        loginError: '',
+        isLoggingIn: false,
+
         // User
         user: null,
 
@@ -83,11 +92,17 @@ window.app = function() {
         async init() {
             console.log('CHAPTR initializing...');
 
+            // Check authentication first
+            await this.checkAuth();
+
+            // If not authenticated, stop here (login screen will show)
+            if (!this.isAuthenticated) {
+                console.log('Not authenticated - showing login screen');
+                return;
+            }
+
             // Set initial projection dates FIRST (before any rendering happens)
             this.setDefaultProjectionDates();
-
-            // Load user from localStorage
-            await this.loadUser();
 
             // Initialize storage adapter (detects mode and bootstraps)
             await storage.init();
@@ -112,15 +127,6 @@ window.app = function() {
             console.log('CHAPTR ready!');
         },
 
-        /**
-         * Load user from localStorage or API
-         */
-        async loadUser() {
-            const storedUser = localStorage.getItem('user');
-            if (storedUser) {
-                this.user = JSON.parse(storedUser);
-            }
-        },
 
         /**
          * Load data from storage adapter
@@ -1523,12 +1529,113 @@ window.app = function() {
         // ===== AUTH =====
 
         /**
+         * Check if user is authenticated
+         * Verifies token with backend
+         */
+        async checkAuth() {
+            const token = localStorage.getItem('auth_token');
+            console.log('[AUTH] Checking authentication, token present:', !!token);
+
+            if (!token) {
+                console.log('[AUTH] No token found');
+                this.isAuthenticated = false;
+                return;
+            }
+
+            try {
+                // Verify token with backend
+                console.log('[AUTH] Verifying token with /api/auth/me');
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                console.log('[AUTH] Token verification response status:', response.status);
+
+                if (response.ok) {
+                    const user = await response.json();
+                    this.user = user;
+                    this.isAuthenticated = true;
+                    console.log('[AUTH] Authenticated as:', user.username);
+                } else {
+                    // Token invalid or expired
+                    console.log('[AUTH] Token verification failed - clearing auth');
+                    this.isAuthenticated = false;
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user');
+                }
+            } catch (error) {
+                console.error('[AUTH] Auth check error:', error);
+                this.isAuthenticated = false;
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user');
+            }
+        },
+
+        /**
+         * Handle login form submission
+         */
+        async handleLogin() {
+            this.loginError = '';
+            this.isLoggingIn = true;
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: this.loginForm.username,
+                        password: this.loginForm.password
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Store token and user info
+                    localStorage.setItem('auth_token', data.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+
+                    this.user = data.user;
+                    this.isAuthenticated = true;
+
+                    // Initialize app components (without re-checking auth)
+                    this.setDefaultProjectionDates();
+                    await storage.init();
+
+                    if (storage.mode === 'basic') {
+                        document.body.classList.add('mode-3-active');
+                    }
+
+                    await this.loadData();
+                    await this.updateSyncQueueCount();
+
+                    // Auto-sync if there are pending changes
+                    if (this.syncQueueCount > 0) {
+                        await this.manualSync();
+                    }
+                } else {
+                    const error = await response.json();
+                    this.loginError = error.detail || 'Invalid credentials';
+                }
+            } catch (error) {
+                console.error('Login failed:', error);
+                this.loginError = 'Connection error. Please try again.';
+            } finally {
+                this.isLoggingIn = false;
+            }
+        },
+
+        /**
          * Logout user
          */
         logout() {
             clearAuth();
-            this.user = null;
-            window.location.href = '/login';
+            // Reload page to reset all state and show login screen
+            window.location.reload();
         }
     };
 };

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-0057a3be: Login screen UI with username/password form, terminal aesthetic styling, error display
+- CPTR-5f9fae48: Authentication check on app initialization (checkAuth() verifies JWT token with /api/auth/me)
+- CPTR-223ce4b0: Login handler with token storage, user session management, automatic app initialization after login
+- CPTR-c538bb37: Logout button in Settings screen with admin user display
+- CPTR-0057a3be, CPTR-5f9fae48, CPTR-223ce4b0: JWT token management with consistent 'auth_token' localStorage key across all functions
+
+### Changed
+- CPTR-223ce4b0: App initialization skips data loading if user not authenticated (shows login screen instead)
+- CPTR-c538bb37: Logout function simplified to use window.location.reload() for complete state reset (prevents data leakage between sessions)
+- CPTR-5f9fae48: 401 response handling changed from redirect to reload (fixes non-existent /login URL issue)
+
+### Fixed
+- CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
+
 ## [0.1.0] - 2025-12-23
 
 ### Added
