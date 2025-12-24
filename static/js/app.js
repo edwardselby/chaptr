@@ -637,7 +637,7 @@ window.app = function() {
             const accountData = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -660,7 +660,7 @@ window.app = function() {
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -745,9 +745,9 @@ window.app = function() {
                 end_date: storyData.end_date,
                 display_currency: storyData.display_currency || this.settings.base_currency,
                 funding_mode: storyData.funding_mode || 'projected',
-                funding_amount: parseFloat(storyData.funding_amount || 0),
+                funding_amount: String(parseFloat(storyData.funding_amount || 0)),
                 goal_type: storyData.goal_type || null,
-                goal_amount: parseFloat(storyData.goal_amount || 0),
+                goal_amount: String(parseFloat(storyData.goal_amount || 0)),
                 default_account_id: storyData.default_account_id || null,
                 is_archived: false,
                 created_at: now,
@@ -896,7 +896,7 @@ window.app = function() {
             const event = {
                 id: localId,
                 description: eventData.description,
-                amount: parseFloat(eventData.amount),
+                amount: String(parseFloat(eventData.amount)),
                 date: eventData.date,
                 account_id: accountId,
                 currency: currency,

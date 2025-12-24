@@ -115,6 +115,60 @@ app.add_middleware(
 )
 
 
+# ==================== Exception Handlers ====================
+
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Enhanced validation error handler for better debugging.
+
+    Logs detailed validation errors when request data doesn't match Pydantic models.
+    Returns 422 with detailed error information.
+    """
+    # Log detailed error for debugging
+    logger.error(f"Validation error on {request.method} {request.url.path}")
+    logger.error(f"Errors: {exc.errors()}")
+
+    # Try to log request body (if JSON)
+    try:
+        body = await request.json()
+        logger.error(f"Request body: {body}")
+    except Exception:
+        logger.error("Could not parse request body")
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": exc.errors(),
+            "body": exc.body if hasattr(exc, 'body') else None
+        }
+    )
+
+
+@app.exception_handler(ValidationError)
+async def pydantic_validation_exception_handler(request: Request, exc: ValidationError):
+    """
+    Handle Pydantic validation errors (raised during model instantiation).
+
+    These can occur when creating models from dictionaries in the sync endpoint.
+    """
+    logger.error(f"Pydantic validation error on {request.method} {request.url.path}")
+    logger.error(f"Errors: {exc.errors()}")
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": exc.errors()
+        }
+    )
+
+
 @app.get("/health")
 async def health_check():
     """
