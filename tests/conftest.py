@@ -313,7 +313,7 @@ async def sample_account(account_repo):
         name="Test Account",
         currency="GBP",
         current_balance=Decimal("1000.00"),
-        balance_updated_at=datetime.utcnow(),
+        balance_updated_at=utc_now(),
         is_default=True,
         is_archived=False,
         pending_reconciliation=False
@@ -529,8 +529,8 @@ def valid_account_data():
         "name": "Monzo",
         "currency": "GBP",
         "current_balance": 2500.00,
-        "balance_updated_at": datetime.utcnow().isoformat() + "Z",
-        "is_default": False,
+        "balance_updated_at": utc_now().isoformat(),
+        "is_default": True,
         "is_archived": False,
         "pending_reconciliation": False
     }

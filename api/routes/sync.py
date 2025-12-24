@@ -290,14 +290,6 @@ async def sync(
                 server_version={"error": str(e)}
             ))
 
-    # ========== RECURRING EVENT GENERATION ==========
-    # Generate recurring events before pull phase (per spec line 1558)
-    # This ensures newly generated events are included in server_changes
-    from api.utils.recurring import generate_recurring_events
-
-    user_id = UUID(current_user["id"])
-    await generate_recurring_events(db, user_id, request.client_id)
-
     # ========== PULL PHASE: Get changes from other clients ==========
     server_changes: list[SyncServerChange] = []
     full_sync_required = False
