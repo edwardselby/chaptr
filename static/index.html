@@ -109,10 +109,11 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Stories</h2>
+                        <button class="btn-section-action" @click="openStoriesManage()">MANAGE</button>
                     </div>
                     <div class="stories-list">
-                        <template x-for="story in stories" :key="story.id">
-                            <div class="story-item" @click="viewStoryProjection(story.id)">
+                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
+                            <div class="story-item" @click="viewStoryDetails(story.id)">
                                 <div class="story-item-left">
                                     <div class="story-name" x-text="story.name"></div>
                                     <div class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></div>
@@ -122,7 +123,7 @@
                                 </div>
                             </div>
                         </template>
-                        <div class="empty-state" x-show="stories.length === 0">
+                        <div class="empty-state" x-show="stories.filter(s => !s.is_archived).length === 0">
                             <p>No active stories</p>
                         </div>
                     </div>
@@ -619,6 +620,114 @@
                         class="btn-danger"
                         x-show="accountForm.id"
                         @click="deleteAccount()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Story Modal -->
+    <div class="modal-overlay" x-show="showStoryModal" @click="showStoryModal = false" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
+                <button class="modal-close" @click="showStoryModal = false">✕</button>
+            </div>
+            <form @submit.prevent="saveStory" class="modal-body">
+
+                <!-- Story Name (Required) -->
+                <div class="form-group">
+                    <label for="story-name">Story Name</label>
+                    <input id="story-name" type="text" x-model="storyForm.name"
+                        placeholder="e.g., canada-trip, volvo, skiing" required class="form-input">
+                    <span class="form-hint">Short descriptive name (lowercase-with-dashes)</span>
+                </div>
+
+                <!-- Start Date (Required) -->
+                <div class="form-group">
+                    <label for="story-start-date">Start Date</label>
+                    <input id="story-start-date" type="date" x-model="storyForm.start_date"
+                        required class="form-input">
+                </div>
+
+                <!-- End Date (Optional) -->
+                <div class="form-group">
+                    <label for="story-end-date">End Date</label>
+                    <input id="story-end-date" type="date" x-model="storyForm.end_date"
+                        class="form-input">
+                    <span class="form-hint">Leave blank for ongoing stories</span>
+                </div>
+
+                <!-- Default Account (Optional) -->
+                <div class="form-group">
+                    <label for="story-default-account">Default Account</label>
+                    <select id="story-default-account" x-model="storyForm.default_account_id"
+                        class="form-input">
+                        <option value="">-- None (use global default) --</option>
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
+                        </template>
+                    </select>
+                    <span class="form-hint">Events in this story will use this account by default</span>
+                </div>
+
+                <!-- Display Currency (Optional) -->
+                <div class="form-group">
+                    <label for="story-display-currency">Display Currency</label>
+                    <input id="story-display-currency" type="text" x-model="storyForm.display_currency"
+                        pattern="[A-Z]{3}" placeholder="GBP, USD, CAD" maxlength="3"
+                        class="form-input" style="text-transform: uppercase">
+                    <span class="form-hint">Leave blank to use base currency</span>
+                </div>
+
+                <!-- Funding Mode (Required) -->
+                <div class="form-group">
+                    <label for="story-funding-mode">Funding Mode</label>
+                    <select id="story-funding-mode" x-model="storyForm.funding_mode" class="form-input">
+                        <option value="projected">Projected (use calculated balance)</option>
+                        <option value="fixed">Fixed (specific amount)</option>
+                        <option value="projected_plus">Projected + Adjustment</option>
+                    </select>
+                    <span class="form-hint">How starting balance is calculated</span>
+                </div>
+
+                <!-- Funding Amount (Conditional: fixed or projected_plus) -->
+                <div class="form-group" x-show="storyForm.funding_mode === 'fixed' || storyForm.funding_mode === 'projected_plus'">
+                    <label for="story-funding-amount">
+                        <span x-show="storyForm.funding_mode === 'fixed'">Starting Amount</span>
+                        <span x-show="storyForm.funding_mode === 'projected_plus'">Adjustment Amount</span>
+                    </label>
+                    <input id="story-funding-amount" type="number" x-model="storyForm.funding_amount"
+                        step="0.01" placeholder="0.00" class="form-input">
+                    <span class="form-hint" x-show="storyForm.funding_mode === 'fixed'">Fixed starting balance for this story</span>
+                    <span class="form-hint" x-show="storyForm.funding_mode === 'projected_plus'">Amount to add/subtract from projected balance</span>
+                </div>
+
+                <!-- Goal Type (Optional) -->
+                <div class="form-group">
+                    <label for="story-goal-type">Goal Type</label>
+                    <select id="story-goal-type" x-model="storyForm.goal_type" class="form-input">
+                        <option value="">-- No Goal --</option>
+                        <option value="spend_up_to">Spend Up To (budget limit)</option>
+                        <option value="end_with_at_least">End With At Least (target balance)</option>
+                    </select>
+                    <span class="form-hint">Optional spending/saving target</span>
+                </div>
+
+                <!-- Goal Amount (Conditional: goal_type set) -->
+                <div class="form-group" x-show="storyForm.goal_type && storyForm.goal_type !== ''">
+                    <label for="story-goal-amount">Goal Amount</label>
+                    <input id="story-goal-amount" type="number" x-model="storyForm.goal_amount"
+                        step="0.01" placeholder="0.00" class="form-input">
+                    <span class="form-hint" x-show="storyForm.goal_type === 'spend_up_to'">Maximum spending for this story</span>
+                    <span class="form-hint" x-show="storyForm.goal_type === 'end_with_at_least'">Minimum balance to end with</span>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showStoryModal = false">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Story</button>
+                    <button type="button" class="btn-danger" x-show="storyForm.id"
+                        @click="deleteStoryFromModal()">Delete</button>
                 </div>
             </form>
         </div>
