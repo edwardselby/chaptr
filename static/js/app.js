@@ -1110,10 +1110,6 @@ window.app = function() {
             const event = this.events.find(e => e.id === eventId);
             if (!event) return;
 
-            if (!confirm(`Delete event "${event.description}"?`)) {
-                return;
-            }
-
             // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
             const currentEvent = await db.events.get(eventId);
             if (!currentEvent) {
@@ -1499,16 +1495,14 @@ window.app = function() {
             const today = new Date().toISOString().split('T')[0];
 
             this.eventForm = {
-                event_date: today,
+                date: today,
                 description: '',
                 amount: 0,
                 account_id: '', // Will resolve via hierarchy
                 currency: this.settings.base_currency || 'GBP',
                 story_id: '', // Empty = baseline
                 is_baseline: true,
-                is_hypothetical: false,
-                event_type: '',
-                notes: ''
+                is_hypothetical: false
             };
 
             this.showEventModal = true;
@@ -1535,17 +1529,20 @@ window.app = function() {
                 defaultDate = story.end_date;
             }
 
+            // Get default account for currency fallback
+            const defaultAccount = story.default_account_id
+                ? this.accounts.find(a => a.id === story.default_account_id)
+                : null;
+
             this.eventForm = {
-                event_date: defaultDate,
+                date: defaultDate,
                 description: '',
                 amount: 0,
                 account_id: story.default_account_id || '',
-                currency: story.display_currency || this.settings.base_currency || 'GBP',
+                currency: story.display_currency || (defaultAccount ? defaultAccount.currency : null) || this.settings.base_currency || 'GBP',
                 story_id: storyId,
                 is_baseline: false,
-                is_hypothetical: false,
-                event_type: '',
-                notes: ''
+                is_hypothetical: false
             };
 
             this.showEventModal = true;
@@ -1564,7 +1561,7 @@ window.app = function() {
 
             this.eventForm = {
                 id: event.id,
-                event_date: event.date,
+                date: event.date,
                 description: event.description,
                 amount: event.amount,
                 account_id: event.account_id,
@@ -1572,8 +1569,6 @@ window.app = function() {
                 story_id: event.story_id || '',
                 is_baseline: event.is_baseline,
                 is_hypothetical: event.is_hypothetical,
-                event_type: event.event_type || '',
-                notes: event.notes || '',
                 updated_at: event.updated_at
             };
 
@@ -1585,7 +1580,7 @@ window.app = function() {
          */
         async saveEvent() {
             // Validation: Required fields
-            if (!this.eventForm.event_date) {
+            if (!this.eventForm.date) {
                 alert('Event date is required');
                 return;
             }
@@ -1627,16 +1622,14 @@ window.app = function() {
                 const isEdit = !!this.eventForm.id;
 
                 const eventData = {
-                    date: this.eventForm.event_date,
+                    date: this.eventForm.date,
                     description: this.eventForm.description.trim(),
                     amount: parseFloat(this.eventForm.amount),
                     account_id: resolvedAccountId,
                     currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
                     story_id: this.eventForm.story_id || null,
                     is_baseline: !this.eventForm.story_id,
-                    is_hypothetical: this.eventForm.is_hypothetical || false,
-                    event_type: this.eventForm.event_type || null,
-                    notes: this.eventForm.notes || ''
+                    is_hypothetical: this.eventForm.is_hypothetical || false
                 };
 
                 if (isEdit) {

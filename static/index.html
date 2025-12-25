@@ -753,7 +753,7 @@
                     <input
                         id="event-date"
                         type="date"
-                        x-model="eventForm.event_date"
+                        x-model="eventForm.date"
                         required
                         class="form-input">
                 </div>
@@ -809,9 +809,9 @@
                         pattern="[A-Z]{3}"
                         placeholder="GBP, USD, EUR"
                         maxlength="3"
+                        required
                         class="form-input"
-                        style="text-transform: uppercase"
-                        :disabled="!eventForm.account_id">
+                        style="text-transform: uppercase">
                     <span class="form-hint">Auto-set from account or enter manually</span>
                 </div>
 
@@ -838,30 +838,6 @@
                         <span>Hypothetical (planned/future)</span>
                     </label>
                     <span class="form-hint">Check if this is planned/not yet confirmed</span>
-                </div>
-
-                <!-- Event Type (Optional categorization) -->
-                <div class="form-group">
-                    <label for="event-type">Event Type</label>
-                    <select id="event-type" x-model="eventForm.event_type" class="form-input">
-                        <option value="">-- None --</option>
-                        <option value="INCOME">Income</option>
-                        <option value="EXPENSE">Expense</option>
-                        <option value="TRANSFER">Transfer</option>
-                        <option value="ADJUSTMENT">Adjustment</option>
-                    </select>
-                    <span class="form-hint">Optional categorization</span>
-                </div>
-
-                <!-- Notes (Optional) -->
-                <div class="form-group">
-                    <label for="event-notes">Notes</label>
-                    <textarea
-                        id="event-notes"
-                        x-model="eventForm.notes"
-                        placeholder="Additional notes or context"
-                        rows="3"
-                        class="form-input"></textarea>
                 </div>
 
                 <!-- Modal Actions -->
