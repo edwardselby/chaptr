@@ -1551,6 +1551,11 @@ window.app = function() {
          * @param {string} eventId - Event UUID
          */
         viewEventDetails(eventId) {
+            if (!eventId) {
+                console.error('viewEventDetails called without eventId');
+                return;
+            }
+
             const event = this.events.find(e => e.id === eventId);
             if (!event) {
                 console.error('Event not found:', eventId);

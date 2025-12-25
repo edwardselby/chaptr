@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-d502d0e6: Alpine.js event modal methods (openEventModal, openEventModalForStory, viewEventDetails, saveEvent, deleteEventFromModal, getAccountHierarchyHint, handleStoryChange)
 - CPTR-d96ecfd8: Command bar event integration (addEvent for baseline, addEventToStory for story context)
 - CPTR-e9c43bb7: Projection timeline click handlers to open event edit modal
-- CPTR-583f4cdc: Event form with account resolution hierarchy hint, story assignment, hypothetical flag, event type, and notes
+- CPTR-583f4cdc: Event form with account resolution hierarchy hint, story assignment, and hypothetical flag
 - CPTR-d502d0e6: Event form validation (required fields, currency format, baseline XOR story enforcement, account resolution)
 - CPTR-f6b216a0: Story modal UI with create/edit/delete functionality following Account modal pattern
 - CPTR-7dd9d58f: Alpine.js state (showStoryModal, storyForm) and methods (openStoryModal, viewStoryDetails, saveStory, deleteStoryFromModal, openStoriesManage)
