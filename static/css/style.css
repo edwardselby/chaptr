@@ -732,6 +732,57 @@ body::before {
     font-size: 13px;
 }
 
+/* Dashboard Story Items */
+.story-item {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: border-color 0.15s;
+    margin-bottom: 8px;
+}
+
+.story-item:hover {
+    border-color: var(--green-dim);
+}
+
+.story-item-left {
+    flex: 1;
+}
+
+.story-item-right {
+    text-align: right;
+}
+
+.story-balance {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+/* View All special styling */
+.view-all-item {
+    border-color: var(--amber);
+    margin-bottom: 16px;
+}
+
+.view-all-item:hover {
+    background: rgba(255, 170, 0, 0.05);
+    border-color: var(--amber);
+}
+
+.view-all-item .story-name {
+    color: var(--amber);
+    font-weight: bold;
+}
+
+.view-all-item .story-dates {
+    color: rgba(255, 170, 0, 0.6);
+}
+
 /* Utility Classes */
 .positive {
     color: var(--green-bright) !important;

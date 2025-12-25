@@ -902,6 +902,18 @@ window.app = function() {
         },
 
         /**
+         * Get View All summary data for Dashboard
+         * Returns total projected balance across all stories + baseline
+         * @returns {object} { balance: number }
+         */
+        getViewAllSummary() {
+            // Use projectionToday which already includes all stories + baseline
+            return {
+                balance: this.projectionToday || 0
+            };
+        },
+
+        /**
          * Get projected balances for an account at 3 future dates
          * Uses filtered projection to show account-specific balances
          * @param {string} accountId - Account UUID

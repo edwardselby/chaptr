@@ -112,6 +112,18 @@
                         <button class="btn-section-action" @click="openStoriesManage()">MANAGE</button>
                     </div>
                     <div class="stories-list">
+                        <!-- View All static entry -->
+                        <div class="story-item view-all-item" @click="navigateToStoryProjection('all')">
+                            <div class="story-item-left">
+                                <div class="story-name">View All</div>
+                                <div class="story-dates">All stories + baseline</div>
+                            </div>
+                            <div class="story-item-right">
+                                <div class="story-balance" x-text="formatCurrency(getViewAllSummary().balance, settings.base_currency)"></div>
+                            </div>
+                        </div>
+
+                        <!-- Regular stories -->
                         <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
                             <div class="story-item" @click="navigateToStoryProjection(story.id)">
                                 <div class="story-item-left">
