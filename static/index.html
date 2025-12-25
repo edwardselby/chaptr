@@ -198,7 +198,7 @@
                     <div class="filters-scroll">
                         <button class="filter-chip" :class="{ 'active': currentView === 'all' }" @click="setView('all')">ALL</button>
                         <button class="filter-chip" :class="{ 'active': currentView === 'baseline' }" @click="setView('baseline')">Baseline</button>
-                        <template x-for="story in stories" :key="story.id">
+                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
                             <button class="filter-chip" :class="{ 'active': currentView === story.id }" @click="setView(story.id)" x-text="story.name"></button>
                         </template>
                     </div>

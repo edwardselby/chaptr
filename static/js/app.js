@@ -865,8 +865,9 @@ window.app = function() {
                 // No search query - show all non-archived stories
                 this.filteredStories = this.stories.filter(s => !s.is_archived);
             } else {
-                // Filter by name (including archived if they match search)
+                // Filter by name (excluding archived)
                 this.filteredStories = this.stories.filter(s =>
+                    !s.is_archived &&
                     s.name.toLowerCase().includes(query)
                 );
             }
@@ -1713,37 +1714,40 @@ window.app = function() {
             }
 
             try {
-                // Create balance adjustment changelog event (NOT a financial Event)
-                const changelogEvent = {
-                    entity_type: 'balance_adjustment',
-                    entity_id: this.balanceForm.account_id,
-                    action: 'update',
-                    data: {
-                        account_id: this.balanceForm.account_id,
-                        old_balance: this.balanceForm.projected_balance,
-                        new_balance: parseFloat(this.balanceForm.actual_balance),
-                        drift: this.balanceForm.drift,
-                        adjusted_at: new Date().toISOString().split('T')[0]
-                    }
-                };
-
-                // Queue for sync (backend will create auto-adjustment financial event)
-                if (storage.mode === 'full') {
-                    await db.queueChange(
-                        changelogEvent.entity_type,
-                        changelogEvent.entity_id,
-                        changelogEvent.action,
-                        changelogEvent.data
-                    );
-                }
-
                 // Update local account current_balance
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
-                if (account) {
-                    account.current_balance = parseFloat(this.balanceForm.actual_balance);
-                    if (storage.mode === 'full') {
-                        await db.accounts.put(account);
-                    }
+                if (!account) {
+                    throw new Error('Account not found');
+                }
+
+                // Store drift metadata for backend to create auto-adjustment event
+                const updatedAccount = {
+                    ...account,
+                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    updated_at: new Date().toISOString(),
+                    // Add metadata for backend reconciliation
+                    _balance_drift: this.balanceForm.drift,
+                    _drift_adjusted_at: new Date().toISOString().split('T')[0]
+                };
+
+                if (storage.mode === 'full') {
+                    // Get base_updated_at for conflict detection
+                    const baseUpdatedAt = account.updated_at;
+
+                    // Update account in Dexie
+                    await db.accounts.put(updatedAccount);
+
+                    // Queue account update for sync (spec-compliant entity type)
+                    await db.queueChange(
+                        'account',
+                        account.id,
+                        'update',
+                        updatedAccount,
+                        baseUpdatedAt
+                    );
+                } else {
+                    // Mode 0: Direct update without sync
+                    Object.assign(account, updatedAccount);
                 }
 
                 // Reload data to reflect changes
@@ -1756,7 +1760,7 @@ window.app = function() {
                 const driftText = this.balanceForm.drift > 0
                     ? `+${formatCurrency(this.balanceForm.drift, this.balanceForm.currency)}`
                     : formatCurrency(this.balanceForm.drift, this.balanceForm.currency);
-                alert(`Balance updated. Drift: ${driftText}\n\nAdjustment queued for sync.`);
+                showToast(`Balance updated. Drift: ${driftText} - Adjustment queued for sync.`, 'success');
 
             } catch (error) {
                 console.error('Error updating balance:', error);
