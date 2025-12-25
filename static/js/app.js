@@ -1536,10 +1536,46 @@ window.app = function() {
         },
 
         /**
-         * Add event (dashboard context - baseline auto-assign)
+         * Add event (dashboard context - auto-select story by date)
+         * Finds story covering today's date, prefers smallest range if multiple overlap
          */
         addEvent() {
-            this.openEventModal();
+            // Find story covering today's date
+            const today = new Date().toISOString().split('T')[0];
+            const coveringStories = this.stories.filter(s =>
+                !s.is_archived &&
+                s.start_date <= today &&
+                (!s.end_date || s.end_date >= today)
+            );
+
+            let selectedStory = null;
+
+            if (coveringStories.length === 1) {
+                // Only one story covers today - auto-select it
+                selectedStory = coveringStories[0];
+            } else if (coveringStories.length > 1) {
+                // Multiple stories cover today - prefer smallest date range
+                selectedStory = coveringStories.reduce((smallest, story) => {
+                    const storyRange = story.end_date
+                        ? new Date(story.end_date) - new Date(story.start_date)
+                        : Infinity;
+                    const smallestRange = smallest.end_date
+                        ? new Date(smallest.end_date) - new Date(smallest.start_date)
+                        : Infinity;
+
+                    return storyRange < smallestRange ? story : smallest;
+                });
+            }
+
+            // Open modal with auto-selected story (or baseline if none)
+            if (selectedStory) {
+                console.log(`[CHAPTR] Auto-selected story: ${selectedStory.name}`);
+                this.openEventModalForStory(selectedStory.id);
+            } else {
+                // No story covers today - create baseline event
+                console.log('[CHAPTR] No story covers today - creating baseline event');
+                this.openEventModal();
+            }
         },
 
         /**
