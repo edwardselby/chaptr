@@ -71,6 +71,10 @@ window.app = function() {
         settingsForm: {},
         accountsTotal: 0,
 
+        // Story Management
+        storySearchFilter: '',
+        filteredStories: [],
+
         // Projection State
         currentView: 'all',
         displayCurrency: null,
@@ -153,6 +157,9 @@ window.app = function() {
 
                 // Initialize settings form
                 this.settingsForm = { ...this.settings };
+
+                // Initialize filtered stories (show all non-archived by default)
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
 
                 console.log(`[CHAPTR] Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
@@ -831,10 +838,67 @@ window.app = function() {
         },
 
         /**
-         * Navigate to stories management (opens modal for now)
+         * Navigate to stories management screen
          */
         openStoriesManage() {
-            this.openStoryModal();
+            this.switchScreen('stories');
+            this.filterStories(); // Populate filtered list
+        },
+
+        /**
+         * Filter stories by search query
+         * Updates filteredStories based on storySearchFilter
+         */
+        filterStories() {
+            const query = this.storySearchFilter.toLowerCase();
+
+            if (!query) {
+                // No search query - show all non-archived stories
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
+            } else {
+                // Filter by name (including archived if they match search)
+                this.filteredStories = this.stories.filter(s =>
+                    s.name.toLowerCase().includes(query)
+                );
+            }
+        },
+
+        /**
+         * Archive or unarchive a story
+         * @param {string} storyId - Story UUID
+         */
+        async archiveStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) return;
+
+            const action = story.is_archived ? 'Unarchive' : 'Archive';
+            const confirmMessage = story.is_archived
+                ? `Unarchive "${story.name}"?\n\nIt will be visible again.`
+                : `Archive "${story.name}"?\n\nIt will be hidden but not deleted.`;
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            try {
+                await this.updateStory(storyId, { is_archived: !story.is_archived });
+                await this.loadData();
+                this.filterStories(); // Refresh filtered list
+            } catch (error) {
+                console.error(`Error ${action.toLowerCase()}ing story:`, error);
+                alert(`Failed to ${action.toLowerCase()} story: ` + error.message);
+            }
+        },
+
+        /**
+         * Get account name by ID
+         * Helper for displaying account names in UI
+         * @param {string} accountId - Account UUID
+         * @returns {string} Account name or 'Unknown'
+         */
+        getAccountName(accountId) {
+            const account = this.accounts.find(a => a.id === accountId);
+            return account ? account.name : 'Unknown';
         },
 
         /**
