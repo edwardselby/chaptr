@@ -409,6 +409,7 @@ class TestRecurringRuleUpdate:
         assert response.status_code == 422
 
 
+
 # ============================================================================
 # DELETE /api/recurring-rules/{id} - Delete Recurring Rule
 # ============================================================================
@@ -437,3 +438,149 @@ class TestRecurringRuleDelete:
         response = await async_client.delete(f"/api/recurring-rules/{fake_id}")
 
         assert response.status_code == 404
+
+
+# ============================================================================
+# Integration Tests - Recurring Rule Regeneration
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_update_recurring_rule_regenerates_future_events(
+    async_client_real, recurring_rule_repo_real, account_repo_real, mongodb_real, sample_user_real, sample_settings_real, auth_headers_real
+):
+    """
+    Update recurring rule regenerates future unedited events with new values.
+
+    Integration test for Task 147 (spec line 1347):
+    "Modification: Future generated events updated, past events unchanged"
+
+    Test scenario:
+    1. Create recurring rule with amount £1500
+    2. Generate future events (Feb, Mar)
+    3. Update rule amount to £1600
+    4. Verify future unedited events now have £1600
+    5. Manually edit one event to £1700
+    6. Update rule amount to £1800
+    7. Verify unedited events have £1800, edited event stays £1700
+    """
+    from datetime import date, timedelta
+    from api.utils.recurring import generate_recurring_events
+    from api.models import RecurringRuleCreate, Frequency, AccountCreate
+    from uuid import UUID
+
+    # Create an account for the test
+    account_data = AccountCreate(
+        name="Test Account",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=True
+    )
+
+    test_account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id="test-client"
+    )
+
+    # Create a recurring rule
+    rule_data = RecurringRuleCreate(
+        description="Monthly Rent",
+        amount=Decimal("-1500.00"),
+        currency="GBP",
+        account_id=test_account.id,
+        frequency=Frequency.MONTHLY,
+        day=28,
+        start_date=date(2024, 1, 1),
+        end_date=None
+    )
+
+    sample_recurring_rule = await recurring_rule_repo_real.create(
+        rule_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id="test-client"
+    )
+
+    # Generate future events for the rule (within ±1 month window)
+    user_id = sample_recurring_rule.created_by
+    generated_events = await generate_recurring_events(
+        mongodb_real,
+        user_id,
+        client_id="test-client"
+    )
+
+    # Verify events were generated
+    assert len(generated_events) > 0, "Should generate at least 1 future event"
+
+    # Verify initial amount is £1500
+    for event in generated_events:
+        assert event.amount == Decimal("-1500.00"), "Initial amount should be £1500"
+
+    # Update rule amount to £1600
+    update_payload = {
+        "amount": -1600.00
+    }
+
+    update_response = await async_client_real.put(
+        f"/api/recurring-rules/{sample_recurring_rule.id}",
+        json=update_payload,
+        headers=auth_headers_real
+    )
+
+    assert update_response.status_code == 200
+
+    # Fetch events again and verify they were regenerated with new amount
+    regenerated_events = await mongodb_real["events"].find({
+        "recurring_rule_id": str(sample_recurring_rule.id),
+        "event_date": {"$gt": date.today().isoformat()}
+    }).to_list(length=None)
+
+    assert len(regenerated_events) > 0, "Should have regenerated future events"
+
+    # All regenerated events should have new amount
+    for event in regenerated_events:
+        assert Decimal(str(event["amount"])) == Decimal("-1600.00"), \
+            f"Event {event['id']} should have new amount £1600"
+
+    # Manually edit one event to £1700
+    if regenerated_events:
+        edited_event_id = regenerated_events[0]["id"]
+
+        await mongodb_real["events"].update_one(
+            {"id": edited_event_id},
+            {"$set": {
+                "amount": "-1700.00",
+                "updated_at": (date.today() + timedelta(seconds=10)).isoformat()  # Make updated_at != created_at
+            }}
+        )
+
+        # Update rule amount to £1800
+        update_payload_2 = {
+            "amount": -1800.00
+        }
+
+        update_response_2 = await async_client_real.put(
+            f"/api/recurring-rules/{sample_recurring_rule.id}",
+            json=update_payload_2,
+            headers=auth_headers_real
+        )
+
+        assert update_response_2.status_code == 200
+
+        # Fetch all events again
+        final_events = await mongodb_real["events"].find({
+            "recurring_rule_id": str(sample_recurring_rule.id),
+            "event_date": {"$gt": date.today().isoformat()}
+        }).to_list(length=None)
+
+        # Check edited event is preserved
+        edited_event = next((e for e in final_events if e["id"] == edited_event_id), None)
+        assert edited_event is not None, "Edited event should still exist"
+        assert Decimal(str(edited_event["amount"])) == Decimal("-1700.00"), \
+            "Edited event should preserve custom amount £1700"
+
+        # Check unedited events have new amount
+        unedited_events = [e for e in final_events if e["id"] != edited_event_id]
+        for event in unedited_events:
+            assert Decimal(str(event["amount"])) == Decimal("-1800.00"), \
+                f"Unedited event {event['id']} should have latest amount £1800"
