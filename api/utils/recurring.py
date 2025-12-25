@@ -147,6 +147,7 @@ async def generate_recurring_events(
             rate_to_base = settings.rates.get(rule.currency, Decimal("1.0"))
 
             # Create new event instance
+            now = utc_now()  # Single timestamp for both created_at and updated_at
             event = Event(
                 id=generate_id(),
                 event_date=event_date,
@@ -158,9 +159,9 @@ async def generate_recurring_events(
                 story_id=None,  # Recurring events not tied to stories by default
                 is_baseline=False,  # Recurring events are not baseline
                 recurring_rule_id=rule.id,  # Link to parent rule
-                created_at=utc_now(),
+                created_at=now,
                 created_by=user_id,
-                updated_at=utc_now(),
+                updated_at=now,
                 updated_by=user_id
             )
 
