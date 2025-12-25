@@ -211,7 +211,12 @@
                     <template x-for="row in projectionRows" :key="row.id || row.date + row.description">
                         <div>
                             <!-- Regular Event Row -->
-                            <div class="timeline-row" x-show="!row.isGap" :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }">
+                            <div
+                                class="timeline-row"
+                                x-show="!row.isGap"
+                                :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }"
+                                @click="row.id && viewEventDetails(row.id)"
+                                style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.date)"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
@@ -728,6 +733,122 @@
                     <button type="submit" class="btn-primary">Save Story</button>
                     <button type="button" class="btn-danger" x-show="storyForm.id"
                         @click="deleteStoryFromModal()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Event Modal -->
+    <div class="modal-overlay" x-show="showEventModal" @click="showEventModal = false" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
+                <button class="modal-close" @click="showEventModal = false">✕</button>
+            </div>
+            <form @submit.prevent="saveEvent" class="modal-body">
+
+                <!-- Event Date (Required) -->
+                <div class="form-group">
+                    <label for="event-date">Event Date</label>
+                    <input
+                        id="event-date"
+                        type="date"
+                        x-model="eventForm.date"
+                        required
+                        class="form-input">
+                </div>
+
+                <!-- Description (Required) -->
+                <div class="form-group">
+                    <label for="event-description">Description</label>
+                    <input
+                        id="event-description"
+                        type="text"
+                        x-model="eventForm.description"
+                        placeholder="e.g., Car rental, Hotel deposit, Salary"
+                        required
+                        class="form-input">
+                </div>
+
+                <!-- Amount (Required) -->
+                <div class="form-group">
+                    <label for="event-amount">Amount</label>
+                    <input
+                        id="event-amount"
+                        type="number"
+                        x-model="eventForm.amount"
+                        step="0.01"
+                        placeholder="0.00"
+                        required
+                        class="form-input">
+                    <span class="form-hint">Positive for income, negative for expense</span>
+                </div>
+
+                <!-- Account Selection (Resolved via hierarchy) -->
+                <div class="form-group">
+                    <label for="event-account">Account</label>
+                    <select
+                        id="event-account"
+                        x-model="eventForm.account_id"
+                        class="form-input">
+                        <option value="">-- Auto (use hierarchy) --</option>
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
+                        </template>
+                    </select>
+                    <span class="form-hint" x-text="getAccountHierarchyHint()"></span>
+                </div>
+
+                <!-- Currency (Auto-set from account) -->
+                <div class="form-group">
+                    <label for="event-currency">Currency</label>
+                    <input
+                        id="event-currency"
+                        type="text"
+                        x-model="eventForm.currency"
+                        pattern="[A-Z]{3}"
+                        placeholder="GBP, USD, EUR"
+                        maxlength="3"
+                        required
+                        class="form-input"
+                        style="text-transform: uppercase">
+                    <span class="form-hint">Auto-set from account or enter manually</span>
+                </div>
+
+                <!-- Story Assignment (Baseline vs Story) -->
+                <div class="form-group">
+                    <label for="event-story">Story</label>
+                    <select
+                        id="event-story"
+                        x-model="eventForm.story_id"
+                        @change="handleStoryChange()"
+                        class="form-input">
+                        <option value="">-- Baseline (no story) --</option>
+                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
+                            <option :value="story.id" x-text="story.name"></option>
+                        </template>
+                    </select>
+                    <span class="form-hint">Leave as baseline or assign to a story</span>
+                </div>
+
+                <!-- Hypothetical Toggle -->
+                <div class="form-group">
+                    <label class="form-checkbox">
+                        <input type="checkbox" x-model="eventForm.is_hypothetical">
+                        <span>Hypothetical (planned/future)</span>
+                    </label>
+                    <span class="form-hint">Check if this is planned/not yet confirmed</span>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showEventModal = false">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Event</button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        x-show="eventForm.id"
+                        @click="deleteEventFromModal()">Delete</button>
                 </div>
             </form>
         </div>
