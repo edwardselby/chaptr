@@ -10,6 +10,7 @@ Phase 1.4 implements CRUD operations only - no event materialization yet.
 from uuid import UUID
 from typing import Optional
 from decimal import Decimal
+from datetime import date
 
 from api.repositories.base import BaseRepository
 from api.models import RecurringRule, RecurringRuleCreate, RecurringRuleUpdate
@@ -148,12 +149,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         - account_id must exist and not be archived if being updated
         - Modification affects future events only
         - Past generated events remain unchanged
+        - Future unedited instances deleted and regenerated with new values
         - Always update timestamp and updated_by (if user authenticated)
 
-        TODO: Spec compliance (lines 1319-1350) - Regenerate future events after rule update
-        Current behavior: Future events retain old rule values until next generation window
-        Spec requirement: "Modification: Future generated events updated"
-        Implementation needed: Delete future unedited instances and regenerate from updated rule
+        Spec compliance (lines 1319-1350): "Modification: Future generated events updated"
+        Implementation: Deletes future unedited instances ($expr updated_at == created_at)
+        and regenerates them with updated rule values within ±1 month window
 
         :param rule_id: Recurring rule UUID to update
         :type rule_id: UUID
@@ -215,6 +216,20 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             self._get_user_id(current_user),
             client_id
         )
+
+        # Spec compliance (lines 1319-1350): Regenerate future events with updated rule
+        # Delete future unedited instances (same logic as delete method)
+        today = date.today()
+        await self.db["events"].delete_many({
+            "recurring_rule_id": to_str(rule_id),
+            "event_date": {"$gt": today.isoformat()},
+            "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
+        })
+
+        # Regenerate events with updated rule values
+        from api.utils.recurring import generate_recurring_events
+        user_id = self._get_user_id(current_user)
+        await generate_recurring_events(self.db, user_id, client_id)
 
         # Return updated rule
         return updated_rule
