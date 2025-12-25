@@ -1043,8 +1043,6 @@ window.app = function() {
                 story_id: eventData.story_id || null,
                 is_baseline: eventData.is_baseline || false,
                 is_hypothetical: eventData.is_hypothetical || false,
-                event_type: eventData.event_type || 'OUTGOING',
-                notes: eventData.notes || '',
                 created_at: now,
                 updated_at: now
             };
