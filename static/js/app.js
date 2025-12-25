@@ -1872,6 +1872,30 @@ window.app = function() {
                 return;
             }
 
+            // Validation: Event date within story range
+            if (this.eventForm.story_id && this.eventForm.story_id !== 'auto') {
+                const story = this.stories.find(s => s.id === this.eventForm.story_id);
+                if (story) {
+                    const eventDate = this.eventForm.date;
+
+                    if (eventDate < story.start_date) {
+                        showToast(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`,
+                            'error'
+                        );
+                        return;
+                    }
+
+                    if (story.end_date && eventDate > story.end_date) {
+                        showToast(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`,
+                            'error'
+                        );
+                        return;
+                    }
+                }
+            }
+
             // Validation: Baseline XOR Story
             if (this.eventForm.is_baseline && this.eventForm.story_id) {
                 alert('Event cannot be both baseline and assigned to a story');
