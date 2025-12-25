@@ -1308,6 +1308,42 @@ body::before {
     background: rgba(244, 67, 54, 0.1);
 }
 
+/* Balance Modal Styles */
+.balance-display {
+    background: var(--bg-secondary);
+    color: var(--text-dim);
+    cursor: not-allowed;
+}
+
+.drift-display {
+    background: rgba(74, 246, 38, 0.05);
+    padding: 16px;
+    border-radius: 4px;
+    border: 1px solid var(--green-dim);
+    margin-top: 8px;
+}
+
+.drift-amount {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.drift-amount.positive {
+    color: var(--green-bright);
+}
+
+.drift-amount.negative {
+    color: var(--red);
+}
+
+.drift-amount.zero {
+    color: var(--text-mid);
+}
+
 .section-subtitle {
     font-size: 11px;
     color: var(--text-dim);

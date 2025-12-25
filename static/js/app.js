@@ -64,11 +64,19 @@ window.app = function() {
         showEventModal: false,
         showUserModal: false,
         showHelpModal: false,
+        showBalanceModal: false,
         accountForm: {},
         storyForm: {},
         eventForm: {},
         userForm: {},
         settingsForm: {},
+        balanceForm: {
+            account_id: '',
+            projected_balance: 0,
+            actual_balance: 0,
+            drift: null,
+            currency: 'GBP'
+        },
         accountsTotal: 0,
 
         // Story Management
@@ -1547,11 +1555,149 @@ window.app = function() {
 
         /**
          * Update account balance (dashboard/accounts context)
+         * Opens the balance reconciliation modal
          */
         updateBalance() {
-            // TODO PR2 Stage 4: Implement balance update
-            console.log('Update balance - Current screen:', this.currentScreen);
-            alert('Update Balance - Coming in Stage 4 (CRUD)');
+            this.openBalanceModal();
+        },
+
+        /**
+         * Open balance reconciliation modal
+         * Triggered by $ button in command bar
+         */
+        openBalanceModal() {
+            // Pre-select first account if only one exists
+            const activeAccounts = this.accounts.filter(a => !a.is_archived);
+
+            this.balanceForm = {
+                account_id: activeAccounts.length === 1 ? activeAccounts[0].id : '',
+                projected_balance: 0,
+                actual_balance: 0,
+                drift: null,
+                currency: this.settings.base_currency || 'GBP'
+            };
+
+            if (this.balanceForm.account_id) {
+                this.calculateBalanceDrift();
+            }
+
+            this.showBalanceModal = true;
+        },
+
+        /**
+         * Calculate projected balance and drift
+         * Called when account selected or actual balance changed
+         */
+        calculateBalanceDrift() {
+            if (!this.balanceForm.account_id) {
+                this.balanceForm.drift = null;
+                return;
+            }
+
+            const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+            if (!account) return;
+
+            this.balanceForm.currency = account.currency;
+
+            // Calculate projected balance for this account at today's date
+            const today = new Date().toISOString().split('T')[0];
+            const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+            this.balanceForm.projected_balance = projectedBalance;
+
+            // Calculate drift if actual balance entered
+            if (this.balanceForm.actual_balance !== null && this.balanceForm.actual_balance !== '') {
+                this.balanceForm.drift = parseFloat(this.balanceForm.actual_balance) - projectedBalance;
+            } else {
+                this.balanceForm.drift = null;
+            }
+        },
+
+        /**
+         * Calculate account balance at specific date
+         * @param {string} accountId - Account UUID
+         * @param {string} date - Date in YYYY-MM-DD format
+         * @return {number} Projected balance
+         */
+        calculateAccountBalance(accountId, date) {
+            const account = this.accounts.find(a => a.id === accountId);
+            if (!account) return 0;
+
+            // Start with account's current balance
+            let balance = account.current_balance;
+
+            // Add all events for this account up to date
+            const accountEvents = this.events.filter(e =>
+                e.account_id === accountId &&
+                e.date <= date
+            );
+
+            for (const event of accountEvents) {
+                balance += event.amount;
+            }
+
+            return balance;
+        },
+
+        /**
+         * Save balance update - creates changelog event for sync
+         */
+        async saveBalanceUpdate() {
+            if (this.balanceForm.drift === 0) {
+                this.showBalanceModal = false;
+                return;
+            }
+
+            try {
+                // Create balance adjustment changelog event (NOT a financial Event)
+                const changelogEvent = {
+                    entity_type: 'balance_adjustment',
+                    entity_id: this.balanceForm.account_id,
+                    action: 'update',
+                    data: {
+                        account_id: this.balanceForm.account_id,
+                        old_balance: this.balanceForm.projected_balance,
+                        new_balance: parseFloat(this.balanceForm.actual_balance),
+                        drift: this.balanceForm.drift,
+                        adjusted_at: new Date().toISOString().split('T')[0]
+                    }
+                };
+
+                // Queue for sync (backend will create auto-adjustment financial event)
+                if (storage.mode === 'full') {
+                    await db.queueChange(
+                        changelogEvent.entity_type,
+                        changelogEvent.entity_id,
+                        changelogEvent.action,
+                        changelogEvent.data
+                    );
+                }
+
+                // Update local account current_balance
+                const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+                if (account) {
+                    account.current_balance = parseFloat(this.balanceForm.actual_balance);
+                    if (storage.mode === 'full') {
+                        await db.accounts.put(account);
+                    }
+                }
+
+                // Reload data to reflect changes
+                await this.loadData();
+                await this.updateDashboardProjection();
+
+                this.showBalanceModal = false;
+
+                // Show notification
+                const driftText = this.balanceForm.drift > 0
+                    ? `+${formatCurrency(this.balanceForm.drift, this.balanceForm.currency)}`
+                    : formatCurrency(this.balanceForm.drift, this.balanceForm.currency);
+                alert(`Balance updated. Drift: ${driftText}\n\nAdjustment queued for sync.`);
+
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                alert('Failed to update balance: ' + error.message);
+            }
         },
 
         /**
