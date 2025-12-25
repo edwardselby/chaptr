@@ -329,7 +329,7 @@ window.app = function() {
                     }
                 });
 
-                await this.loadFromDexie();
+                await this.loadData();
             } catch (error) {
                 console.error('Error populating Dexie:', error);
             }
@@ -1056,7 +1056,7 @@ window.app = function() {
             console.log(`[CHAPTR] Created event with entity_id: ${localId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -1097,7 +1097,7 @@ window.app = function() {
             console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -1124,7 +1124,7 @@ window.app = function() {
             console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 
             // 4. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         // ===== SETTINGS =====
@@ -1317,7 +1317,7 @@ window.app = function() {
                 });
 
                 alert('✓ Backup restored successfully');
-                await this.loadFromDexie();
+                await this.loadData();
             } catch (error) {
                 console.error('Error restoring backup:', error);
                 alert('Failed to restore backup: ' + error.message);
