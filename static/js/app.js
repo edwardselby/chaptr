@@ -389,6 +389,16 @@ window.app = function() {
         },
 
         /**
+         * Navigate to Projection view filtered by story
+         * Used when clicking a story in the Dashboard stories panel
+         * @param {string} storyId - Story UUID
+         */
+        navigateToStoryProjection(storyId) {
+            this.setView(storyId);
+            this.switchScreen('projection');
+        },
+
+        /**
          * Set projection view (all, baseline, or story ID)
          * @param {string} view - View identifier
          */

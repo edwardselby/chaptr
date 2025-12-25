@@ -113,7 +113,7 @@
                     </div>
                     <div class="stories-list">
                         <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
-                            <div class="story-item" @click="viewStoryDetails(story.id)">
+                            <div class="story-item" @click="navigateToStoryProjection(story.id)">
                                 <div class="story-item-left">
                                     <div class="story-name" x-text="story.name"></div>
                                     <div class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></div>
