@@ -286,8 +286,6 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         >>> await repo.delete(rule_id, current_user=user, client_id="client-a")
         True
         """
-        from datetime import date
-
         # Verify rule exists and get snapshot for change log (before deletion)
         rule = await self.get(rule_id)
 
