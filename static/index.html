@@ -1038,7 +1038,7 @@
 
         <!-- Sync Button -->
         <button class="cmd-btn" @click="triggerManualSync()" :disabled="isSyncing">
-            <span class="cmd-key" x-text="isSyncing ? '⏳' : '🔄'"></span>
+            <span class="cmd-key" :class="{ 'spinning': syncButtonSpinner }">🔄</span>
             <span class="cmd-label">Sync</span>
         </button>
 

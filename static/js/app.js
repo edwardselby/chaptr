@@ -58,6 +58,7 @@ window.app = function() {
 
         // UI State
         isSyncing: false,
+        syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
         showAccountModal: false,
         showStoryModal: false,
@@ -1421,20 +1422,47 @@ window.app = function() {
         },
 
         /**
-         * Trigger manual sync
+         * Trigger manual sync with spinner and conflict detection
          */
         async triggerManualSync() {
             if (this.isSyncing) return;
 
+            this.isSyncing = true;
+            this.syncButtonSpinner = true; // Show spinner
+
             try {
-                this.isSyncing = true;
+                const queueCount = await this.updateSyncQueueCount();
+
+                if (queueCount === 0) {
+                    showToast('No changes to sync', 'info');
+                    return;
+                }
+
+                // Perform sync
                 await this.fullSync();
-                alert('✓ Sync complete');
+
+                // Check for conflicts after sync
+                if (storage.mode === 'full') {
+                    const conflicts = await db.conflicts.count();
+                    if (conflicts > 0) {
+                        showToast(
+                            `⚠ ${conflicts} conflict${conflicts > 1 ? 's' : ''} detected. Review in Settings.`,
+                            'warning'
+                        );
+                    } else {
+                        showToast(`✓ Synced ${queueCount} change${queueCount > 1 ? 's' : ''}`, 'success');
+                    }
+                } else {
+                    showToast(`✓ Sync complete`, 'success');
+                }
+
             } catch (error) {
                 console.error('Sync error:', error);
-                alert('Sync failed');
+                alert('Failed to sync: ' + error.message);
             } finally {
                 this.isSyncing = false;
+                this.syncButtonSpinner = false; // Hide spinner
+                await this.updateSyncQueueCount(); // Refresh count
             }
         },
 

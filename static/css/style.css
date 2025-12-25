@@ -1747,6 +1747,17 @@ body::before {
     color: var(--text-dim);
 }
 
+/* ===== SYNC BUTTON SPINNER ANIMATION ===== */
+
+.cmd-key.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .info-row .value {
     color: var(--text-bright);
     font-weight: 600;
