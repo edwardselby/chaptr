@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CPTR-2d7da502: Stories Management screen with search filter, archive/unarchive, delete functionality following Accounts pattern
+- CPTR-2d7da502, CPTR-79a73eab: Story search filter with real-time filtering by name in Stories Management screen
+- CPTR-36dc6afc: "View All" static entry in Dashboard stories panel for filtering to all stories + baseline projection
+- CPTR-046aa49a: Balance reconciliation modal with account selection, drift calculation (actual - projected), and Accept/Cancel actions
+- CPTR-046aa49a: Balance drift display with color coding (green=positive, red=negative, gray=zero)
+- CPTR-558ed08e: Balance adjustment changelog event queue for backend auto-adjustment event creation
+- CPTR-40c0859b: Event auto-select by date logic (prefers smallest story range when multiple stories overlap today's date)
+- CPTR-245fb5f6: Event date validation with toast notifications for events outside selected story date range
+- CPTR-245fb5f6: Toast notification system (showToast utility) with info/success/error/warning types and auto-dismiss
+- CPTR-44f7ca5f: Sync button spinner animation during sync operations
+- CPTR-44f7ca5f: Conflict detection after sync with warning toast showing conflict count
 - CPTR-583f4cdc: Event modal UI with create/edit/delete functionality following Account/Story modal pattern
 - CPTR-d502d0e6: Alpine.js event modal methods (openEventModal, openEventModalForStory, viewEventDetails, saveEvent, deleteEventFromModal, getAccountHierarchyHint, handleStoryChange)
 - CPTR-d96ecfd8: Command bar event integration (addEvent for baseline, addEventToStory for story context)
@@ -29,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-2cf0e42d: Enhanced FastAPI validation error logging with detailed request body and error messages
 
 ### Changed
+- CPTR-b50349be: Dashboard story click behavior changed from opening edit modal to navigating to Projection view filtered by story
+- CPTR-45994c2f: openStoriesManage() changed from opening story modal to switching to Stories Management screen
+- CPTR-cd8c01a8: VIEW ALL button removed from Dashboard (replaced by "View All" story entry)
+- CPTR-560aac16: updateBalance() stub replaced with balance reconciliation modal (openBalanceModal)
+- CPTR-40c0859b: addEvent() enhanced with auto-story-selection by date (smallest range if multiple stories overlap)
+- CPTR-44f7ca5f: triggerManualSync() enhanced with spinner state, queue count check, conflict detection, and toast notifications
+- CPTR-44f7ca5f: Sync button changed from hourglass/refresh emoji toggle to spinning animation using CSS
 - CPTR-223ce4b0: App initialization skips data loading if user not authenticated (shows login screen instead)
 - CPTR-c538bb37: Logout function simplified to use window.location.reload() for complete state reset (prevents data leakage between sessions)
 - CPTR-5f9fae48: 401 response handling changed from redirect to reload (fixes non-existent /login URL issue)
@@ -37,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-fa98623d: BaseRepository.delete() signature extended to accept current_user and client_id parameters for change logging
 
 ### Fixed
+- CPTR-fef45d59: loadFromDexie error in event CRUD methods - changed to loadData() in populateDexie() and backup restore handler (2 locations)
 - CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
 - CPTR-7d470b3e: Admin access to settings screen - changed user.is_admin checks to user.role === 'admin' for frontend-backend field consistency
 - CPTR-fa98623d: Decimal type validation error (422) when syncing numeric fields - frontend now sends String(parseFloat()) for Pydantic Decimal fields

@@ -608,6 +608,28 @@ body::before {
     color: var(--red);
 }
 
+/* Virtual Drift Row Styling - Display-only reconciliation rows */
+.timeline-row.drift {
+    background: rgba(74, 246, 38, 0.05);  /* Subtle green tint */
+    border-left: 2px solid var(--green-dim);
+    font-style: italic;
+}
+
+.timeline-row.drift .timeline-event {
+    color: var(--text-dim);  /* Dimmed to show it's provisional */
+}
+
+.timeline-row.drift .tag {
+    background: rgba(255, 170, 0, 0.15);  /* Amber background */
+    color: var(--amber);
+    font-weight: 600;
+    border: 1px solid var(--amber);
+}
+
+.timeline-row.drift .timeline-amount {
+    color: var(--green-dim);  /* Dimmed amount */
+}
+
 /* TODAY Divider */
 .today-divider {
     display: flex;
@@ -730,6 +752,57 @@ body::before {
 .empty-state p {
     color: var(--text-dim);
     font-size: 13px;
+}
+
+/* Dashboard Story Items */
+.story-item {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: border-color 0.15s;
+    margin-bottom: 8px;
+}
+
+.story-item:hover {
+    border-color: var(--green-dim);
+}
+
+.story-item-left {
+    flex: 1;
+}
+
+.story-item-right {
+    text-align: right;
+}
+
+.story-balance {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+/* View All special styling */
+.view-all-item {
+    border-color: var(--amber);
+    margin-bottom: 16px;
+}
+
+.view-all-item:hover {
+    background: rgba(255, 170, 0, 0.05);
+    border-color: var(--amber);
+}
+
+.view-all-item .story-name {
+    color: var(--amber);
+    font-weight: bold;
+}
+
+.view-all-item .story-dates {
+    color: rgba(255, 170, 0, 0.6);
 }
 
 /* Utility Classes */
@@ -870,6 +943,133 @@ body::before {
 .pending-indicator {
     font-size: 11px;
     color: var(--amber);
+}
+
+/* Stories Management Screen */
+.stories-list-management {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.search-filter {
+    margin-bottom: 12px;
+}
+
+.search-filter input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--green-bright);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    transition: border-color 0.15s;
+}
+
+.search-filter input:focus {
+    border-color: var(--green-dim);
+    outline: none;
+}
+
+.search-filter input::placeholder {
+    color: var(--text-dim);
+}
+
+.story-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    position: relative;
+}
+
+.story-card:hover {
+    border-color: var(--green-dim);
+}
+
+.story-card-header {
+    margin-bottom: 12px;
+}
+
+.story-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.story-name {
+    color: var(--text-bright);
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.tag-archived {
+    color: var(--text-dim);
+    border-color: var(--text-dim);
+}
+
+.story-dates {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.story-card-meta {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    font-size: 11px;
+}
+
+.story-meta-item {
+    display: flex;
+    gap: 4px;
+}
+
+.meta-label {
+    color: var(--text-dim);
+}
+
+.meta-value {
+    color: var(--text-bright);
+}
+
+.story-card-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.btn-icon {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+.btn-icon:hover {
+    border-color: var(--green-dim);
+    background: var(--green-glow);
+}
+
+.btn-icon.btn-archive:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: rgba(255, 170, 0, 0.1);
+}
+
+.btn-icon.btn-danger:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-glow);
 }
 
 /* Drift panel */
@@ -1128,6 +1328,42 @@ body::before {
 
 .btn-danger:hover {
     background: rgba(244, 67, 54, 0.1);
+}
+
+/* Balance Modal Styles */
+.balance-display {
+    background: var(--bg-secondary);
+    color: var(--text-dim);
+    cursor: not-allowed;
+}
+
+.drift-display {
+    background: rgba(74, 246, 38, 0.05);
+    padding: 16px;
+    border-radius: 4px;
+    border: 1px solid var(--green-dim);
+    margin-top: 8px;
+}
+
+.drift-amount {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.drift-amount.positive {
+    color: var(--green-bright);
+}
+
+.drift-amount.negative {
+    color: var(--red);
+}
+
+.drift-amount.zero {
+    color: var(--text-mid);
 }
 
 .section-subtitle {
@@ -1531,6 +1767,17 @@ body::before {
 
 .info-row .label {
     color: var(--text-dim);
+}
+
+/* ===== SYNC BUTTON SPINNER ANIMATION ===== */
+
+.cmd-key.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .info-row .value {

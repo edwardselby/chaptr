@@ -248,6 +248,9 @@ async def sync(
     """
     db = MongoDB.get_database()
 
+    # Capture sync start time - used to include changes created during this sync (e.g., reconciliation)
+    sync_start_time = utc_now()
+
     applied: list[UUID] = []
     conflicts: list[SyncConflict] = []
 
@@ -290,6 +293,20 @@ async def sync(
                 server_version={"error": str(e)}
             ))
 
+    # ========== RECONCILIATION PHASE: Create [auto] adjustment events ==========
+    # Trigger reconciliation after all client changes are applied
+    # Creates [auto] adjustment events for accounts with pending_reconciliation = true
+    from core.reconciliation import trigger_reconciliation
+
+    user_id = UUID(current_user["id"])
+
+    await trigger_reconciliation(
+        trigger_reason="sync",
+        db=db,
+        user_id=user_id,
+        client_id=None  # Server-side change - must appear in all clients' server_changes
+    )
+
     # ========== PULL PHASE: Get changes from other clients ==========
     server_changes: list[SyncServerChange] = []
     full_sync_required = False
@@ -317,18 +334,22 @@ async def sync(
     user_id = UUID(current_user["id"])
     await generate_recurring_events(db, user_id, request.client_id)
 
-    if not full_sync_required and request.last_sync_at:
-        # Query changes since last_sync_at
+    if not full_sync_required:
+        # Query changes since last_sync_at (or all changes for first sync)
         # Include: REST API changes (client_id=None or missing) and other clients' changes
         # Exclude: Only this client's own changes
         query = {
-            "changed_at": {"$gt": request.last_sync_at.isoformat()},
             "$or": [
                 {"changed_by_client": {"$in": [None]}},  # REST API changes (field is null)
                 {"changed_by_client": {"$exists": False}},  # Field not present (old fixtures)
                 {"changed_by_client": {"$ne": request.client_id}}  # Other clients
             ]
         }
+
+        # If last_sync_at provided, only get changes since then
+        # If None (first sync), get all changes
+        if request.last_sync_at:
+            query["changed_at"] = {"$gt": request.last_sync_at.isoformat()}
 
         cursor = db["change_log"].find(query).sort("changed_at", 1)
 

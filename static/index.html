@@ -112,8 +112,20 @@
                         <button class="btn-section-action" @click="openStoriesManage()">MANAGE</button>
                     </div>
                     <div class="stories-list">
+                        <!-- View All static entry -->
+                        <div class="story-item view-all-item" @click="navigateToStoryProjection('all')">
+                            <div class="story-item-left">
+                                <div class="story-name">View All</div>
+                                <div class="story-dates">All stories + baseline</div>
+                            </div>
+                            <div class="story-item-right">
+                                <div class="story-balance" x-text="formatCurrency(getViewAllSummary().balance, settings.base_currency)"></div>
+                            </div>
+                        </div>
+
+                        <!-- Regular stories -->
                         <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
-                            <div class="story-item" @click="viewStoryDetails(story.id)">
+                            <div class="story-item" @click="navigateToStoryProjection(story.id)">
                                 <div class="story-item-left">
                                     <div class="story-name" x-text="story.name"></div>
                                     <div class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></div>
@@ -157,7 +169,6 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Projection</h2>
-                        <button class="btn-section-action" @click="switchScreen('projection')">VIEW ALL</button>
                     </div>
                     <div class="projection-summary">
                         <div class="summary-item">
@@ -187,7 +198,7 @@
                     <div class="filters-scroll">
                         <button class="filter-chip" :class="{ 'active': currentView === 'all' }" @click="setView('all')">ALL</button>
                         <button class="filter-chip" :class="{ 'active': currentView === 'baseline' }" @click="setView('baseline')">Baseline</button>
-                        <template x-for="story in stories" :key="story.id">
+                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
                             <button class="filter-chip" :class="{ 'active': currentView === story.id }" @click="setView(story.id)" x-text="story.name"></button>
                         </template>
                     </div>
@@ -214,7 +225,7 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }"
+                                :class="{ 'past': isPast(row.date), 'today': isToday(row.date), 'drift': row.isDrift }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.date)"></div>
@@ -564,6 +575,83 @@
             </div>
         </div>
 
+        <!-- Stories Management Screen -->
+        <div class="screen" x-show="currentScreen === 'stories'" x-cloak>
+            <div class="screen-content">
+
+                <!-- Stories List -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>Stories</h2>
+                        <button class="btn-add" @click="openStoryModal()">+ Add Story</button>
+                    </div>
+
+                    <!-- Search Filter -->
+                    <div class="search-filter" x-show="stories.length > 0">
+                        <input type="text"
+                            x-model="storySearchFilter"
+                            placeholder="Search stories..."
+                            @input="filterStories()"
+                            class="form-input">
+                    </div>
+
+                    <!-- Stories List -->
+                    <div class="stories-list-management">
+                        <template x-if="filteredStories.length === 0 && stories.length === 0">
+                            <div class="empty-state">
+                                <p>No stories yet. Add your first story to get started.</p>
+                            </div>
+                        </template>
+                        <template x-if="filteredStories.length === 0 && stories.length > 0">
+                            <div class="empty-state">
+                                <p>No stories found matching your search.</p>
+                            </div>
+                        </template>
+                        <template x-for="story in filteredStories" :key="story.id">
+                            <div class="story-card" @click="viewStoryDetails(story.id)">
+                                <div class="story-card-header">
+                                    <div class="story-name-row">
+                                        <h3 class="story-name" x-text="story.name"></h3>
+                                        <span class="tag tag-archived" x-show="story.is_archived">[archived]</span>
+                                    </div>
+                                    <span class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></span>
+                                </div>
+
+                                <div class="story-card-meta">
+                                    <div class="story-meta-item">
+                                        <span class="meta-label">Currency:</span>
+                                        <span class="meta-value" x-text="story.display_currency"></span>
+                                    </div>
+                                    <div class="story-meta-item">
+                                        <span class="meta-label">Funding:</span>
+                                        <span class="meta-value" x-text="story.funding_mode"></span>
+                                    </div>
+                                    <div class="story-meta-item" x-show="story.default_account_id">
+                                        <span class="meta-label">Account:</span>
+                                        <span class="meta-value" x-text="getAccountName(story.default_account_id)"></span>
+                                    </div>
+                                </div>
+
+                                <div class="story-card-actions" @click.stop>
+                                    <button class="btn-icon btn-archive"
+                                        @click="archiveStory(story.id)"
+                                        :title="story.is_archived ? 'Unarchive' : 'Archive'">
+                                        <span x-text="story.is_archived ? '📂' : '📦'"></span>
+                                    </button>
+                                    <button class="btn-icon btn-danger"
+                                        @click="deleteStory(story.id)"
+                                        title="Delete">
+                                        🗑
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
     </main>
 
     <!-- Account Modal -->
@@ -738,6 +826,86 @@
         </div>
     </div>
 
+    <!-- Balance Reconciliation Modal -->
+    <div class="modal-overlay" x-show="showBalanceModal" @click="showBalanceModal = false" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2>Update Account Balance</h2>
+                <button class="modal-close" @click="showBalanceModal = false">✕</button>
+            </div>
+
+            <form @submit.prevent="saveBalanceUpdate" class="modal-body">
+                <!-- Account Selection -->
+                <div class="form-group">
+                    <label for="balance-account">Account</label>
+                    <select id="balance-account"
+                        x-model="balanceForm.account_id"
+                        @change="calculateBalanceDrift()"
+                        required
+                        class="form-input">
+                        <option value="">-- Select Account --</option>
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                            <option :value="account.id" x-text="account.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Current Projected Balance (read-only) -->
+                <div class="form-group">
+                    <label>Current Projected Balance</label>
+                    <input type="text"
+                        :value="formatCurrency(balanceForm.projected_balance, balanceForm.currency)"
+                        disabled
+                        class="form-input balance-display">
+                    <span class="form-hint">Based on all events to today</span>
+                </div>
+
+                <!-- Actual Balance (user input) -->
+                <div class="form-group">
+                    <label for="balance-actual">Actual Balance</label>
+                    <input id="balance-actual"
+                        type="number"
+                        step="0.01"
+                        x-model="balanceForm.actual_balance"
+                        @input="calculateBalanceDrift()"
+                        :placeholder="balanceForm.projected_balance"
+                        required
+                        class="form-input">
+                    <span class="form-hint">Enter the actual balance from your bank</span>
+                </div>
+
+                <!-- Drift Calculation -->
+                <div class="form-group drift-display" x-show="balanceForm.drift !== null">
+                    <label>Drift</label>
+                    <div class="drift-amount" :class="{
+                        'positive': balanceForm.drift > 0,
+                        'negative': balanceForm.drift < 0,
+                        'zero': balanceForm.drift === 0
+                    }">
+                        <span x-show="balanceForm.drift > 0">+</span>
+                        <span x-text="formatCurrency(Math.abs(balanceForm.drift), balanceForm.currency)"></span>
+                    </div>
+                    <span class="form-hint" x-show="balanceForm.drift !== 0">
+                        Virtual adjustment shown until next sync
+                    </span>
+                    <span class="form-hint" x-show="balanceForm.drift === 0">
+                        ✓ No adjustment needed - balances match
+                    </span>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showBalanceModal = false">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-primary" :disabled="balanceForm.drift === 0">
+                        Accept & Reconcile
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Event Modal -->
     <div class="modal-overlay" x-show="showEventModal" @click="showEventModal = false" x-cloak>
         <div class="modal" @click.stop>
@@ -870,7 +1038,7 @@
 
         <!-- Sync Button -->
         <button class="cmd-btn" @click="triggerManualSync()" :disabled="isSyncing">
-            <span class="cmd-key" x-text="isSyncing ? '⏳' : '🔄'"></span>
+            <span class="cmd-key" :class="{ 'spinning': syncButtonSpinner }">🔄</span>
             <span class="cmd-label">Sync</span>
         </button>
 

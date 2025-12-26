@@ -56,7 +56,8 @@ export async function calculateProjection(
     endDate,
     view = 'all',
     storyId = null,
-    displayCurrency = null
+    displayCurrency = null,
+    virtualDrifts = []
 ) {
     try {
         // Validate dates
@@ -169,8 +170,8 @@ export async function calculateProjection(
             results.push(row);
         }
 
-        // Step 5: Insert gap indicators (threshold: 7 days)
-        const rowsWithGaps = insertGapIndicators(results, 7);
+        // Step 5: Insert gap indicators and virtual drift rows (threshold: 7 days)
+        const rowsWithGaps = insertGapIndicators(results, 7, virtualDrifts);
 
         return rowsWithGaps;
 
@@ -187,7 +188,7 @@ export async function calculateProjection(
  * @param {number} thresholdDays - Minimum gap in days to show indicator
  * @returns {Array} Rows with gap indicators inserted
  */
-function insertGapIndicators(rows, thresholdDays = 7) {
+function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     if (rows.length === 0) return rows;
 
     const withGaps = [];
@@ -201,6 +202,13 @@ function insertGapIndicators(rows, thresholdDays = 7) {
         if (!todayDividerInserted && row.date >= today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
+
+            // Inject virtual drift rows after TODAY divider, before future events
+            if (virtualDrifts && virtualDrifts.length > 0) {
+                for (const driftRow of virtualDrifts) {
+                    withGaps.push(driftRow);
+                }
+            }
         }
 
         withGaps.push(row);

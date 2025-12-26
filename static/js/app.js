@@ -58,18 +58,31 @@ window.app = function() {
 
         // UI State
         isSyncing: false,
+        syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
         showAccountModal: false,
         showStoryModal: false,
         showEventModal: false,
         showUserModal: false,
         showHelpModal: false,
+        showBalanceModal: false,
         accountForm: {},
         storyForm: {},
         eventForm: {},
         userForm: {},
         settingsForm: {},
+        balanceForm: {
+            account_id: '',
+            projected_balance: 0,
+            actual_balance: 0,
+            drift: null,
+            currency: 'GBP'
+        },
         accountsTotal: 0,
+
+        // Story Management
+        storySearchFilter: '',
+        filteredStories: [],
 
         // Projection State
         currentView: 'all',
@@ -153,6 +166,9 @@ window.app = function() {
 
                 // Initialize settings form
                 this.settingsForm = { ...this.settings };
+
+                // Initialize filtered stories (show all non-archived by default)
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
 
                 console.log(`[CHAPTR] Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
@@ -329,7 +345,7 @@ window.app = function() {
                     }
                 });
 
-                await this.loadFromDexie();
+                await this.loadData();
             } catch (error) {
                 console.error('Error populating Dexie:', error);
             }
@@ -342,9 +358,10 @@ window.app = function() {
          * @param {string} screen - Screen name (dashboard, projection, accounts, settings)
          */
         async switchScreen(screen) {
+            const previousScreen = this.currentScreen;
             this.currentScreen = screen;
 
-            // Update projection rows when switching to projection screen
+            // Update projection when viewing projection screen
             if (screen === 'projection') {
                 await this.updateProjectionRows();
             }
@@ -386,6 +403,16 @@ window.app = function() {
             this.currentView = storyId;
             this.currentScreen = 'projection';
             await this.updateProjectionRows();
+        },
+
+        /**
+         * Navigate to Projection view filtered by story
+         * Used when clicking a story in the Dashboard stories panel
+         * @param {string} storyId - Story UUID
+         */
+        navigateToStoryProjection(storyId) {
+            this.setView(storyId);
+            this.switchScreen('projection');
         },
 
         /**
@@ -431,12 +458,16 @@ window.app = function() {
          */
         async updateProjectionRows() {
             try {
+                // Calculate virtual drift rows for pending reconciliations
+                const virtualDrifts = this.calculatePendingDrifts();
+
                 this.projectionRows = await calculateProjection(
                     this.projectionStartDate,
                     this.projectionEndDate,
                     this.currentView,
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
-                    this.displayCurrency
+                    this.displayCurrency,
+                    virtualDrifts
                 );
 
                 // Extract starting balance from first row
@@ -821,10 +852,80 @@ window.app = function() {
         },
 
         /**
-         * Navigate to stories management (opens modal for now)
+         * Navigate to stories management screen
          */
         openStoriesManage() {
-            this.openStoryModal();
+            this.switchScreen('stories');
+            this.filterStories(); // Populate filtered list
+        },
+
+        /**
+         * Filter stories by search query
+         * Updates filteredStories based on storySearchFilter
+         */
+        filterStories() {
+            const query = this.storySearchFilter.toLowerCase();
+
+            if (!query) {
+                // No search query - show all non-archived stories
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
+            } else {
+                // Filter by name (excluding archived)
+                this.filteredStories = this.stories.filter(s =>
+                    !s.is_archived &&
+                    s.name.toLowerCase().includes(query)
+                );
+            }
+        },
+
+        /**
+         * Archive or unarchive a story
+         * @param {string} storyId - Story UUID
+         */
+        async archiveStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) return;
+
+            const action = story.is_archived ? 'Unarchive' : 'Archive';
+            const confirmMessage = story.is_archived
+                ? `Unarchive "${story.name}"?\n\nIt will be visible again.`
+                : `Archive "${story.name}"?\n\nIt will be hidden but not deleted.`;
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            try {
+                await this.updateStory(storyId, { is_archived: !story.is_archived });
+                await this.loadData();
+                this.filterStories(); // Refresh filtered list
+            } catch (error) {
+                console.error(`Error ${action.toLowerCase()}ing story:`, error);
+                alert(`Failed to ${action.toLowerCase()} story: ` + error.message);
+            }
+        },
+
+        /**
+         * Get account name by ID
+         * Helper for displaying account names in UI
+         * @param {string} accountId - Account UUID
+         * @returns {string} Account name or 'Unknown'
+         */
+        getAccountName(accountId) {
+            const account = this.accounts.find(a => a.id === accountId);
+            return account ? account.name : 'Unknown';
+        },
+
+        /**
+         * Get View All summary data for Dashboard
+         * Returns total projected balance across all stories + baseline
+         * @returns {object} { balance: number }
+         */
+        getViewAllSummary() {
+            // Use projectionToday which already includes all stories + baseline
+            return {
+                balance: this.projectionToday || 0
+            };
         },
 
         /**
@@ -1056,7 +1157,7 @@ window.app = function() {
             console.log(`[CHAPTR] Created event with entity_id: ${localId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -1097,7 +1198,7 @@ window.app = function() {
             console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
             // 3. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         /**
@@ -1124,7 +1225,7 @@ window.app = function() {
             console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 
             // 4. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         // ===== SETTINGS =====
@@ -1317,7 +1418,7 @@ window.app = function() {
                 });
 
                 alert('✓ Backup restored successfully');
-                await this.loadFromDexie();
+                await this.loadData();
             } catch (error) {
                 console.error('Error restoring backup:', error);
                 alert('Failed to restore backup: ' + error.message);
@@ -1327,20 +1428,47 @@ window.app = function() {
         },
 
         /**
-         * Trigger manual sync
+         * Trigger manual sync with spinner and conflict detection
          */
         async triggerManualSync() {
             if (this.isSyncing) return;
 
+            this.isSyncing = true;
+            this.syncButtonSpinner = true; // Show spinner
+
             try {
-                this.isSyncing = true;
+                const queueCount = await this.updateSyncQueueCount();
+
+                if (queueCount === 0) {
+                    showToast('No changes to sync', 'info');
+                    return;
+                }
+
+                // Perform sync
                 await this.fullSync();
-                alert('✓ Sync complete');
+
+                // Check for conflicts after sync
+                if (storage.mode === 'full') {
+                    const conflicts = await db.conflicts.count();
+                    if (conflicts > 0) {
+                        showToast(
+                            `⚠ ${conflicts} conflict${conflicts > 1 ? 's' : ''} detected. Review in Settings.`,
+                            'warning'
+                        );
+                    } else {
+                        showToast(`✓ Synced ${queueCount} change${queueCount > 1 ? 's' : ''}`, 'success');
+                    }
+                } else {
+                    showToast(`✓ Sync complete`, 'success');
+                }
+
             } catch (error) {
                 console.error('Sync error:', error);
-                alert('Sync failed');
+                alert('Failed to sync: ' + error.message);
             } finally {
                 this.isSyncing = false;
+                this.syncButtonSpinner = false; // Hide spinner
+                await this.updateSyncQueueCount(); // Refresh count
             }
         },
 
@@ -1442,10 +1570,46 @@ window.app = function() {
         },
 
         /**
-         * Add event (dashboard context - baseline auto-assign)
+         * Add event (dashboard context - auto-select story by date)
+         * Finds story covering today's date, prefers smallest range if multiple overlap
          */
         addEvent() {
-            this.openEventModal();
+            // Find story covering today's date
+            const today = new Date().toISOString().split('T')[0];
+            const coveringStories = this.stories.filter(s =>
+                !s.is_archived &&
+                s.start_date <= today &&
+                (!s.end_date || s.end_date >= today)
+            );
+
+            let selectedStory = null;
+
+            if (coveringStories.length === 1) {
+                // Only one story covers today - auto-select it
+                selectedStory = coveringStories[0];
+            } else if (coveringStories.length > 1) {
+                // Multiple stories cover today - prefer smallest date range
+                selectedStory = coveringStories.reduce((smallest, story) => {
+                    const storyRange = story.end_date
+                        ? new Date(story.end_date) - new Date(story.start_date)
+                        : Infinity;
+                    const smallestRange = smallest.end_date
+                        ? new Date(smallest.end_date) - new Date(smallest.start_date)
+                        : Infinity;
+
+                    return storyRange < smallestRange ? story : smallest;
+                });
+            }
+
+            // Open modal with auto-selected story (or baseline if none)
+            if (selectedStory) {
+                console.log(`[CHAPTR] Auto-selected story: ${selectedStory.name}`);
+                this.openEventModalForStory(selectedStory.id);
+            } else {
+                // No story covers today - create baseline event
+                console.log('[CHAPTR] No story covers today - creating baseline event');
+                this.openEventModal();
+            }
         },
 
         /**
@@ -1461,11 +1625,200 @@ window.app = function() {
 
         /**
          * Update account balance (dashboard/accounts context)
+         * Opens the balance reconciliation modal
          */
         updateBalance() {
-            // TODO PR2 Stage 4: Implement balance update
-            console.log('Update balance - Current screen:', this.currentScreen);
-            alert('Update Balance - Coming in Stage 4 (CRUD)');
+            this.openBalanceModal();
+        },
+
+        /**
+         * Open balance reconciliation modal
+         * Triggered by $ button in command bar
+         */
+        openBalanceModal() {
+            // Pre-select first account if only one exists
+            const activeAccounts = this.accounts.filter(a => !a.is_archived);
+
+            this.balanceForm = {
+                account_id: activeAccounts.length === 1 ? activeAccounts[0].id : '',
+                projected_balance: 0,
+                actual_balance: 0,
+                drift: null,
+                currency: this.settings.base_currency || 'GBP'
+            };
+
+            if (this.balanceForm.account_id) {
+                this.calculateBalanceDrift();
+            }
+
+            this.showBalanceModal = true;
+        },
+
+        /**
+         * Calculate projected balance and drift
+         * Called when account selected or actual balance changed
+         */
+        calculateBalanceDrift() {
+            if (!this.balanceForm.account_id) {
+                this.balanceForm.drift = null;
+                return;
+            }
+
+            const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+            if (!account) return;
+
+            this.balanceForm.currency = account.currency;
+
+            // Calculate projected balance for this account at today's date
+            const today = new Date().toISOString().split('T')[0];
+            const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+            this.balanceForm.projected_balance = projectedBalance;
+
+            // Calculate drift if actual balance entered
+            if (this.balanceForm.actual_balance !== null && this.balanceForm.actual_balance !== '') {
+                this.balanceForm.drift = parseFloat(this.balanceForm.actual_balance) - projectedBalance;
+            } else {
+                this.balanceForm.drift = null;
+            }
+        },
+
+        /**
+         * Calculate account balance at specific date
+         * @param {string} accountId - Account UUID
+         * @param {string} date - Date in YYYY-MM-DD format
+         * @return {number} Projected balance
+         */
+        calculateAccountBalance(accountId, date) {
+            const account = this.accounts.find(a => a.id === accountId);
+            if (!account) return 0;
+
+            // Start with account's current balance
+            let balance = account.current_balance;
+
+            // Add all events for this account up to date
+            const accountEvents = this.events.filter(e =>
+                e.account_id === accountId &&
+                e.date <= date
+            );
+
+            for (const event of accountEvents) {
+                balance += event.amount;
+            }
+
+            return balance;
+        },
+
+        /**
+         * Calculate drift for accounts pending reconciliation
+         * Returns virtual drift rows for display in projection
+         *
+         * Per refactored spec: Frontend displays drift without persisting events.
+         * Server creates authoritative [auto] events on sync.
+         *
+         * @returns {Array} Array of virtual drift row objects
+         */
+        calculatePendingDrifts() {
+            const today = new Date().toISOString().split('T')[0];
+            const virtualRows = [];
+
+            // Find accounts with pending_reconciliation = true
+            const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
+
+            for (const account of pendingAccounts) {
+                // Calculate projected balance for this account at today
+                const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+                // Compare to actual balance
+                const actualBalance = account.current_balance;
+                const drift = actualBalance - projectedBalance;
+
+                // Only create virtual row if drift is significant (> 0.01)
+                if (Math.abs(drift) > 0.01) {
+                    virtualRows.push({
+                        id: `virtual-drift-${account.id}`,
+                        date: today,
+                        description: `pending adjustment for ${account.name}`,
+                        amount: drift,
+                        balance: actualBalance, // Balance after drift adjustment
+                        account_id: account.id,
+                        currency: account.currency,
+                        source: '[pending sync]',
+                        isDrift: true,
+                        isVirtual: true,
+                        isGap: false,
+                        driftDetails: {
+                            accountName: account.name,
+                            projectedBalance,
+                            actualBalance,
+                            drift
+                        }
+                    });
+                }
+            }
+
+            return virtualRows;
+        },
+
+        /**
+         * Save balance update - creates changelog event for sync
+         */
+        async saveBalanceUpdate() {
+            if (this.balanceForm.drift === 0) {
+                this.showBalanceModal = false;
+                return;
+            }
+
+            try {
+                // Update local account current_balance and mark for reconciliation
+                const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+                if (!account) {
+                    throw new Error('Account not found');
+                }
+
+                const updatedAccount = {
+                    ...account,
+                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    pending_reconciliation: true, // Mark for reconciliation per spec
+                    updated_at: new Date().toISOString()
+                };
+
+                if (storage.mode === 'full') {
+                    // Get base_updated_at for conflict detection
+                    const baseUpdatedAt = account.updated_at;
+
+                    // Update account in Dexie
+                    await db.accounts.put(updatedAccount);
+
+                    // Queue account update for sync
+                    await db.queueChange(
+                        'account',
+                        account.id,
+                        'update',
+                        updatedAccount,
+                        baseUpdatedAt
+                    );
+                } else {
+                    // Mode 0: Direct update without sync
+                    Object.assign(account, updatedAccount);
+                }
+
+                // Reload data to reflect changes
+                await this.loadData();
+                await this.updateDashboardProjection();
+
+                this.showBalanceModal = false;
+
+                // Show notification
+                const driftText = this.balanceForm.drift > 0
+                    ? `+${formatCurrency(this.balanceForm.drift, this.balanceForm.currency)}`
+                    : formatCurrency(this.balanceForm.drift, this.balanceForm.currency);
+                showToast(`Balance updated. Drift: ${driftText} - Reconciliation will run on next trigger.`, 'success');
+
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                alert('Failed to update balance: ' + error.message);
+            }
         },
 
         /**
@@ -1483,6 +1836,7 @@ window.app = function() {
             const story = this.stories.find(s => s.id === this.currentView);
             alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
         },
+
 
         // ===== EVENT MODAL METHODS =====
 
@@ -1602,6 +1956,30 @@ window.app = function() {
             if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
                 alert('Currency must be a 3-letter code (e.g., GBP, USD)');
                 return;
+            }
+
+            // Validation: Event date within story range
+            if (this.eventForm.story_id && this.eventForm.story_id !== 'auto') {
+                const story = this.stories.find(s => s.id === this.eventForm.story_id);
+                if (story) {
+                    const eventDate = this.eventForm.date;
+
+                    if (eventDate < story.start_date) {
+                        showToast(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`,
+                            'error'
+                        );
+                        return;
+                    }
+
+                    if (story.end_date && eventDate > story.end_date) {
+                        showToast(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`,
+                            'error'
+                        );
+                        return;
+                    }
+                }
             }
 
             // Validation: Baseline XOR Story
