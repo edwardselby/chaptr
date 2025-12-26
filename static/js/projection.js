@@ -69,29 +69,84 @@ export async function calculateProjection(
         // Get settings for currency conversion
         const settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
 
-        // Step 1: Sum all account current_balance as starting point
-        const allAccounts = await db.accounts.toArray();
-        const accounts = allAccounts.filter(a => !a.is_archived);
+        // Step 1: Calculate starting balance from ALL historical events
+        // This includes:
+        // - Opening balance events (is_opening_balance=true) - ALWAYS included regardless of date
+        // - All other events before startDate
         let startingBalance = 0;
 
-        for (const account of accounts) {
-            const balance = parseFloat(account.current_balance || 0);
-            const rateToBase = parseFloat(account.rate_to_base || 1.0);
-            const baseBalance = convertToBaseCurrency(balance, rateToBase);
-            startingBalance += baseBalance;
+        // Get ALL events (we'll filter below)
+        const allEvents = await db.events.toArray();
+        console.log('[PROJECTION] ALL events in IndexedDB:', allEvents.length);
+        if (allEvents.length > 0) {
+            console.log('[PROJECTION] First event:', allEvents[0]);
+        }
+
+        // Separate opening balance events from regular historical events
+        const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true);
+        const regularHistoricalEvents = allEvents.filter(e =>
+            e.is_opening_balance !== true && e.event_date < startDate
+        );
+
+        console.log('[PROJECTION] Opening balance events:', openingBalanceEvents.length);
+        console.log('[PROJECTION] Start date:', startDate, 'End date:', endDate);
+
+        // Process opening balance events (ALWAYS included for starting balance)
+        for (const event of openingBalanceEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
+        }
+
+        // Process regular historical events (before projection start)
+        for (const event of regularHistoricalEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
         }
 
         // Step 2: Fetch events in date range
         let events = await db.events
-            .where('date')
+            .where('event_date')
             .between(startDate, endDate, true, true)
             .toArray();
+
+        console.log('[PROJECTION] Events in date range:', events.length);
+        console.log('[PROJECTION] View:', view);
 
         // Filter by view
         if (view === 'baseline') {
             events = events.filter(e => e.is_baseline);
+            console.log('[PROJECTION] After baseline filter:', events.length);
         } else if (view !== 'all' && storyId) {
             events = events.filter(e => e.story_id === storyId || e.is_baseline);
+            console.log('[PROJECTION] After story filter:', events.length);
         }
 
         // Exclude hypothetical for 'all' view
@@ -113,8 +168,8 @@ export async function calculateProjection(
 
         // Sort by: date ASC, amount DESC (income first), created_at ASC
         eventsWithBase.sort((a, b) => {
-            if (a.date !== b.date) {
-                return a.date < b.date ? -1 : 1;
+            if (a.event_date !== b.event_date) {
+                return a.event_date < b.event_date ? -1 : 1;
             }
             // Sort by base_amount DESC (income first)
             if (a.base_amount !== b.base_amount) {
@@ -143,7 +198,7 @@ export async function calculateProjection(
             // Create result row
             const row = {
                 id: event.id,
-                date: event.date,
+                date: event.event_date,
                 description: event.description,
                 amount: event.base_amount,
                 balance: runningBalance,

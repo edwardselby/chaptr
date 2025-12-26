@@ -281,6 +281,7 @@ class EventBase(BaseModel):
     is_baseline: bool = Field(default=False, description="Is this a baseline event?")
     is_hypothetical: bool = Field(default=False, description="Is this planned/hypothetical funding?")
     is_auto_adjustment: bool = Field(default=False, description="Created by reconciliation system?")
+    is_opening_balance: bool = Field(default=False, description="System-created opening balance event?")
 
     @field_validator('currency')
     @classmethod
@@ -348,6 +349,7 @@ class EventUpdate(BaseModel):
     is_baseline: Optional[bool] = Field(default=None)
     is_hypothetical: Optional[bool] = Field(default=None)
     is_auto_adjustment: Optional[bool] = Field(default=None)
+    is_opening_balance: Optional[bool] = Field(default=None)
 
     @field_validator('currency')
     @classmethod
