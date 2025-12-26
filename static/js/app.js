@@ -283,30 +283,56 @@ window.app = function() {
 
         /**
          * Perform full sync with backend
+         * Uses /api/sync/full endpoint to get current database state
          */
         async fullSync() {
             try {
                 this.isSyncing = true;
 
-                const response = await apiRequest('/api/sync', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        client_id: await getClientId(),
-                        last_sync_at: null,
-                        changes: []
-                    })
+                const response = await apiRequest('/api/sync/full', {
+                    method: 'GET'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Sync failed');
+                    throw new Error('Full sync failed');
                 }
 
                 const data = await response.json();
-                await this.populateDexie(data.server_changes || []);
 
-                console.log('Full sync complete');
+                // Populate database with full dataset
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings], async () => {
+                    // Put all accounts
+                    for (const account of data.accounts || []) {
+                        await db.accounts.put(account);
+                    }
+
+                    // Put all stories
+                    for (const story of data.stories || []) {
+                        await db.stories.put(story);
+                    }
+
+                    // Put all events
+                    for (const event of data.events || []) {
+                        await db.events.put(event);
+                    }
+
+                    // Put all recurring rules
+                    for (const rule of data.recurring_rules || []) {
+                        await db.recurring_rules.put(rule);
+                    }
+
+                    // Update settings
+                    if (data.settings) {
+                        await db.settings.put(data.settings);
+                    }
+                });
+
+                // Reload data into Alpine state
+                await this.loadData();
+
+                console.log('[CHAPTR] Full sync complete');
             } catch (error) {
-                console.error('Sync error:', error);
+                console.error('[CHAPTR] Full sync error:', error);
             } finally {
                 this.isSyncing = false;
             }
@@ -1498,6 +1524,55 @@ window.app = function() {
             } catch (error) {
                 console.error('Clear queue error:', error);
                 showToast('Failed to clear sync queue', 'error');
+            }
+        },
+
+        /**
+         * Clear local database and force full resync
+         *
+         * Non-destructive escape hatch for when sync gets out of sync.
+         * Clears all local data and re-downloads everything from server.
+         * User login and settings are preserved.
+         */
+        async clearDatabaseAndResync() {
+            if (!confirm(
+                '⚠️ Reset Local Database & Resync?\n\n' +
+                'This will:\n' +
+                '• Clear all local accounts, stories, and events\n' +
+                '• Re-download everything from the server\n' +
+                '• Preserve your login and settings\n\n' +
+                'Any unsynced changes will be lost.\n\n' +
+                'Continue?'
+            )) {
+                return;
+            }
+
+            try {
+                this.isSyncing = true;
+                showToast('Clearing local database...', 'info');
+
+                // Clear all local data (preserves users and settings)
+                await db.clearAllData();
+                console.log('[CHAPTR] Local database cleared');
+
+                // Clear reactive state immediately
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+                console.log('[CHAPTR] Reactive state cleared');
+
+                // Trigger full sync to re-download all data
+                showToast('Resyncing from server...', 'info');
+                await this.fullSync();
+
+                console.log('[CHAPTR] Database reset complete');
+                showToast('Database reset complete', 'success');
+            } catch (error) {
+                console.error('[CHAPTR] Clear database error:', error);
+                showToast('Failed to reset database', 'error');
+            } finally {
+                this.isSyncing = false;
             }
         },
 

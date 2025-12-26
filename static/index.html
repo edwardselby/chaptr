@@ -553,6 +553,14 @@
                                         <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
                                         <button class="btn-danger" @click="clearSyncQueue()" x-show="storageMode === 'full' && syncQueueCount > 0">Clear Queue</button>
                                     </div>
+                                    <div class="sync-actions" style="margin-top: 12px;">
+                                        <button class="btn-danger" @click="clearDatabaseAndResync()" style="width: 100%;">
+                                            🔄 Reset Database & Resync
+                                        </button>
+                                        <span class="form-hint" style="text-align: center; display: block; margin-top: 8px;">
+                                            Escape hatch: Clear local data and re-download from server
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </section>
