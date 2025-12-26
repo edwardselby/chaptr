@@ -117,12 +117,14 @@ async def calculate_auto_adjustment(
     today = datetime.now(timezone.utc).date()
     today_str = today.isoformat()
 
-    # Query all events for this account up to today
+    # Query all REAL events for this account up to today
+    # Exclude hypothetical events: "Reality as anchor - hypotheticals are explicit opt-ins" (spec)
     # NOTE: Events store date as "event_date" in MongoDB (date is JSON alias)
     account_events = await db.events.find({
         "account_id": str(account_id),
         "created_by": str(user_id),
-        "event_date": {"$lte": today_str}
+        "event_date": {"$lte": today_str},
+        "is_hypothetical": False  # Only real events affect account drift
     }).to_list(length=None)
 
     # Event sourcing: Sum all events from £0

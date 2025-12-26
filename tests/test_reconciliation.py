@@ -619,3 +619,95 @@ async def test_trigger_reconciliation_multiple_accounts(
     for account in accounts:
         account_doc = await account_repo.collection.find_one({"id": str(account.id)})
         assert account_doc["pending_reconciliation"] is False, "Should clear all pending flags"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_calculate_auto_adjustment_excludes_hypothetical_events(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that hypothetical events are excluded from drift calculation.
+
+    Per spec: "Reality as anchor - hypotheticals are explicit opt-ins"
+    Hypothetical funding events should NOT affect account-level reconciliation.
+
+    Validates:
+    - Hypothetical events excluded from projected balance calculation
+    - Only real events contribute to drift
+    - Drift calculated correctly when mix of real and hypothetical events exist
+    """
+    # Create account
+    account_data = AccountCreate(
+        name="Monzo",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=True
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # Create real event: +500
+    real_event = EventCreate(
+        date="2025-01-10",
+        description="Real income",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True,
+        is_hypothetical=False  # REAL event
+    )
+    await event_repo.create(
+        real_event,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create hypothetical event: +300 (should be ignored)
+    hypothetical_event = EventCreate(
+        date="2025-01-12",
+        description="Hypothetical bonus",
+        amount=Decimal("300.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=False,
+        is_hypothetical=True  # HYPOTHETICAL event (should be excluded)
+    )
+    await event_repo.create(
+        hypothetical_event,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Calculate drift
+    # Actual balance: 1000
+    # Projected balance should be: 500 (only real event, hypothetical excluded)
+    # Expected drift: 1000 - 500 = 500
+    adjustment = await calculate_auto_adjustment(
+        account_id=account.id,
+        actual_balance=Decimal("1000.00"),
+        db=mongodb_real,
+        user_id=sample_user_real.id
+    )
+
+    assert adjustment is not None, "Should return adjustment when drift exists"
+    assert adjustment.amount == Decimal("500.00"), (
+        "Drift should be 500 (1000 actual - 500 projected). "
+        "Hypothetical event (+300) should be excluded from projected balance."
+    )
+    assert adjustment.is_auto_adjustment is True
+    assert adjustment.account_id == account.id
+
+    # Verify hypothetical event was NOT included by checking the math:
+    # If hypothetical was included, drift would be 1000 - 800 = 200 (wrong)
