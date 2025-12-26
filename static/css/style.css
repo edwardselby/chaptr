@@ -1934,3 +1934,248 @@ body::before {
         font-size: 28px;
     }
 }
+
+/* ================================
+   Database Tools Modal
+   ================================ */
+
+.database-tools-modal {
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.database-tools-modal .modal-body {
+    padding: 24px;
+}
+
+/* Section styling */
+.db-tools-section {
+    margin-bottom: 32px;
+    padding: 20px;
+    border-radius: 6px;
+    border: 2px solid;
+}
+
+.db-tools-section.safe {
+    background: rgba(74, 246, 38, 0.03);
+    border-color: var(--green-dim);
+}
+
+.db-tools-section.reset {
+    background: rgba(255, 170, 0, 0.03);
+    border-color: var(--amber);
+}
+
+.db-tools-section.danger {
+    background: rgba(255, 68, 68, 0.03);
+    border-color: var(--red);
+}
+
+/* Section badges */
+.section-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.section-badge.safe-badge {
+    background: var(--green-dim);
+    color: var(--bg-primary);
+}
+
+.section-badge.reset-badge {
+    background: var(--amber);
+    color: var(--bg-primary);
+}
+
+.section-badge.danger-badge {
+    background: var(--red);
+    color: var(--text-bright);
+}
+
+/* Tool card */
+.db-tool-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.db-tool-card:last-child {
+    margin-bottom: 0;
+}
+
+.db-tool-card.danger-card {
+    border-color: var(--red-dim);
+}
+
+.tool-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.tool-header h4 {
+    color: var(--text-bright);
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.tool-tag {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    color: var(--text-mid);
+    border: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tool-tag.danger-tag {
+    background: var(--red-dim);
+    color: var(--text-bright);
+    border-color: var(--red);
+}
+
+.tool-description {
+    color: var(--text-mid);
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.tool-details {
+    list-style: none;
+    margin: 12px 0;
+    padding-left: 0;
+}
+
+.tool-details li {
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+}
+
+.tool-details li::before {
+    content: '•';
+    position: absolute;
+    left: 0;
+    color: var(--green-dim);
+}
+
+.db-tool-card button {
+    margin-top: 12px;
+    width: 100%;
+}
+
+.danger-hint {
+    color: var(--red) !important;
+    margin-top: 8px;
+    display: block;
+}
+
+.danger-hint code {
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--amber);
+    font-size: 11px;
+}
+
+/* Database Tools Modal - Button Overrides */
+.database-tools-modal .db-tool-card .btn-secondary {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--green-dim);
+    color: var(--green-bright);
+    padding: 12px 20px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+}
+
+.database-tools-modal .db-tool-card .btn-secondary:hover:not(:disabled) {
+    background: var(--green-glow);
+    box-shadow: 0 0 10px rgba(74, 246, 38, 0.3);
+}
+
+.database-tools-modal .db-tool-card .btn-warning {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 12px 20px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+}
+
+.database-tools-modal .db-tool-card .btn-warning:hover:not(:disabled) {
+    background: rgba(255, 170, 0, 0.1);
+    box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+    border-color: var(--amber);
+}
+
+.database-tools-modal .db-tool-card .btn-danger {
+    background: var(--bg-tertiary);
+    border: 2px solid var(--red);
+    color: var(--red);
+    padding: 12px 20px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.database-tools-modal .db-tool-card .btn-danger:hover:not(:disabled) {
+    background: rgba(255, 68, 68, 0.15);
+    box-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
+    border-color: var(--red);
+}
+
+.database-tools-modal .db-tool-card .btn-danger:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* Modal footer */
+.database-tools-modal .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+    .database-tools-modal {
+        max-width: 95vw;
+    }
+
+    .db-tools-section {
+        padding: 16px;
+    }
+
+    .section-badge {
+        font-size: 10px;
+        padding: 6px 10px;
+    }
+}

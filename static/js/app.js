@@ -66,6 +66,7 @@ window.app = function() {
         showUserModal: false,
         showHelpModal: false,
         showBalanceModal: false,
+        showDatabaseToolsModal: false,
         accountForm: {},
         storyForm: {},
         eventForm: {},
@@ -300,7 +301,7 @@ window.app = function() {
                 const data = await response.json();
 
                 // Populate database with full dataset
-                await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings], async () => {
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_meta], async () => {
                     // Put all accounts
                     for (const account of data.accounts || []) {
                         await db.accounts.put(account);
@@ -325,12 +326,17 @@ window.app = function() {
                     if (data.settings) {
                         await db.settings.put(data.settings);
                     }
+
+                    // CRITICAL: Store sync timestamp to prevent re-downloading old change_log entries
+                    if (data.sync_timestamp) {
+                        await db.sync_meta.put({ id: 'lastSyncAt', value: data.sync_timestamp });
+                    }
                 });
 
                 // Reload data into Alpine state
                 await this.loadData();
 
-                console.log('[CHAPTR] Full sync complete');
+                console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
                 console.error('[CHAPTR] Full sync error:', error);
             } finally {
@@ -1535,18 +1541,6 @@ window.app = function() {
          * User login and settings are preserved.
          */
         async clearDatabaseAndResync() {
-            if (!confirm(
-                '⚠️ Reset Local Database & Resync?\n\n' +
-                'This will:\n' +
-                '• Clear all local accounts, stories, and events\n' +
-                '• Re-download everything from the server\n' +
-                '• Preserve your login and settings\n\n' +
-                'Any unsynced changes will be lost.\n\n' +
-                'Continue?'
-            )) {
-                return;
-            }
-
             try {
                 this.isSyncing = true;
                 showToast('Clearing local database...', 'info');
@@ -1573,6 +1567,110 @@ window.app = function() {
                 showToast('Failed to reset database', 'error');
             } finally {
                 this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Clear local database AND server change log, then resync
+         *
+         * User-specific reset that clears both local data and this user's
+         * change log entries on the server. Other users are unaffected.
+         */
+        async clearDatabaseAndChangeLog() {
+            try {
+                this.isSyncing = true;
+                showToast('Clearing local database and change log...', 'info');
+
+                // Clear all local data
+                await db.clearAllData();
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+
+                // Clear user's change log on server
+                const response = await apiRequest('/api/admin/clear-changelog', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to clear change log');
+                }
+
+                const data = await response.json();
+                console.log('[CHAPTR] Cleared change log:', data.deleted_count, 'entries');
+
+                // Trigger full sync
+                showToast('Resyncing from server...', 'info');
+                await this.fullSync();
+
+                showToast(`Reset complete - cleared ${data.deleted_count} change log entries`, 'success');
+            } catch (error) {
+                console.error('[CHAPTR] Clear database + changelog error:', error);
+                showToast('Failed to reset database and change log', 'error');
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Nuclear reset - wipes entire database (all users)
+         *
+         * 🔴 DESTRUCTIVE OPERATION 🔴
+         * Development only. Requires password confirmation.
+         */
+        async nuclearReset() {
+            const password = prompt(
+                '🔴 NUCLEAR RESET - ALL DATA WILL BE DELETED\n\n' +
+                'This will permanently delete:\n' +
+                '• ALL accounts, stories, events (all users)\n' +
+                '• ALL change log history\n' +
+                '• ALL conflicts\n\n' +
+                'Only users and settings are preserved.\n\n' +
+                'Enter password to confirm:'
+            );
+
+            if (!password) {
+                return; // User cancelled
+            }
+
+            try {
+                this.isSyncing = true;
+                showToast('Executing nuclear reset...', 'info');
+
+                // Call nuclear reset endpoint with password
+                const response = await apiRequest('/api/admin/nuclear-reset', {
+                    method: 'POST',
+                    body: JSON.stringify({ password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Nuclear reset failed');
+                }
+
+                const data = await response.json();
+                console.log('[CHAPTR] Nuclear reset complete:', data);
+
+                // Clear local database
+                await db.clearAllData();
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+
+                // Resync (will get empty state)
+                await this.fullSync();
+
+                showToast('Nuclear reset complete - all data wiped', 'success');
+            } catch (error) {
+                console.error('[CHAPTR] Nuclear reset error:', error);
+                showToast(error.message || 'Nuclear reset failed', 'error');
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
             }
         },
 

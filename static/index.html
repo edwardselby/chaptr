@@ -551,15 +551,7 @@
                                     </div>
                                     <div class="sync-actions">
                                         <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
-                                        <button class="btn-danger" @click="clearSyncQueue()" x-show="storageMode === 'full' && syncQueueCount > 0">Clear Queue</button>
-                                    </div>
-                                    <div class="sync-actions" style="margin-top: 12px;">
-                                        <button class="btn-danger" @click="clearDatabaseAndResync()" style="width: 100%;">
-                                            🔄 Reset Database & Resync
-                                        </button>
-                                        <span class="form-hint" style="text-align: center; display: block; margin-top: 8px;">
-                                            Escape hatch: Clear local data and re-download from server
-                                        </span>
+                                        <button class="btn-secondary" @click="showDatabaseToolsModal = true">🛠 Database Tools</button>
                                     </div>
                                 </div>
                             </div>
@@ -1089,6 +1081,106 @@
                     <h3>Accounts</h3>
                     <p>Manage accounts and view projected balances. Drift shows difference between actual and projected.</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Tools Modal -->
+    <div class="modal-overlay" x-show="showDatabaseToolsModal" @click="showDatabaseToolsModal = false" x-cloak>
+        <div class="modal database-tools-modal" @click.stop>
+            <div class="modal-header">
+                <h2>🛠 Database Management Tools</h2>
+                <button class="modal-close" @click="showDatabaseToolsModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- SAFE OPERATIONS -->
+                <div class="db-tools-section safe">
+                    <h3 class="section-badge safe-badge">🟢 SAFE OPERATIONS</h3>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Clear Sync Queue</h4>
+                            <span class="tool-tag">Safe</span>
+                        </div>
+                        <p class="tool-description">Removes pending changes from sync queue</p>
+                        <ul class="tool-details">
+                            <li>Deletes unsynced local changes</li>
+                            <li>Only affects this device</li>
+                        </ul>
+                        <button
+                            class="btn-secondary"
+                            @click="clearSyncQueue()"
+                            x-show="storageMode === 'full' && syncQueueCount > 0">
+                            Clear Queue (<span x-text="syncQueueCount"></span> items)
+                        </button>
+                        <span class="form-hint" x-show="storageMode === 'full' && syncQueueCount === 0">No pending items</span>
+                        <span class="form-hint" x-show="storageMode !== 'full'">Not available in this mode</span>
+                    </div>
+                </div>
+
+                <!-- RESET OPERATIONS -->
+                <div class="db-tools-section reset">
+                    <h3 class="section-badge reset-badge">🟡 RESET OPERATIONS</h3>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Reset Local Database</h4>
+                            <span class="tool-tag">Non-destructive</span>
+                        </div>
+                        <p class="tool-description">Clear & re-download from server</p>
+                        <ul class="tool-details">
+                            <li>Clears local data only</li>
+                            <li>Server data preserved</li>
+                            <li>Good for fixing sync issues</li>
+                        </ul>
+                        <button class="btn-warning" @click="clearDatabaseAndResync()">
+                            Reset Local
+                        </button>
+                    </div>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Reset Local + Change Log</h4>
+                            <span class="tool-tag">User-specific</span>
+                        </div>
+                        <p class="tool-description">Fresh start for this user</p>
+                        <ul class="tool-details">
+                            <li>Clears your change history</li>
+                            <li>Other users unaffected</li>
+                            <li>Server data preserved</li>
+                        </ul>
+                        <button class="btn-warning" @click="clearDatabaseAndChangeLog()">
+                            Reset Local + Log
+                        </button>
+                    </div>
+                </div>
+
+                <!-- DESTRUCTIVE OPERATIONS -->
+                <div class="db-tools-section danger">
+                    <h3 class="section-badge danger-badge">🔴 DESTRUCTIVE OPERATIONS (DEV ONLY)</h3>
+
+                    <div class="db-tool-card danger-card">
+                        <div class="tool-header">
+                            <h4>Nuclear Reset</h4>
+                            <span class="tool-tag danger-tag">⚠️ DANGEROUS</span>
+                        </div>
+                        <p class="tool-description">⚠️ DELETES ALL DATA FOR ALL USERS</p>
+                        <ul class="tool-details">
+                            <li>Wipes entire database</li>
+                            <li>Cannot be undone</li>
+                            <li>Requires password</li>
+                        </ul>
+                        <button class="btn-danger" @click="nuclearReset()">
+                            Nuclear Reset
+                        </button>
+                        <span class="form-hint danger-hint">Development only - requires admin password (ADMIN_PASSWORD from .env)</span>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @click="showDatabaseToolsModal = false">Close</button>
             </div>
         </div>
     </div>
