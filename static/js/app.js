@@ -361,14 +361,8 @@ window.app = function() {
             const previousScreen = this.currentScreen;
             this.currentScreen = screen;
 
-            // Reconciliation trigger: On exit from accounts screen
-            if (previousScreen === 'accounts' && screen !== 'accounts') {
-                await this.runReconciliation();
-            }
-
-            // Reconciliation trigger: On viewing projection screen
+            // Update projection when viewing projection screen
             if (screen === 'projection') {
-                await this.runReconciliation();
                 await this.updateProjectionRows();
             }
         },
@@ -464,12 +458,16 @@ window.app = function() {
          */
         async updateProjectionRows() {
             try {
+                // Calculate virtual drift rows for pending reconciliations
+                const virtualDrifts = this.calculatePendingDrifts();
+
                 this.projectionRows = await calculateProjection(
                     this.projectionStartDate,
                     this.projectionEndDate,
                     this.currentView,
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
-                    this.displayCurrency
+                    this.displayCurrency,
+                    virtualDrifts
                 );
 
                 // Extract starting balance from first row
@@ -1439,9 +1437,6 @@ window.app = function() {
             this.syncButtonSpinner = true; // Show spinner
 
             try {
-                // Reconciliation trigger: Before sync
-                await this.runReconciliation();
-
                 const queueCount = await this.updateSyncQueueCount();
 
                 if (queueCount === 0) {
@@ -1715,6 +1710,57 @@ window.app = function() {
         },
 
         /**
+         * Calculate drift for accounts pending reconciliation
+         * Returns virtual drift rows for display in projection
+         *
+         * Per refactored spec: Frontend displays drift without persisting events.
+         * Server creates authoritative [auto] events on sync.
+         *
+         * @returns {Array} Array of virtual drift row objects
+         */
+        calculatePendingDrifts() {
+            const today = new Date().toISOString().split('T')[0];
+            const virtualRows = [];
+
+            // Find accounts with pending_reconciliation = true
+            const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
+
+            for (const account of pendingAccounts) {
+                // Calculate projected balance for this account at today
+                const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+                // Compare to actual balance
+                const actualBalance = account.current_balance;
+                const drift = actualBalance - projectedBalance;
+
+                // Only create virtual row if drift is significant (> 0.01)
+                if (Math.abs(drift) > 0.01) {
+                    virtualRows.push({
+                        id: `virtual-drift-${account.id}`,
+                        date: today,
+                        description: `pending adjustment for ${account.name}`,
+                        amount: drift,
+                        balance: actualBalance, // Balance after drift adjustment
+                        account_id: account.id,
+                        currency: account.currency,
+                        source: '[pending sync]',
+                        isDrift: true,
+                        isVirtual: true,
+                        isGap: false,
+                        driftDetails: {
+                            accountName: account.name,
+                            projectedBalance,
+                            actualBalance,
+                            drift
+                        }
+                    });
+                }
+            }
+
+            return virtualRows;
+        },
+
+        /**
          * Save balance update - creates changelog event for sync
          */
         async saveBalanceUpdate() {
@@ -1791,114 +1837,6 @@ window.app = function() {
             alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
         },
 
-        // ===== RECONCILIATION SYSTEM =====
-
-        /**
-         * Run reconciliation for all pending accounts
-         * Per spec: Creates [auto] adjustment events to align projected vs actual balances
-         *
-         * Triggers:
-         * - On exit from accounts screen
-         * - On sync
-         * - On viewing projection screen
-         */
-        async runReconciliation() {
-            if (storage.mode !== 'full') {
-                return; // Reconciliation only in Mode 1 (Full)
-            }
-
-            try {
-                // 1. Find all accounts with pending_reconciliation = true
-                const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
-
-                if (pendingAccounts.length === 0) {
-                    console.log('[Reconciliation] No pending accounts');
-                    return;
-                }
-
-                console.log(`[Reconciliation] Processing ${pendingAccounts.length} account(s)`);
-
-                const today = new Date().toISOString().split('T')[0];
-
-                for (const account of pendingAccounts) {
-                    // 2. Remove all existing [auto] adjustment events for this account
-                    const autoEvents = this.events.filter(e =>
-                        e.account_id === account.id &&
-                        e.is_auto_adjustment === true
-                    );
-
-                    for (const event of autoEvents) {
-                        await this.deleteEvent(event.id); // Uses existing deleteEvent method
-                    }
-
-                    // 3. Calculate projected balance for this account at today
-                    const projectedBalance = this.calculateAccountBalance(account.id, today);
-
-                    // 4. Compare to actual balance
-                    const actualBalance = account.current_balance;
-                    const drift = actualBalance - projectedBalance;
-
-                    console.log(`[Reconciliation] ${account.name}: Actual=${actualBalance}, Projected=${projectedBalance}, Drift=${drift}`);
-
-                    // 5. If drift detected, create adjustment event
-                    if (Math.abs(drift) > 0.01) { // Allow for floating point rounding
-                        const adjustmentEvent = {
-                            id: generateUUID(),
-                            date: today,
-                            description: 'balance adjustment',
-                            amount: drift,
-                            account_id: account.id,
-                            currency: account.currency,
-                            rate_to_base: this.settings.rates?.[account.currency] || 1,
-                            story_id: null, // Not part of any story
-                            is_baseline: false,
-                            is_hypothetical: false,
-                            is_auto_adjustment: true, // Mark as auto-adjustment
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        };
-
-                        // Save adjustment event to Dexie
-                        await db.events.add(adjustmentEvent);
-
-                        // Queue for sync
-                        await db.queueChange('event', adjustmentEvent.id, 'create', adjustmentEvent);
-
-                        console.log(`[Reconciliation] Created [auto] adjustment: ${drift > 0 ? '+' : ''}${formatCurrency(drift, account.currency)}`);
-                    } else {
-                        console.log(`[Reconciliation] No adjustment needed (drift < 0.01)`);
-                    }
-
-                    // 6. Clear pending_reconciliation flag
-                    const updatedAccount = {
-                        ...account,
-                        pending_reconciliation: false,
-                        updated_at: new Date().toISOString()
-                    };
-
-                    await db.accounts.put(updatedAccount);
-
-                    // Queue account update for sync
-                    await db.queueChange(
-                        'account',
-                        account.id,
-                        'update',
-                        updatedAccount,
-                        account.updated_at
-                    );
-                }
-
-                // Reload data to show new adjustments
-                await this.loadData();
-                await this.updateDashboardProjection();
-
-                console.log('[Reconciliation] Complete');
-
-            } catch (error) {
-                console.error('[Reconciliation] Error:', error);
-                // Don't show error to user - reconciliation failures shouldn't block workflow
-            }
-        },
 
         // ===== EVENT MODAL METHODS =====
 

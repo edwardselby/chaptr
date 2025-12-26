@@ -225,7 +225,7 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.date), 'today': isToday(row.date) }"
+                                :class="{ 'past': isPast(row.date), 'today': isToday(row.date), 'drift': row.isDrift }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.date)"></div>

@@ -174,11 +174,13 @@ class AccountRepository(BaseRepository[Account]):
         update_dict['updated_at'] = utc_now()
 
         # Apply update
+        mongo_update = {k: v.isoformat() if hasattr(v, 'isoformat') else
+                      str(v) if isinstance(v, (UUID, Decimal)) else v
+                      for k, v in update_dict.items()}
+
         await self.collection.update_one(
             {"id": to_str(account_id)},
-            {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, (UUID, Decimal)) else v
-                      for k, v in update_dict.items()}}
+            {"$set": mongo_update}
         )
 
         # Get updated account for change log
