@@ -100,7 +100,6 @@ async def calculate_auto_adjustment(
     :param user_id: User UUID
     :return: EventCreate object or None
     """
-    from core.projection import calculate_global_projection
     from api.repositories.accounts import AccountRepository
     from api.models import EventCreate
 
@@ -112,36 +111,13 @@ async def calculate_auto_adjustment(
     except Exception as e:
         return None
 
-    # Calculate projected balance up to today using projection engine
+    # Calculate projected balance using event sourcing approach:
+    # Replay all events from £0 to get projected balance at today
+    # (First events for each account are typically opening balance events)
     today = datetime.now(timezone.utc).date()
     today_str = today.isoformat()
 
-    # Get earliest event date for this account to set projection start
-    # NOTE: Events store date as "event_date" in MongoDB (date is JSON alias)
-    earliest_event = await db.events.find_one(
-        {"account_id": str(account_id), "created_by": str(user_id)},
-        sort=[("event_date", 1)]
-    )
-
-    # Convert dates: MongoDB stores as ISO strings, projection engine needs date objects
-    if earliest_event:
-        start_date = datetime.fromisoformat(earliest_event["event_date"]).date()
-    else:
-        start_date = today
-
-    # Calculate projection to get projected balance at today
-    projection = await calculate_global_projection(
-        start_date=start_date,
-        end_date=today,
-        view="all",
-        db=db
-    )
-
-    # Find projected balance for this account in projection results
-    # Projection engine returns account-specific balances per day
-    projected_balance = Decimal('0')
-
-    # Sum all events for this account up to today to get projected balance
+    # Query all events for this account up to today
     # NOTE: Events store date as "event_date" in MongoDB (date is JSON alias)
     account_events = await db.events.find({
         "account_id": str(account_id),
@@ -149,7 +125,9 @@ async def calculate_auto_adjustment(
         "event_date": {"$lte": today_str}
     }).to_list(length=None)
 
-    # Start with initial balance (0 by convention) and add all events
+    # Event sourcing: Sum all events from £0
+    # Note: Old [auto] adjustments have been removed before this function is called
+    projected_balance = Decimal('0')
     for event in account_events:
         amount = Decimal(str(event.get("amount", 0)))
         projected_balance += amount
