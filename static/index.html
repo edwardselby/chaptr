@@ -346,7 +346,7 @@
                                 <div class="projection-dates">
                                     <template x-for="(projection, index) in getAccountProjections(account.id)" :key="index">
                                         <div class="projection-date-row">
-                                            <span class="projection-date" x-text="formatDate(projection.date)"></span>
+                                            <span class="projection-date" x-text="formatDate(projection.event_date)"></span>
                                             <span class="projection-balance" :class="projection.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projection.balance, account.currency)"></span>
                                         </div>
                                     </template>
