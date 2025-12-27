@@ -142,7 +142,7 @@ async def calculate_global_projection(
     # Phase 2.2: Filter at database level for performance (Task 255)
     # MongoDB stores dates as strings (YYYY-MM-DD format)
     query_filter = {
-        "date": {
+        "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
         }
@@ -174,7 +174,7 @@ async def calculate_global_projection(
 
     events_with_base.sort(
         key=lambda e: (
-            e.get("date"),
+            e.get("event_date"),
             -e.get("base_amount", Decimal("0")),  # Sort by base amount DESC
             e.get("created_at")
         )
@@ -193,9 +193,11 @@ async def calculate_global_projection(
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
 
-        # Remove MongoDB _id field (not JSON serializable)
+        # Convert MongoDB _id to JSON-serializable id field
         # TODO: Consider whitelist pattern instead of blacklist (pop)
         #       Create explicit field list to return for better robustness
+        if "_id" in result_event and "id" not in result_event:
+            result_event["id"] = str(result_event["_id"])
         result_event.pop("_id", None)
 
         # Step 5: Add display currency conversion if requested
@@ -246,11 +248,11 @@ async def calculate_story_starting_balance(
         # Query for earliest event to ensure we capture all historical data
         # Handles accounts with events spanning decades
         earliest_event = await db.events.find_one(
-            sort=[("date", 1)]  # Ascending by date
+            sort=[("event_date", 1)]  # Ascending by date
         )
 
         if earliest_event:
-            early_date = earliest_event["date"]
+            early_date = earliest_event["event_date"]
         else:
             # No events exist, use story start date
             early_date = story.get("start_date")
@@ -393,7 +395,7 @@ async def calculate_story_projection(
         funding_event = {
             "_id": funding_event_id,
             "id": str(funding_event_id),
-            "date": story.get("start_date"),
+            "event_date": story.get("start_date"),
             "description": f"Story funding: {story.get('name')}",
             "amount": funding_amount,
             "currency": funding_currency,
@@ -412,7 +414,7 @@ async def calculate_story_projection(
     # Per spec: "running_balance += ALL events (including hidden stories)"
     # MongoDB stores dates as strings (YYYY-MM-DD format)
     all_events_query = {
-        "date": {
+        "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
         }
@@ -432,18 +434,20 @@ async def calculate_story_projection(
     # Step 5: Apply same-day ordering to ALL events
     all_events_with_funding.sort(
         key=lambda e: (
-            e.get("date"),
+            e.get("event_date"),
             -e.get("base_amount", Decimal("0")),
             e.get("created_at")
         )
     )
 
-    # Remove MongoDB _id field from all events before processing
-    # This prevents ObjectId from appearing in any results
+    # Convert MongoDB _id to JSON-serializable id field
+    # This prevents ObjectId from appearing in results and provides consistent id field
     # TODO: Consider whitelist pattern instead of blacklist (pop)
     #       Create explicit field list to return for better robustness
     #       (prevents future MongoDB fields from leaking if non-serializable)
     for event in all_events_with_funding:
+        if "_id" in event and "id" not in event:
+            event["id"] = str(event["_id"])
         event.pop("_id", None)
 
     # Step 6: Calculate running balance using ALL events, but only display visible ones
@@ -572,7 +576,7 @@ async def calculate_account_projection(
     # MongoDB stores dates as strings (YYYY-MM-DD format)
     events = await db.events.find({
         "account_id": UUID(account_id),
-        "date": {
+        "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
         }
@@ -595,7 +599,7 @@ async def calculate_account_projection(
     # Sort by: date ASC, base_amount DESC (income first), created_at ASC (tie-breaker)
     events_with_base.sort(
         key=lambda e: (
-            e.get("date"),
+            e.get("event_date"),
             -e.get("base_amount", Decimal("0")),  # Negative for DESC
             e.get("created_at")
         )
@@ -613,9 +617,11 @@ async def calculate_account_projection(
 
         # Create result dict with running_balance
         result_event = {**event, "running_balance": running_balance}
-        # Remove MongoDB _id field (not JSON serializable)
+        # Convert MongoDB _id to JSON-serializable id field
         # TODO: Consider whitelist pattern instead of blacklist (pop)
         #       Create explicit field list to return for better robustness
+        if "_id" in result_event and "id" not in result_event:
+            result_event["id"] = str(result_event["_id"])
         result_event.pop("_id", None)
         results.append(result_event)
 
@@ -691,9 +697,9 @@ def detect_gaps_between_visible_events(
     Example:
         >>> visible_ids = {car_rental_id, gifts_id}
         >>> all_events = [
-        ...     {"_id": car_rental_id, "date": date(2024, 12, 20), "base_amount": Decimal("-320")},
-        ...     {"_id": parts_id, "date": date(2024, 12, 22), "base_amount": Decimal("-180")},
-        ...     {"_id": gifts_id, "date": date(2024, 12, 25), "base_amount": Decimal("-150")}
+        ...     {"_id": car_rental_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-320")},
+        ...     {"_id": parts_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-180")},
+        ...     {"_id": gifts_id, "event_date": date(2024, 12, 25), "base_amount": Decimal("-150")}
         ... ]
         >>> gaps = detect_gaps_between_visible_events(all_events, visible_ids)
         >>> len(gaps)
@@ -731,8 +737,8 @@ def detect_gaps_between_visible_events(
                         "hidden_event_count": len(hidden_events_accumulator),
                         "hidden_events": list(hidden_events_accumulator),
                         "delta_base": delta_base,
-                        "start_date": hidden_events_accumulator[0]["date"],
-                        "end_date": hidden_events_accumulator[-1]["date"]
+                        "start_date": hidden_events_accumulator[0]["event_date"],
+                        "end_date": hidden_events_accumulator[-1]["event_date"]
                     })
 
                 # Reset accumulator
@@ -755,8 +761,8 @@ def detect_gaps_between_visible_events(
                 "hidden_event_count": len(hidden_events_accumulator),
                 "hidden_events": list(hidden_events_accumulator),
                 "delta_base": delta_base,
-                "start_date": hidden_events_accumulator[0]["date"],
-                "end_date": hidden_events_accumulator[-1]["date"]
+                "start_date": hidden_events_accumulator[0]["event_date"],
+                "end_date": hidden_events_accumulator[-1]["event_date"]
             })
 
     return gaps
@@ -791,14 +797,14 @@ def detect_global_negative_warnings(projection_result: List[Dict]) -> List[Dict]
             warnings.append({
                 "type": "negative_balance",
                 "severity": "critical",
-                "date": event.get("date"),
+                "date": event.get("event_date"),
                 "amount": balance,
                 "threshold": Decimal("0"),
                 "account_id": None,
                 "account_name": None,
                 "story_id": None,
                 "story_name": None,
-                "message": f"Global balance goes negative: {balance} on {event['date']}"
+                "message": f"Global balance goes negative: {balance} on {event['event_date']}"
             })
 
     return warnings
@@ -834,14 +840,14 @@ def detect_account_negative_warnings(
             warnings.append({
                 "type": "account_negative",
                 "severity": "critical",
-                "date": event.get("date"),
+                "date": event.get("event_date"),
                 "amount": balance,
                 "threshold": Decimal("0"),
                 "account_id": UUID(account_id),
                 "account_name": account_name,
                 "story_id": None,
                 "story_name": None,
-                "message": f"{account_name} will go negative: {balance} on {event['date']}"
+                "message": f"{account_name} will go negative: {balance} on {event['event_date']}"
             })
 
     return warnings
@@ -892,7 +898,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
             warnings.append({
                 "type": "goal_exceeded",
                 "severity": "warning",
-                "date": story.get("end_date") or (projection_result[-1]["date"] if projection_result else None),
+                "date": story.get("end_date") or (projection_result[-1]["event_date"] if projection_result else None),
                 "amount": total_spend,
                 "threshold": goal_amount,
                 "account_id": None,
@@ -912,7 +918,7 @@ def detect_story_goal_warnings(story: Dict, projection_result: List[Dict]) -> Li
                 warnings.append({
                     "type": "goal_missed",
                     "severity": "warning",
-                    "date": story.get("end_date") or projection_result[-1]["date"],
+                    "date": story.get("end_date") or projection_result[-1]["event_date"],
                     "amount": final_balance,
                     "threshold": goal_amount,
                     "account_id": None,

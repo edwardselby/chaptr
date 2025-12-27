@@ -83,7 +83,7 @@ export async function calculateProjection(
 
         // Step 2: Fetch events in date range
         let events = await db.events
-            .where('date')
+            .where('event_date')
             .between(startDate, endDate, true, true)
             .toArray();
 
@@ -113,8 +113,8 @@ export async function calculateProjection(
 
         // Sort by: date ASC, amount DESC (income first), created_at ASC
         eventsWithBase.sort((a, b) => {
-            if (a.date !== b.date) {
-                return a.date < b.date ? -1 : 1;
+            if (a.event_date !== b.event_date) {
+                return a.event_date < b.event_date ? -1 : 1;
             }
             // Sort by base_amount DESC (income first)
             if (a.base_amount !== b.base_amount) {
@@ -143,7 +143,7 @@ export async function calculateProjection(
             // Create result row
             const row = {
                 id: event.id,
-                date: event.date,
+                date: event.event_date,
                 description: event.description,
                 amount: event.base_amount,
                 balance: runningBalance,
@@ -199,7 +199,7 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         const row = rows[i];
 
         // Insert TODAY divider before first future event
-        if (!todayDividerInserted && row.date >= today) {
+        if (!todayDividerInserted && row.event_date >= today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
 
@@ -216,15 +216,15 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         // Check gap to next event
         if (i < rows.length - 1) {
             const nextRow = rows[i + 1];
-            const gapDays = daysBetween(row.date, nextRow.date);
+            const gapDays = daysBetween(row.event_date, nextRow.event_date);
 
             if (gapDays > thresholdDays) {
                 withGaps.push({
                     id: `gap-${i}`,
                     isGap: true,
                     gapDays: gapDays,
-                    startDate: row.date,
-                    endDate: nextRow.date
+                    startDate: row.event_date,
+                    endDate: nextRow.event_date
                 });
             }
         }

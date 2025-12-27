@@ -28,27 +28,27 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_with_single_hidden_event(self):
         """Hidden event between two visible events creates gap."""
         # Setup: visible -> hidden -> visible
-        car_rental_id = uuid4()
-        parts_id = uuid4()
-        gifts_id = uuid4()
+        car_rental_id = str(uuid4())
+        parts_id = str(uuid4())
+        gifts_id = str(uuid4())
 
         visible_ids = {car_rental_id, gifts_id}
         all_events = [
             {
-                "_id": car_rental_id,
-                "date": date(2024, 12, 20),
+                "id": car_rental_id,
+                "event_date": date(2024, 12, 20),
                 "description": "car rental",
                 "base_amount": Decimal("-320.00")
             },
             {
-                "_id": parts_id,
-                "date": date(2024, 12, 22),
+                "id": parts_id,
+                "event_date": date(2024, 12, 22),
                 "description": "parts [volvo]",
                 "base_amount": Decimal("-180.00")  # hidden
             },
             {
-                "_id": gifts_id,
-                "date": date(2024, 12, 25),
+                "id": gifts_id,
+                "event_date": date(2024, 12, 25),
                 "description": "gifts",
                 "base_amount": Decimal("-150.00")
             }
@@ -74,17 +74,17 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_with_multiple_hidden_events(self):
         """Multiple hidden events sum to cumulative delta."""
         # Setup: visible -> hidden1 -> hidden2 -> visible
-        car_rental_id = uuid4()
-        parts_id = uuid4()
-        lift_pass_id = uuid4()
-        gifts_id = uuid4()
+        car_rental_id = str(uuid4())
+        parts_id = str(uuid4())
+        lift_pass_id = str(uuid4())
+        gifts_id = str(uuid4())
 
         visible_ids = {car_rental_id, gifts_id}
         all_events = [
-            {"_id": car_rental_id, "date": date(2024, 12, 20), "base_amount": Decimal("-320.00")},
-            {"_id": parts_id, "date": date(2024, 12, 22), "base_amount": Decimal("-180.00")},  # hidden
-            {"_id": lift_pass_id, "date": date(2024, 12, 23), "base_amount": Decimal("-150.00")},  # hidden
-            {"_id": gifts_id, "date": date(2024, 12, 25), "base_amount": Decimal("-150.00")}
+            {"id":car_rental_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-320.00")},
+            {"id":parts_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-180.00")},  # hidden
+            {"id":lift_pass_id, "event_date": date(2024, 12, 23), "base_amount": Decimal("-150.00")},  # hidden
+            {"id":gifts_id, "event_date": date(2024, 12, 25), "base_amount": Decimal("-150.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -99,17 +99,17 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_skips_zero_delta(self):
         """Gap with delta=0 (income offset by expense) is skipped."""
         # Setup: visible -> hidden_income (+100) -> hidden_expense (-100) -> visible
-        visible1_id = uuid4()
-        hidden_income_id = uuid4()
-        hidden_expense_id = uuid4()
-        visible2_id = uuid4()
+        visible1_id = str(uuid4())
+        hidden_income_id = str(uuid4())
+        hidden_expense_id = str(uuid4())
+        visible2_id = str(uuid4())
 
         visible_ids = {visible1_id, visible2_id}
         all_events = [
-            {"_id": visible1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden_income_id, "date": date(2024, 12, 21), "base_amount": Decimal("100.00")},
-            {"_id": hidden_expense_id, "date": date(2024, 12, 22), "base_amount": Decimal("-100.00")},
-            {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
+            {"id":visible1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden_income_id, "event_date": date(2024, 12, 21), "base_amount": Decimal("100.00")},
+            {"id":hidden_expense_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-100.00")},
+            {"id":visible2_id, "event_date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -120,15 +120,15 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_handles_trailing_hidden_events(self):
         """Hidden events after last visible event create trailing gap."""
         # Setup: visible -> hidden1 -> hidden2 (no more visible events)
-        visible_id = uuid4()
-        hidden1_id = uuid4()
-        hidden2_id = uuid4()
+        visible_id = str(uuid4())
+        hidden1_id = str(uuid4())
+        hidden2_id = str(uuid4())
 
         visible_ids = {visible_id}
         all_events = [
-            {"_id": visible_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden1_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")},
-            {"_id": hidden2_id, "date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
+            {"id":visible_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden1_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-50.00")},
+            {"id":hidden2_id, "event_date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -143,15 +143,15 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_no_hidden_events(self):
         """No gaps when all events visible."""
         # Setup: All events are visible (viewing ALL or only baseline exists)
-        event1_id = uuid4()
-        event2_id = uuid4()
-        event3_id = uuid4()
+        event1_id = str(uuid4())
+        event2_id = str(uuid4())
+        event3_id = str(uuid4())
 
         visible_ids = {event1_id, event2_id, event3_id}
         all_events = [
-            {"_id": event1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": event2_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")},
-            {"_id": event3_id, "date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
+            {"id":event1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":event2_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-50.00")},
+            {"id":event3_id, "event_date": date(2024, 12, 24), "base_amount": Decimal("-75.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -162,13 +162,13 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_handles_empty_visible_events(self):
         """No gaps when no visible events exist."""
         # Setup: No visible events (all hidden)
-        hidden1_id = uuid4()
-        hidden2_id = uuid4()
+        hidden1_id = str(uuid4())
+        hidden2_id = str(uuid4())
 
         visible_ids = set()  # No visible events
         all_events = [
-            {"_id": hidden1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden2_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
+            {"id":hidden1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden2_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -178,7 +178,7 @@ class TestDetectGapsBetweenVisibleEvents:
 
     def test_detect_gaps_handles_empty_all_events(self):
         """No gaps when no events exist."""
-        visible_ids = {uuid4()}
+        visible_ids = {str(uuid4())}
         all_events = []
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -189,15 +189,15 @@ class TestDetectGapsBetweenVisibleEvents:
     def test_detect_gaps_with_positive_delta(self):
         """Gap can have positive delta (hidden income events)."""
         # Setup: visible -> hidden_income (+500) -> visible
-        visible1_id = uuid4()
-        hidden_income_id = uuid4()
-        visible2_id = uuid4()
+        visible1_id = str(uuid4())
+        hidden_income_id = str(uuid4())
+        visible2_id = str(uuid4())
 
         visible_ids = {visible1_id, visible2_id}
         all_events = [
-            {"_id": visible1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden_income_id, "date": date(2024, 12, 22), "base_amount": Decimal("500.00")},
-            {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
+            {"id":visible1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden_income_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("500.00")},
+            {"id":visible2_id, "event_date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -284,13 +284,13 @@ class TestGapDetectionEdgeCases:
 
     def test_gap_with_single_visible_event(self):
         """Single visible event can have trailing gap."""
-        visible_id = uuid4()
-        hidden_id = uuid4()
+        visible_id = str(uuid4())
+        hidden_id = str(uuid4())
 
         visible_ids = {visible_id}
         all_events = [
-            {"_id": visible_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden_id, "date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
+            {"id":visible_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -302,13 +302,13 @@ class TestGapDetectionEdgeCases:
 
     def test_gap_with_consecutive_visible_events_no_gap(self):
         """Consecutive visible events with no hidden events = no gap."""
-        visible1_id = uuid4()
-        visible2_id = uuid4()
+        visible1_id = str(uuid4())
+        visible2_id = str(uuid4())
 
         visible_ids = {visible1_id, visible2_id}
         all_events = [
-            {"_id": visible1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": visible2_id, "date": date(2024, 12, 21), "base_amount": Decimal("-50.00")}
+            {"id":visible1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":visible2_id, "event_date": date(2024, 12, 21), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
@@ -318,15 +318,15 @@ class TestGapDetectionEdgeCases:
 
     def test_gap_with_very_large_delta(self):
         """Large delta values handled correctly."""
-        visible1_id = uuid4()
-        hidden_id = uuid4()
-        visible2_id = uuid4()
+        visible1_id = str(uuid4())
+        hidden_id = str(uuid4())
+        visible2_id = str(uuid4())
 
         visible_ids = {visible1_id, visible2_id}
         all_events = [
-            {"_id": visible1_id, "date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
-            {"_id": hidden_id, "date": date(2024, 12, 22), "base_amount": Decimal("-999999.99")},
-            {"_id": visible2_id, "date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
+            {"id":visible1_id, "event_date": date(2024, 12, 20), "base_amount": Decimal("-100.00")},
+            {"id":hidden_id, "event_date": date(2024, 12, 22), "base_amount": Decimal("-999999.99")},
+            {"id":visible2_id, "event_date": date(2024, 12, 25), "base_amount": Decimal("-50.00")}
         ]
 
         gaps = detect_gaps_between_visible_events(all_events, visible_ids)
