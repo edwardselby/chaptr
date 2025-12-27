@@ -207,7 +207,7 @@ window.app = function() {
 
                 // Find today's balance (first event on or after today, or last past event)
                 const todayStr = today.toISOString().split('T')[0];
-                const todayEvent = projection.find(row => !row.isGap && row.date >= todayStr);
+                const todayEvent = projection.find(row => !row.isGap && row.event_date >= todayStr);
                 this.projectionToday = todayEvent ? todayEvent.balance : 0;
 
                 // Find end of month balance (last event)

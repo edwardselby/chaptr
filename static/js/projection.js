@@ -143,7 +143,7 @@ export async function calculateProjection(
             // Create result row
             const row = {
                 id: event.id,
-                date: event.event_date,
+                event_date: event.event_date,
                 description: event.description,
                 amount: event.base_amount,
                 balance: runningBalance,

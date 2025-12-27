@@ -794,6 +794,8 @@ def detect_global_negative_warnings(projection_result: List[Dict]) -> List[Dict]
     for event in projection_result:
         balance = event.get("running_balance", Decimal("0"))
         if balance < 0:
+            # Warning objects use "date" field (distinct from event.event_date)
+            # This is the warning's date field, populated FROM event's event_date
             warnings.append({
                 "type": "negative_balance",
                 "severity": "critical",
