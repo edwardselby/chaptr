@@ -434,7 +434,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'create account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'create account'));
             throw error;
         }
     }
@@ -457,7 +457,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'create account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'create account'));
             throw error;
         }
     }
@@ -527,7 +527,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'update account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'update account'));
             throw error;
         }
     }
@@ -553,7 +553,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'update account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'update account'));
             throw error;
         }
     }
@@ -615,7 +615,7 @@ class StorageAdapter {
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'delete account'));
             throw error;
         }
     }
@@ -633,7 +633,7 @@ class StorageAdapter {
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
         } catch (error) {
-            showToast(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
+            alert(getModeAwareErrorMessage(this.mode, 'delete account'));
             throw error;
         }
     }
@@ -655,7 +655,7 @@ class StorageAdapter {
         const count = await db.sync_queue.count();
 
         if (count === 400) {
-            showToast('⚠ 400+ pending changes. Sync recommended.', 'warning', 5000);
+            showToast('400+ pending', 'warning', 5000);
         } else if (count >= 500) {
             // Hard block at 500 changes - modal UI deferred to Phase 7
             // TODO Phase 7: Implement modal with "Sync Now" / "Cancel" buttons
@@ -744,7 +744,7 @@ class StorageAdapter {
 
         } catch (error) {
             console.error('[CHAPTR] Manual sync failed:', error);
-            showToast('Sync failed. Changes still queued.', 'error');
+            alert('Sync failed. Changes still queued: ' + error.message);
             throw error;
         }
     }
@@ -857,7 +857,7 @@ class StorageAdapter {
     async handleFullSyncRequired() {
         console.warn('[CHAPTR] Full sync required - client is stale');
 
-        showToast('Updating to latest data...', 'info', 2000);
+        showToast('Syncing...', 'info', 2000);
 
         // Clear Dexie and re-download
         await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_queue], async () => {
@@ -872,7 +872,7 @@ class StorageAdapter {
         // Re-fetch from server
         await this.fetchAndPopulateDexie();
 
-        showToast('Data updated successfully', 'success');
+        showToast('Updated', 'success');
     }
 
     /**
@@ -895,7 +895,7 @@ class StorageAdapter {
     async clearSyncQueue() {
         if (this.mode !== 'full') {
             console.warn('[CHAPTR] clearSyncQueue only available in Mode 1 (Full)');
-            showToast('Sync queue only available in full mode', 'warning');
+            alert('Sync queue only available in full mode');
             return 0;
         }
 

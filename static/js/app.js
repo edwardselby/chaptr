@@ -150,6 +150,9 @@ window.app = function() {
                 }
             });
 
+            // Expose notification method globally for utils.js and storage-adapter.js
+            window.showNotification = this.showNotification.bind(this);
+
             console.log('CHAPTR ready!');
         },
 
@@ -1479,7 +1482,7 @@ window.app = function() {
                 const queueCount = await this.updateSyncQueueCount();
 
                 if (queueCount === 0) {
-                    showToast('No changes to sync', 'info');
+                    // No notification needed - silence is golden
                     return;
                 }
 
@@ -1498,7 +1501,7 @@ window.app = function() {
                         this.showNotification(`Synced ${queueCount}`, 'success');
                     }
                 } else {
-                    showToast(`✓ Sync complete`, 'success');
+                    this.showNotification('Sync complete', 'success');
                 }
 
             } catch (error) {
@@ -1536,7 +1539,7 @@ window.app = function() {
                 this.showNotification('Queue cleared', 'success');
             } catch (error) {
                 console.error('Clear queue error:', error);
-                showToast('Failed to clear sync queue', 'error');
+                alert('Failed to clear sync queue: ' + error.message);
             }
         },
 
@@ -1550,7 +1553,6 @@ window.app = function() {
         async clearDatabaseAndResync() {
             try {
                 this.isSyncing = true;
-                showToast('Clearing local database...', 'info');
 
                 // Clear all local data (preserves users and settings)
                 await db.clearAllData();
@@ -1564,14 +1566,12 @@ window.app = function() {
                 console.log('[CHAPTR] Reactive state cleared');
 
                 // Trigger full sync to re-download all data
-                showToast('Resyncing from server...', 'info');
                 await this.fullSync();
 
                 console.log('[CHAPTR] Database reset complete');
-                showToast('Database reset complete', 'success');
             } catch (error) {
                 console.error('[CHAPTR] Clear database error:', error);
-                showToast('Failed to reset database', 'error');
+                alert('Failed to reset database: ' + error.message);
             } finally {
                 this.isSyncing = false;
                 this.showDatabaseToolsModal = false;
@@ -1587,7 +1587,6 @@ window.app = function() {
         async clearDatabaseAndChangeLog() {
             try {
                 this.isSyncing = true;
-                showToast('Clearing local database and change log...', 'info');
 
                 // Clear all local data
                 await db.clearAllData();
@@ -1609,13 +1608,12 @@ window.app = function() {
                 console.log('[CHAPTR] Cleared change log:', data.deleted_count, 'entries');
 
                 // Trigger full sync
-                showToast('Resyncing from server...', 'info');
                 await this.fullSync();
 
-                showToast(`Reset complete - cleared ${data.deleted_count} change log entries`, 'success');
+                console.log(`[CHAPTR] Reset complete - cleared ${data.deleted_count} change log entries`);
             } catch (error) {
                 console.error('[CHAPTR] Clear database + changelog error:', error);
-                showToast('Failed to reset database and change log', 'error');
+                alert('Failed to reset database and change log: ' + error.message);
             } finally {
                 this.isSyncing = false;
                 this.showDatabaseToolsModal = false;
@@ -1645,7 +1643,7 @@ window.app = function() {
 
             try {
                 this.isSyncing = true;
-                showToast('Executing nuclear reset...', 'info');
+                this.showNotification('Resetting...', 'info');
 
                 // Call nuclear reset endpoint with password
                 const response = await apiRequest('/api/admin/nuclear-reset', {
@@ -1671,10 +1669,10 @@ window.app = function() {
                 // Resync (will get empty state)
                 await this.fullSync();
 
-                showToast('Nuclear reset complete - all data wiped', 'success');
+                console.log('[CHAPTR] Nuclear reset complete - all data wiped');
             } catch (error) {
                 console.error('[CHAPTR] Nuclear reset error:', error);
-                showToast(error.message || 'Nuclear reset failed', 'error');
+                alert(error.message || 'Nuclear reset failed');
             } finally {
                 this.isSyncing = false;
                 this.showDatabaseToolsModal = false;
@@ -2164,17 +2162,15 @@ window.app = function() {
                     const eventDate = this.eventForm.event_date;
 
                     if (eventDate < story.start_date) {
-                        showToast(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`,
-                            'error'
+                        alert(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`
                         );
                         return;
                     }
 
                     if (story.end_date && eventDate > story.end_date) {
-                        showToast(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`,
-                            'error'
+                        alert(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`
                         );
                         return;
                     }

@@ -81,9 +81,8 @@
             <!-- Inline notification (shows when currentNotification is set) -->
             <div class="notification-area"
                  x-show="currentNotification"
-                 :class="'type-' + (currentNotification?.type || 'info')">
-                <span class="notification-prompt">&gt;</span>
-                <span class="notification-message" x-text="currentNotification?.message"></span>
+                 :class="'type-' + (currentNotification?.type || 'info')"
+                 x-text="currentNotification?.message">
             </div>
 
             <!-- Sync badge (shows when NO notification and queue has items) -->

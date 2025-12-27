@@ -226,11 +226,23 @@ export function isAuthenticated() {
 /**
  * Show toast notification
  *
+ * Delegates to new notification system if available (window.showNotification),
+ * falls back to legacy popup toast for backward compatibility.
+ *
  * @param {string} message - Message to display
  * @param {string} type - Toast type: 'success' | 'error' | 'warning' | 'info'
  * @param {number} duration - Duration in ms (default: 3000)
  */
 export function showToast(message, type = 'info', duration = 3000) {
+    // Use new notification system if available
+    if (typeof window.showNotification === 'function') {
+        // Shorten message for inline notifications (max ~3 words)
+        const shortMessage = message.split(' ').slice(0, 3).join(' ');
+        window.showNotification(shortMessage, type, duration);
+        return;
+    }
+
+    // Fallback to legacy popup toast
     // Create toast container if it doesn't exist
     let container = document.getElementById('toast-container');
     if (!container) {

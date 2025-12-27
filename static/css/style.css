@@ -179,9 +179,7 @@ body::before {
 .notification-area {
     display: flex;
     align-items: center;
-    gap: 6px;
     font-size: 11px;
-    color: var(--pink-bright);
     padding: 4px 8px;
     background: transparent;
     max-width: 200px;
@@ -190,31 +188,20 @@ body::before {
     text-overflow: ellipsis;
 }
 
-.notification-prompt {
-    color: var(--pink-bright);
-    font-weight: 500;
-}
-
-.notification-message {
-    color: var(--pink-bright);
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 /* Type variants */
-.notification-area.type-success .notification-message {
+.notification-area.type-success {
     color: var(--green-bright);
 }
 
-.notification-area.type-error .notification-message {
+.notification-area.type-error {
     color: var(--red);
 }
 
-.notification-area.type-warning .notification-message {
+.notification-area.type-warning {
     color: var(--amber);
 }
 
-.notification-area.type-info .notification-message {
+.notification-area.type-info {
     color: var(--pink-bright);
 }
 
