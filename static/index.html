@@ -78,14 +78,24 @@
             </div>
         </div>
         <div class="header-right">
-            <div class="sync-indicator" x-show="isSyncing">
-                <span class="sync-dot"></span>
-                <span class="sync-text">syncing</span>
+            <!-- Inline notification (shows when currentNotification is set) -->
+            <div class="notification-area"
+                 x-show="currentNotification"
+                 :class="'type-' + (currentNotification?.type || 'info')">
+                <span class="notification-prompt">&gt;</span>
+                <span class="notification-message" x-text="currentNotification?.message"></span>
             </div>
-            <div class="sync-pending-indicator" x-show="syncQueueCount > 0 && !isSyncing" @click="manualSync()" title="Click to sync now">
+
+            <!-- Sync badge (shows when NO notification and queue has items) -->
+            <div class="sync-pending-indicator"
+                 x-show="!currentNotification && syncQueueCount > 0 && !isSyncing"
+                 @click="manualSync()"
+                 title="Click to sync now">
+                <span>(</span>
                 <span class="sync-pending-count" x-text="syncQueueCount"></span>
-                <span class="sync-pending-text">pending</span>
+                <span>)</span>
             </div>
+
             <button class="btn-settings" @click="switchScreen('settings')">
                 <span>⚙</span>
             </button>

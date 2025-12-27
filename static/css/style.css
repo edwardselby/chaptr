@@ -20,6 +20,9 @@
     --text-dim: #666666;
     --text-mid: #888888;
     --border: #333333;
+    --pink-bright: #ff1493;
+    --pink-dim: #b3006d;
+    --pink-glow: rgba(255, 20, 147, 0.15);
 }
 
 /* Reset and Base Styles */
@@ -152,28 +155,67 @@ body::before {
 .sync-pending-indicator {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     font-size: 11px;
-    color: var(--amber);
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    padding: 0;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 3px;
-    border: 1px solid var(--amber);
-    background: rgba(255, 191, 0, 0.1);
-    transition: background 0.2s;
-}
-
-.sync-pending-indicator:hover {
-    background: rgba(255, 191, 0, 0.2);
 }
 
 .sync-pending-count {
-    font-weight: 700;
-    font-size: 12px;
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--text-dim);
 }
 
 .sync-pending-text {
-    text-transform: lowercase;
+    display: none; /* Remove "pending" text */
+}
+
+/* ===== INLINE NOTIFICATION AREA ===== */
+
+.notification-area {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--pink-bright);
+    padding: 4px 8px;
+    background: transparent;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notification-prompt {
+    color: var(--pink-bright);
+    font-weight: 500;
+}
+
+.notification-message {
+    color: var(--pink-bright);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Type variants */
+.notification-area.type-success .notification-message {
+    color: var(--green-bright);
+}
+
+.notification-area.type-error .notification-message {
+    color: var(--red);
+}
+
+.notification-area.type-warning .notification-message {
+    color: var(--amber);
+}
+
+.notification-area.type-info .notification-message {
+    color: var(--pink-bright);
 }
 
 .btn-settings {

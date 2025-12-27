@@ -61,6 +61,11 @@ window.app = function() {
         isSyncing: false,
         syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
+
+        // Notification State
+        currentNotification: null,      // { message: string, type: string }
+        notificationTimeout: null,       // Timeout ID for auto-dismiss
+
         showAccountModal: false,
         showStoryModal: false,
         showEventModal: false,
@@ -632,13 +637,14 @@ window.app = function() {
 
             try {
                 this.isSyncing = true;
+                this.showNotification('Syncing...', 'info');
 
                 const result = await storage.manualSync();
 
                 if (result.conflicts && result.conflicts > 0) {
-                    showToast(`Sync complete: ${result.conflicts} conflicts need resolution`, 'warning', 5000);
+                    this.showNotification(`${result.conflicts} conflicts`, 'warning');
                 } else if (result.applied && result.applied > 0) {
-                    showToast(`Synced ${result.applied} changes`, 'success');
+                    this.showNotification(`Synced ${result.applied}`, 'success');
                 }
 
                 // Update queue count
@@ -1484,12 +1490,12 @@ window.app = function() {
                 if (storage.mode === 'full') {
                     const conflicts = await db.conflicts.count();
                     if (conflicts > 0) {
-                        showToast(
-                            `⚠ ${conflicts} conflict${conflicts > 1 ? 's' : ''} detected. Review in Settings.`,
+                        this.showNotification(
+                            `${conflicts} conflicts`,
                             'warning'
                         );
                     } else {
-                        showToast(`✓ Synced ${queueCount} change${queueCount > 1 ? 's' : ''}`, 'success');
+                        this.showNotification(`Synced ${queueCount}`, 'success');
                     }
                 } else {
                     showToast(`✓ Sync complete`, 'success');
@@ -1527,7 +1533,7 @@ window.app = function() {
                     await this.updateProjectionRows();
                 }
 
-                showToast(`Cleared ${count} pending sync items`, 'success');
+                this.showNotification('Queue cleared', 'success');
             } catch (error) {
                 console.error('Clear queue error:', error);
                 showToast('Failed to clear sync queue', 'error');
@@ -2006,10 +2012,7 @@ window.app = function() {
                 this.showBalanceModal = false;
 
                 // Show notification
-                const driftText = this.balanceForm.drift > 0
-                    ? `+${formatCurrency(this.balanceForm.drift, this.balanceForm.currency)}`
-                    : formatCurrency(this.balanceForm.drift, this.balanceForm.currency);
-                showToast(`Balance updated. Drift: ${driftText} - Reconciliation will run on next trigger.`, 'success');
+                this.showNotification('Balance updated', 'success');
 
             } catch (error) {
                 console.error('Error updating balance:', error);
@@ -2361,6 +2364,42 @@ window.app = function() {
             const drift = this.accountsTotal - this.projectionToday;
             const sign = drift >= 0 ? '+' : '';
             return sign + formatCurrency(drift, this.settings.base_currency);
+        },
+
+        // ===== NOTIFICATION SYSTEM =====
+
+        /**
+         * Show inline notification in header
+         * @param {string} message - Short message (~3 words max)
+         * @param {string} type - Type: 'info' | 'success' | 'warning' | 'error'
+         * @param {number} duration - Duration in ms (default: 10000)
+         */
+        showNotification(message, type = 'info', duration = 10000) {
+            // Clear existing timeout
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+
+            // Set new notification (replaces previous)
+            this.currentNotification = { message, type };
+
+            // Auto-dismiss
+            this.notificationTimeout = setTimeout(() => {
+                this.currentNotification = null;
+                this.notificationTimeout = null;
+            }, duration);
+        },
+
+        /**
+         * Clear notification immediately
+         */
+        clearNotification() {
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+            this.currentNotification = null;
         },
 
         // ===== MODE DISPLAY HELPERS =====
