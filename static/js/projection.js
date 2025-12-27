@@ -198,7 +198,7 @@ export async function calculateProjection(
             // Create result row
             const row = {
                 id: event.id,
-                date: event.event_date,
+                event_date: event.event_date,
                 description: event.description,
                 amount: event.base_amount,
                 balance: runningBalance,
@@ -254,7 +254,7 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         const row = rows[i];
 
         // Insert TODAY divider before first future event
-        if (!todayDividerInserted && row.date >= today) {
+        if (!todayDividerInserted && row.event_date >= today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
 
@@ -271,15 +271,15 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         // Check gap to next event
         if (i < rows.length - 1) {
             const nextRow = rows[i + 1];
-            const gapDays = daysBetween(row.date, nextRow.date);
+            const gapDays = daysBetween(row.event_date, nextRow.event_date);
 
             if (gapDays > thresholdDays) {
                 withGaps.push({
                     id: `gap-${i}`,
                     isGap: true,
                     gapDays: gapDays,
-                    startDate: row.date,
-                    endDate: nextRow.date
+                    startDate: row.event_date,
+                    endDate: nextRow.event_date
                 });
             }
         }

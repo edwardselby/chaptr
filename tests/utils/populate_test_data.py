@@ -446,7 +446,7 @@ class TestDataGenerator:
             event_id = uuid4()
             event_data = {
                 "id": str(event_id),  # Convert UUID to string
-                "date": event_date.isoformat(),
+                "event_date": event_date.isoformat(),
                 "description": description,
                 "amount": str(amount),
                 "currency": account.currency,

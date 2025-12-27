@@ -119,7 +119,7 @@ async def calculate_auto_adjustment(
 
     # Query all REAL events for this account up to today
     # Exclude hypothetical events: "Reality as anchor - hypotheticals are explicit opt-ins" (spec)
-    # NOTE: Events store date as "event_date" in MongoDB (date is JSON alias)
+    # Events use "event_date" field consistently everywhere
     account_events = await db.events.find({
         "account_id": str(account_id),
         "created_by": str(user_id),

@@ -125,7 +125,7 @@ STORY_ID="<uuid-from-step-2>"
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-01-20",
+    "event_date": "2025-01-20",
     "description": "Flight to Vancouver",
     "amount": -450.00,
     "currency": "GBP",
@@ -446,7 +446,7 @@ Save: `STORY_ID="<uuid>"`
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-05-05",
+    "event_date": "2025-05-05",
     "description": "Hotel (paid from GBP account)",
     "amount": -300.00,
     "currency": "GBP",
@@ -467,7 +467,7 @@ curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-05-06",
+    "event_date": "2025-05-06",
     "description": "Restaurant",
     "amount": -85.00,
     "currency": "USD",
@@ -487,7 +487,7 @@ curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
 curl -X POST http://localhost:8000/api/events \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-01-15",
+    "event_date": "2025-01-15",
     "description": "Grocery shopping",
     "amount": -75.00,
     "currency": "GBP",
@@ -761,7 +761,7 @@ Save: `STORY_ID="<uuid>"`
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-02-10",
+    "event_date": "2025-02-10",
     "description": "Event 1",
     "amount": -100.00,
     "currency": "GBP",
@@ -778,7 +778,7 @@ Save: `EVENT1_ID="<uuid>"`
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-02-15",
+    "event_date": "2025-02-15",
     "description": "Event 2",
     "amount": -200.00,
     "currency": "GBP",
@@ -795,7 +795,7 @@ Save: `EVENT2_ID="<uuid>"`
 curl -X POST http://localhost:8000/api/events?story_id=$STORY_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-02-20",
+    "event_date": "2025-02-20",
     "description": "Event 3",
     "amount": -150.00,
     "currency": "GBP",
@@ -858,7 +858,7 @@ One-off events with `is_baseline=true` are part of the baseline collection but i
 curl -X POST http://localhost:8000/api/events \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-02-10",
+    "event_date": "2025-02-10",
     "description": "One-off Baseline Event",
     "amount": -50.00,
     "currency": "GBP",
@@ -1416,7 +1416,7 @@ curl "http://localhost:8000/api/events?start_date=2025-01-01&end_date=2025-01-31
 [
   {
     "id": "990e8400-e29b-41d4-a716-446655440000",
-    "date": "2025-01-20",
+    "event_date": "2025-01-20",
     "description": "Flight to Vancouver",
     "amount": "-450.0",
     "currency": "GBP",
@@ -1460,7 +1460,7 @@ curl http://localhost:8000/api/events/$EVENT_ID | jq '.'
 ```json
 {
   "id": "990e8400-e29b-41d4-a716-446655440000",
-  "date": "2025-01-20",
+  "event_date": "2025-01-20",
   "description": "Flight to Vancouver",
   "amount": "-450.0",
   "currency": "GBP",
@@ -1505,7 +1505,7 @@ curl http://localhost:8000/api/events/$EVENT_ID | jq '.'
 curl -X POST http://localhost:8000/api/events \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-01-10",
+    "event_date": "2025-01-10",
     "description": "Groceries",
     "amount": -85.50,
     "currency": "GBP",
@@ -1521,7 +1521,7 @@ STORY_ID="770e8400-e29b-41d4-a716-446655440000"
 curl -X POST "http://localhost:8000/api/events?story_id=$STORY_ID" \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2025-01-20",
+    "event_date": "2025-01-20",
     "description": "Hotel booking",
     "amount": -650.00,
     "currency": "GBP",
@@ -1532,7 +1532,7 @@ curl -X POST "http://localhost:8000/api/events?story_id=$STORY_ID" \
 ```
 
 **Required Fields:**
-- `date` (date, YYYY-MM-DD format) - also accepts `event_date` alias
+- `event_date` (date, YYYY-MM-DD format)
 - `description` (string, min 1 char)
 - `amount` (number, positive=income, negative=expense)
 - `currency` (string, 3 uppercase letters)
@@ -1548,7 +1548,7 @@ curl -X POST "http://localhost:8000/api/events?story_id=$STORY_ID" \
 ```json
 {
   "id": "aa0e8400-e29b-41d4-a716-446655440000",
-  "date": "2025-01-20",
+  "event_date": "2025-01-20",
   "description": "Hotel booking",
   "amount": "-650.0",
   "currency": "GBP",
@@ -1619,7 +1619,7 @@ curl -X PUT http://localhost:8000/api/events/$EVENT_ID \
 ```json
 {
   "id": "990e8400-e29b-41d4-a716-446655440000",
-  "date": "2025-01-20",
+  "event_date": "2025-01-20",
   "description": "Flight to Vancouver (updated)",
   "amount": "-475.0",
   "currency": "GBP",

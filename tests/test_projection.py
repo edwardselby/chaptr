@@ -63,8 +63,8 @@ def test_events():
     return [
         # Dec 20: Car rental (canada-trip)
         {
-            "_id": uuid4(),
-            "date": date(2024, 12, 20),
+            "id": str(uuid4()),
+            "event_date": date(2024, 12, 20),
             "description": "car rental",
             "amount": Decimal("-320.00"),
             "currency": "GBP",
@@ -78,8 +78,8 @@ def test_events():
         },
         # Dec 22: New tyres (volvo)
         {
-            "_id": uuid4(),
-            "date": date(2024, 12, 22),
+            "id": str(uuid4()),
+            "event_date": date(2024, 12, 22),
             "description": "new tyres",
             "amount": Decimal("-380.00"),
             "currency": "GBP",
@@ -93,8 +93,8 @@ def test_events():
         },
         # Dec 28: Salary (baseline)
         {
-            "_id": uuid4(),
-            "date": date(2024, 12, 28),
+            "id": str(uuid4()),
+            "event_date": date(2024, 12, 28),
             "description": "salary",
             "amount": Decimal("3000.00"),
             "currency": "GBP",
@@ -108,8 +108,8 @@ def test_events():
         },
         # Dec 28: Rent (baseline) - same day as salary, should process AFTER
         {
-            "_id": uuid4(),
-            "date": date(2024, 12, 28),
+            "id": str(uuid4()),
+            "event_date": date(2024, 12, 28),
             "description": "rent",
             "amount": Decimal("-1200.00"),
             "currency": "GBP",
@@ -123,8 +123,8 @@ def test_events():
         },
         # Jan 01: Bills (baseline)
         {
-            "_id": uuid4(),
-            "date": date(2025, 1, 1),
+            "id": str(uuid4()),
+            "event_date": date(2025, 1, 1),
             "description": "bills",
             "amount": Decimal("-100.00"),
             "currency": "GBP",
@@ -169,10 +169,13 @@ def mock_db(test_accounts, test_events):
                         continue
 
                 # Handle date range queries
-                if "date" in query and "$gte" in query["date"]:
-                    item_date = item.get("date")
-                    start = query["date"]["$gte"]
-                    end = query["date"]["$lte"]
+                if "event_date" in query and "$gte" in query["event_date"]:
+                    item_date = item.get("event_date")
+                    # Convert date object to ISO string for comparison
+                    if isinstance(item_date, date):
+                        item_date = item_date.isoformat()
+                    start = query["event_date"]["$gte"]
+                    end = query["event_date"]["$lte"]
                     if not (start <= item_date <= end):
                         continue
 
@@ -370,8 +373,8 @@ async def test_exclude_hypothetical_from_all_view(mock_db):
     """
     # Add a hypothetical event to test data
     hypothetical_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 25),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 25),
         "description": "hypothetical funding",
         "amount": Decimal("500.00"),
         "currency": "GBP",
@@ -963,8 +966,8 @@ async def test_event_to_base_currency_conversion(mock_db):
     """
     # Create CAD event
     cad_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 25),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 25),
         "description": "ski passes",
         "amount": Decimal("-349.00"),
         "currency": "CAD",
@@ -1013,8 +1016,8 @@ async def test_mixed_currency_running_balance(mock_db):
     """
     # Add CAD ski passes event
     ski_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 25),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 25),
         "description": "ski passes",
         "amount": Decimal("-349.00"),
         "currency": "CAD",
@@ -1091,8 +1094,8 @@ async def test_base_to_display_currency_conversion(mock_db):
 
     # Add CAD event
     ski_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 25),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 25),
         "description": "ski passes",
         "amount": Decimal("-349.00"),
         "currency": "CAD",
@@ -1266,13 +1269,13 @@ async def test_global_negative_warning():
     # Create test projection with negative balance
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "car rental",
             "amount": Decimal("-320.00"),
             "running_balance": Decimal("2180.00")  # Positive
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "large expense",
             "amount": Decimal("-3000.00"),
             "running_balance": Decimal("-820.00")  # NEGATIVE
@@ -1310,13 +1313,13 @@ async def test_account_negative_warning():
     # Create test projection with negative balance
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "small expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("400.00")  # Positive
         },
         {
-            "date": date(2024, 12, 22),
+            "event_date": date(2024, 12, 22),
             "description": "large expense",
             "amount": Decimal("-800.00"),
             "running_balance": Decimal("-400.00")  # NEGATIVE
@@ -1366,28 +1369,28 @@ async def test_story_spend_up_to_exceeded():
     # Projection result with expenses totaling £1,070
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "car rental",
             "amount": Decimal("-320.00"),
             "is_baseline": False,
             "running_balance": Decimal("12680.00")
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "gifts",
             "amount": Decimal("-150.00"),
             "is_baseline": False,
             "running_balance": Decimal("12530.00")
         },
         {
-            "date": date(2024, 12, 28),
+            "event_date": date(2024, 12, 28),
             "description": "salary",
             "amount": Decimal("3000.00"),
             "is_baseline": True,  # Baseline - excluded from spend calculation
             "running_balance": Decimal("15530.00")
         },
         {
-            "date": date(2025, 1, 1),
+            "event_date": date(2025, 1, 1),
             "description": "hotel",
             "amount": Decimal("-600.00"),
             "is_baseline": False,
@@ -1433,14 +1436,14 @@ async def test_story_end_with_at_least_missed():
     # Projection result with final balance £2,500
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense",
             "amount": Decimal("-500.00"),
             "is_baseline": False,
             "running_balance": Decimal("12500.00")
         },
         {
-            "date": date(2025, 1, 31),
+            "event_date": date(2025, 1, 31),
             "description": "final event",
             "amount": Decimal("0.00"),
             "is_baseline": False,
@@ -1481,7 +1484,7 @@ async def test_story_goal_none_no_warnings():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense",
             "amount": Decimal("-500.00"),
             "is_baseline": False,
@@ -1510,13 +1513,13 @@ async def test_global_negative_warning_boundary_zero():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("100.00")
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "final expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("0.00")  # Exactly zero
@@ -1541,13 +1544,13 @@ async def test_global_negative_warning_boundary_negative_penny():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("99.99")
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "small expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("-0.01")  # Tiny negative
@@ -1578,19 +1581,19 @@ async def test_global_negative_then_recovery():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "large expense",
             "amount": Decimal("-1000.00"),
             "running_balance": Decimal("-500.00")  # NEGATIVE
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "income",
             "amount": Decimal("700.00"),
             "running_balance": Decimal("200.00")  # Recovered to positive
         },
         {
-            "date": date(2024, 12, 28),
+            "event_date": date(2024, 12, 28),
             "description": "small expense",
             "amount": Decimal("-50.00"),
             "running_balance": Decimal("150.00")  # Still positive
@@ -1619,19 +1622,19 @@ async def test_multiple_negative_warnings_in_projection():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense 1",
             "amount": Decimal("-200.00"),
             "running_balance": Decimal("-100.00")  # WARNING 1
         },
         {
-            "date": date(2024, 12, 22),
+            "event_date": date(2024, 12, 22),
             "description": "small income",
             "amount": Decimal("50.00"),
             "running_balance": Decimal("-50.00")  # Still negative, WARNING 2
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "expense 2",
             "amount": Decimal("-200.00"),
             "running_balance": Decimal("-250.00")  # Even more negative, WARNING 3
@@ -1663,7 +1666,7 @@ async def test_warning_message_includes_currency_and_amount():
 
     projection_result = [
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "large expense",
             "amount": Decimal("-2000.00"),
             "running_balance": Decimal("-1234.56")
@@ -1710,7 +1713,7 @@ async def test_story_goal_warning_message_includes_shortfall():
 
     projection_spend = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "expense",
             "amount": Decimal("-1234.00"),
             "is_baseline": False,
@@ -1736,7 +1739,7 @@ async def test_story_goal_warning_message_includes_shortfall():
 
     projection_savings = [
         {
-            "date": date(2025, 1, 31),
+            "event_date": date(2025, 1, 31),
             "description": "final",
             "amount": Decimal("0.00"),
             "is_baseline": False,
@@ -1763,13 +1766,13 @@ async def test_warning_on_first_event():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "large expense",
             "amount": Decimal("-500.00"),
             "running_balance": Decimal("-400.00")  # First event goes negative
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "income",
             "amount": Decimal("500.00"),
             "running_balance": Decimal("100.00")
@@ -1796,25 +1799,25 @@ async def test_warning_on_last_event():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "income",
             "amount": Decimal("100.00"),
             "running_balance": Decimal("100.00")
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "small expense",
             "amount": Decimal("-50.00"),
             "running_balance": Decimal("50.00")
         },
         {
-            "date": date(2024, 12, 28),
+            "event_date": date(2024, 12, 28),
             "description": "another expense",
             "amount": Decimal("-30.00"),
             "running_balance": Decimal("20.00")
         },
         {
-            "date": date(2024, 12, 31),
+            "event_date": date(2024, 12, 31),
             "description": "final large expense",
             "amount": Decimal("-100.00"),
             "running_balance": Decimal("-80.00")  # Last event goes negative
@@ -1849,28 +1852,28 @@ async def test_story_goal_with_baseline_events_excluded():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "car rental",
             "amount": Decimal("-300.00"),
             "is_baseline": False,  # Story event
             "running_balance": Decimal("12700.00")
         },
         {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "gifts",
             "amount": Decimal("-150.00"),
             "is_baseline": False,  # Story event
             "running_balance": Decimal("12550.00")
         },
         {
-            "date": date(2024, 12, 28),
+            "event_date": date(2024, 12, 28),
             "description": "salary",
             "amount": Decimal("3000.00"),
             "is_baseline": True,  # BASELINE - should be EXCLUDED
             "running_balance": Decimal("15550.00")
         },
         {
-            "date": date(2024, 12, 30),
+            "event_date": date(2024, 12, 30),
             "description": "rent",
             "amount": Decimal("-1500.00"),
             "is_baseline": True,  # BASELINE - should be EXCLUDED
@@ -1906,7 +1909,7 @@ async def test_story_goal_zero_amount():
 
     projection_result = [
         {
-            "date": date(2024, 12, 20),
+            "event_date": date(2024, 12, 20),
             "description": "tiny expense",
             "amount": Decimal("-0.01"),
             "is_baseline": False,
@@ -2133,8 +2136,8 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
 
     # Add a new home-improvement event
     home_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 23),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 23),
         "description": "paint supplies",
         "amount": Decimal("-150.00"),
         "currency": "GBP",
@@ -2198,7 +2201,7 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
 
     finally:
         # Clean up
-        mock_db.events.data = [e for e in mock_db.events.data if e["_id"] != home_event["_id"]]
+        mock_db.events.data = [e for e in mock_db.events.data if e.get("id") != home_event["_id"]]
         for event in mock_db.events.data:
             if event["description"] == "car rental":
                 event["story_id"] = None
@@ -2452,7 +2455,7 @@ async def test_story_with_only_hypothetical_events(mock_db):
         funding_event = funding_events[0]
         assert funding_event["amount"] == Decimal("500.00"), \
             "Funding amount should be £500"
-        assert funding_event["date"] == date(2024, 12, 19), \
+        assert funding_event["event_date"] == date(2024, 12, 19), \
             "Funding should be on story start_date"
         assert "funding" in funding_event["description"].lower(), \
             "Description should indicate funding"
@@ -2765,8 +2768,8 @@ async def test_multiple_gaps_in_single_story(mock_db):
 
     # Add gifts and hotel events for canada-trip
     gifts_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 25),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 25),
         "description": "gifts",
         "amount": Decimal("-150.00"),
         "currency": "GBP",
@@ -2780,8 +2783,8 @@ async def test_multiple_gaps_in_single_story(mock_db):
     }
 
     hotel_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 30),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 30),
         "description": "hotel",
         "amount": Decimal("-200.00"),
         "currency": "GBP",
@@ -2796,8 +2799,8 @@ async def test_multiple_gaps_in_single_story(mock_db):
 
     # Add home paint event (hidden)
     paint_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 27),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 27),
         "description": "paint supplies",
         "amount": Decimal("-150.00"),
         "currency": "GBP",
@@ -2853,7 +2856,7 @@ async def test_multiple_gaps_in_single_story(mock_db):
     finally:
         # Clean up
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] not in [gifts_event["_id"], hotel_event["_id"], paint_event["_id"]]]
+                               if e.get("id") not in [gifts_event.get("id"), hotel_event.get("id"), paint_event.get("id")]]
         for event in mock_db.events.data:
             if event["description"] == "car rental":
                 event["story_id"] = None
@@ -2922,7 +2925,7 @@ async def test_projection_with_zero_balance_account(mock_db):
 
     # Add account with zero balance
     zero_account = {
-        "_id": uuid4(),
+        "id": str(uuid4()),
         "name": "Empty Wallet",
         "currency": "GBP",
         "current_balance": Decimal("0.00"),
@@ -2949,7 +2952,7 @@ async def test_projection_with_zero_balance_account(mock_db):
 
     finally:
         mock_db.accounts.data = [a for a in mock_db.accounts.data
-                                  if a["_id"] != zero_account["_id"]]
+                                  if a.get("id") != zero_account["_id"]]
 
 
 @pytest.mark.asyncio
@@ -2958,8 +2961,8 @@ async def test_projection_with_only_hypothetical_events(mock_db):
 
     # Add hypothetical event
     hypothetical_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 22),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 22),
         "description": "[hypothetical] future expense",
         "account_id": UUID("11111111-1111-1111-1111-111111111111"),
         "amount": Decimal("-500.00"),
@@ -2990,7 +2993,7 @@ async def test_projection_with_only_hypothetical_events(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] != hypothetical_event["_id"]]
+                               if e.get("id") != hypothetical_event["_id"]]
 
 
 @pytest.mark.asyncio
@@ -2999,8 +3002,8 @@ async def test_projection_with_only_auto_adjustment_events(mock_db):
 
     # Add auto-adjustment event
     auto_adjust_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 22),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 22),
         "description": "[auto] balance adjustment",
         "account_id": UUID("11111111-1111-1111-1111-111111111111"),
         "amount": Decimal("50.00"),
@@ -3031,7 +3034,7 @@ async def test_projection_with_only_auto_adjustment_events(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] != auto_adjust_event["_id"]]
+                               if e.get("id") != auto_adjust_event["_id"]]
 
 
 # ============================================================================
@@ -3052,7 +3055,7 @@ async def test_single_day_projection(mock_db):
     # Should only include events on that exact date
     assert isinstance(result, list)
     for event in result:
-        assert event["date"] == date(2024, 12, 20), \
+        assert event["event_date"] == date(2024, 12, 20), \
             "Single-day projection should only include events on that date"
 
 
@@ -3140,8 +3143,8 @@ async def test_event_missing_rate_to_base_field(mock_db):
 
     # Add event without rate_to_base
     event_no_rate = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 22),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 22),
         "description": "expense without rate",
         "account_id": UUID("11111111-1111-1111-1111-111111111111"),
         "amount": Decimal("-100.00"),
@@ -3173,7 +3176,7 @@ async def test_event_missing_rate_to_base_field(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] != event_no_rate["_id"]]
+                               if e.get("id") != event_no_rate.get("id")]
 
 
 @pytest.mark.asyncio
@@ -3182,7 +3185,7 @@ async def test_account_missing_rate_to_base_field(mock_db):
 
     # Add account without rate_to_base
     account_no_rate = {
-        "_id": uuid4(),
+        "id": str(uuid4()),
         "name": "Account No Rate",
         "currency": "GBP",
         "current_balance": Decimal("500.00"),
@@ -3195,7 +3198,7 @@ async def test_account_missing_rate_to_base_field(mock_db):
 
     try:
         result = await calculate_account_projection(
-            account_id=str(account_no_rate["_id"]),
+            account_id=str(account_no_rate.get("id")),
             start_date=date(2024, 12, 20),
             end_date=date(2024, 12, 25),
             db=mock_db
@@ -3206,7 +3209,7 @@ async def test_account_missing_rate_to_base_field(mock_db):
 
     finally:
         mock_db.accounts.data = [a for a in mock_db.accounts.data
-                                  if a["_id"] != account_no_rate["_id"]]
+                                  if a.get("id") != account_no_rate.get("id")]
 
 
 # ============================================================================
@@ -3219,8 +3222,8 @@ async def test_very_large_amounts_decimal_precision(mock_db):
 
     # Add event with large amount (millions)
     large_event = {
-        "_id": uuid4(),
-        "date": date(2024, 12, 22),
+        "id": str(uuid4()),
+        "event_date": date(2024, 12, 22),
         "description": "lottery win",
         "account_id": UUID("11111111-1111-1111-1111-111111111111"),
         "amount": Decimal("9999999.99"),
@@ -3258,7 +3261,7 @@ async def test_very_large_amounts_decimal_precision(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] != large_event["_id"]]
+                               if e.get("id") != large_event["_id"]]
 
 
 @pytest.mark.asyncio
@@ -3271,8 +3274,8 @@ async def test_many_same_day_events_ordering(mock_db):
 
     for i in range(100):
         event = {
-            "_id": uuid4(),
-            "date": same_day,
+            "id": str(uuid4()),
+            "event_date": same_day,
             "description": f"event_{i:03d}",
             "account_id": UUID("11111111-1111-1111-1111-111111111111"),
             "amount": Decimal(f"-{i + 1}.00"),
@@ -3295,7 +3298,7 @@ async def test_many_same_day_events_ordering(mock_db):
         )
 
         # All events should be present
-        same_day_results = [e for e in result if e["date"] == same_day]
+        same_day_results = [e for e in result if e["event_date"] == same_day]
         assert len(same_day_results) >= 100, \
             f"Expected at least 100 same-day events, got {len(same_day_results)}"
 
@@ -3308,6 +3311,6 @@ async def test_many_same_day_events_ordering(mock_db):
 
     finally:
         # Clean up all 100 events
-        event_ids = {e["_id"] for e in same_day_events}
+        event_ids = {e.get("id") for e in same_day_events}
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e["_id"] not in event_ids]
+                               if e.get("id") not in event_ids]

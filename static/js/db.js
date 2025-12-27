@@ -11,12 +11,28 @@ const db = new Dexie('CHAPTR');
  * Database Schema
  *
  * Version 1: Initial schema with all core tables
+ * Version 2: Migrated event date field from 'date' to 'event_date'
  */
 db.version(1).stores({
     // Core entities
     accounts: 'id, currency, is_default, is_archived',
     stories: 'id, start_date, end_date, is_archived',
     events: 'id, date, story_id, account_id, is_baseline, is_hypothetical',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Sync protocol
+    conflicts: 'id, entity_type, entity_id, resolved_at',
+    sync_queue: '++id, entity_type, entity_id, queued_at, action',
+    sync_meta: 'id'
+});
+
+db.version(2).stores({
+    // Core entities
+    accounts: 'id, currency, is_default, is_archived',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical',
     recurring_rules: 'id, story_id, frequency, next_occurrence',
     users: 'id, username, role',
     settings: 'id',
@@ -71,7 +87,7 @@ db.getActiveStories = async function() {
  */
 db.getEventsInRange = async function(startDate, endDate) {
     return await db.events
-        .where('date')
+        .where('event_date')
         .between(startDate, endDate, true, true)
         .toArray();
 };

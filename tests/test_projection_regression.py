@@ -90,7 +90,7 @@ class TestDecimalConversion:
         mock_cursor_events.to_list = AsyncMock(return_value=[
             {
                 "_id": "event-1",
-                "date": "2025-01-15",
+                "event_date": "2025-01-15",
                 "description": "Salary",
                 "amount": "3000.00",  # MongoDB Decimal128 as string
                 "rate_to_base": "1.0",
@@ -156,13 +156,13 @@ class TestDateQueryFormat:
         )
 
         # Verify query uses ISO format strings, not datetime objects
-        assert "date" in captured_query
-        assert "$gte" in captured_query["date"]
-        assert "$lte" in captured_query["date"]
+        assert "event_date" in captured_query
+        assert "$gte" in captured_query["event_date"]
+        assert "$lte" in captured_query["event_date"]
 
         # Should be strings in ISO format
-        assert captured_query["date"]["$gte"] == "2025-01-01"
-        assert captured_query["date"]["$lte"] == "2025-01-31"
+        assert captured_query["event_date"]["$gte"] == "2025-01-01"
+        assert captured_query["event_date"]["$lte"] == "2025-01-31"
 
     @pytest.mark.asyncio
     async def test_story_projection_date_query_format(self):
@@ -209,8 +209,8 @@ class TestDateQueryFormat:
         )
 
         # Verify query uses ISO format
-        assert captured_query["date"]["$gte"] == "2025-01-01"
-        assert captured_query["date"]["$lte"] == "2025-01-31"
+        assert captured_query["event_date"]["$gte"] == "2025-01-01"
+        assert captured_query["event_date"]["$lte"] == "2025-01-31"
 
     @pytest.mark.asyncio
     async def test_account_projection_date_query_format(self):
@@ -248,8 +248,8 @@ class TestDateQueryFormat:
         )
 
         # Verify query uses ISO format
-        assert captured_query["date"]["$gte"] == "2025-01-01"
-        assert captured_query["date"]["$lte"] == "2025-01-31"
+        assert captured_query["event_date"]["$gte"] == "2025-01-01"
+        assert captured_query["event_date"]["$lte"] == "2025-01-31"
 
 
 class TestEndToEndProjection:
@@ -284,7 +284,7 @@ class TestEndToEndProjection:
         mock_cursor_events.to_list = AsyncMock(return_value=[
             {
                 "_id": "event-1",
-                "date": "2025-01-15",  # ISO string
+                "event_date": "2025-01-15",  # ISO string
                 "description": "Salary",
                 "amount": "3000.00",  # Decimal128 as string
                 "rate_to_base": "0.85",
@@ -296,7 +296,7 @@ class TestEndToEndProjection:
             },
             {
                 "_id": "event-2",
-                "date": "2025-01-20",
+                "event_date": "2025-01-20",
                 "description": "Rent",
                 "amount": "-800.00",
                 "rate_to_base": "0.85",
@@ -395,7 +395,7 @@ class TestMongoDBIntegration:
                 assert "_id" not in event, f"ObjectId '_id' leaked in event: {event.get('description')}"
 
                 # Verify required fields present
-                assert "id" in event or "date" in event
+                assert "id" in event or "event_date" in event
 
         finally:
             client.close()
