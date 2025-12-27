@@ -1867,10 +1867,31 @@ window.app = function() {
             const account = this.accounts.find(a => a.id === accountId);
             if (!account) return 0;
 
-            // Start with account's current balance
-            let balance = account.current_balance;
+            // If balance has been manually updated, start from that snapshot
+            // and only include events AFTER the update
+            if (account.balance_updated_at) {
+                const balanceDate = account.balance_updated_at.split('T')[0]; // YYYY-MM-DD
 
-            // Add all events for this account up to date
+                let balance = parseFloat(account.current_balance || 0);
+
+                // Add events that occurred AFTER the last balance update
+                const accountEvents = this.events.filter(e =>
+                    e.account_id === accountId &&
+                    e.event_date > balanceDate &&
+                    e.event_date <= date &&
+                    !e.is_opening_balance // Never include opening balance when starting from manual update
+                );
+
+                for (const event of accountEvents) {
+                    balance += event.amount;
+                }
+
+                return balance;
+            }
+
+            // No manual update yet - calculate from opening balance event
+            let balance = 0;
+
             const accountEvents = this.events.filter(e =>
                 e.account_id === accountId &&
                 e.event_date <= date
