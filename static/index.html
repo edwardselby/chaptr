@@ -116,9 +116,9 @@
 
                 <!-- Stories Section -->
                 <section class="section">
-                    <div class="section-header">
+                    <div class="section-header" @click="openStoriesManage()">
                         <h2>Stories</h2>
-                        <button class="btn-section-action" @click="openStoriesManage()">MANAGE</button>
+                        <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="stories-list">
                         <!-- View All static entry -->
@@ -152,9 +152,9 @@
 
                 <!-- Accounts Section -->
                 <section class="section">
-                    <div class="section-header">
+                    <div class="section-header" @click="switchScreen('accounts')">
                         <h2>Accounts</h2>
-                        <button class="btn-section-action" @click="switchScreen('accounts')">MANAGE</button>
+                        <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="accounts-list">
                         <template x-for="account in accounts.slice(0, 3)" :key="account.id">
@@ -384,11 +384,22 @@
                 <template x-if="user && user.role === 'admin'">
                     <div>
 
+                        <!-- Mode -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Mode</h2>
+                            </div>
+                            <div class="mode-display">
+                                <span x-text="storage.mode === 'full' ? 'Offline Capable' :
+                                               storage.mode === 'sync-only' ? 'Online Only' : 'Basic'">
+                                </span>
+                            </div>
+                        </section>
+
                         <!-- User Management -->
                         <section class="section">
                             <div class="section-header">
                                 <h2>User Management</h2>
-                                <button class="btn-add" @click="openUserModal()">+ Add User</button>
                             </div>
                             <div class="users-list">
                                 <template x-if="users.length === 0">
@@ -407,25 +418,6 @@
                                         </div>
                                     </div>
                                 </template>
-                            </div>
-                        </section>
-
-                        <!-- Runtime Information -->
-                        <section class="section">
-                            <div class="runtime-info">
-                                <h3>Runtime Information</h3>
-                                <div class="info-row">
-                                    <span class="label">Mode:</span>
-                                    <span class="value" x-text="getModeDisplay()"></span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="label">Capabilities:</span>
-                                    <span class="value" x-html="getCapabilitiesDisplay()"></span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="label">Storage:</span>
-                                    <span class="value" x-text="getStorageDisplay()"></span>
-                                </div>
                             </div>
                         </section>
 
@@ -507,27 +499,24 @@
                             </div>
                         </section>
 
-                        <!-- Backup / Restore -->
+                        <!-- Backup & Restore -->
                         <section class="section">
                             <div class="section-header">
                                 <h2>Backup & Restore</h2>
                             </div>
                             <div class="backup-actions">
-                                <button class="btn-primary" @click="downloadBackup()">
-                                    📥 Download Backup (JSON)
+                                <button class="btn-secondary" @click="downloadBackup()">
+                                    Backup
                                 </button>
-                                <div class="form-group">
-                                    <label for="restore-file" class="btn-secondary file-upload-label">
-                                        📤 Upload Backup
-                                        <input
-                                            id="restore-file"
-                                            type="file"
-                                            accept="application/json"
-                                            @change="uploadBackup($event)"
-                                            style="display: none;">
-                                    </label>
-                                    <span class="form-hint">⚠ This will overwrite all existing data</span>
-                                </div>
+                                <label for="restore-file" class="btn-secondary file-upload-label">
+                                    Restore
+                                    <input
+                                        id="restore-file"
+                                        type="file"
+                                        accept="application/json"
+                                        @change="uploadBackup($event)"
+                                        style="display: none;">
+                                </label>
                             </div>
                         </section>
 
@@ -536,32 +525,18 @@
                             <div class="section-header">
                                 <h2>Sync Settings</h2>
                             </div>
-                            <div class="settings-form">
+                            <div class="sync-settings-form">
                                 <div class="form-group">
-                                    <label for="auto-sync">Auto-Sync Interval (seconds)</label>
-                                    <input
-                                        id="auto-sync"
-                                        type="number"
+                                    <label for="sync-interval">Sync Interval</label>
+                                    <select
+                                        id="sync-interval"
                                         x-model="settingsForm.auto_sync_interval"
                                         @change="updateSettings()"
-                                        min="60"
-                                        step="60"
                                         class="form-input">
-                                    <span class="form-hint">Set to 0 to disable auto-sync</span>
-                                </div>
-                                <div class="sync-status">
-                                    <div class="status-row">
-                                        <span class="status-label">Last Sync:</span>
-                                        <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
-                                    </div>
-                                    <div class="status-row" x-show="storageMode === 'full'">
-                                        <span class="status-label">Pending Changes:</span>
-                                        <span class="status-value" x-text="syncQueueCount"></span>
-                                    </div>
-                                    <div class="sync-actions">
-                                        <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
-                                        <button class="btn-secondary" @click="showDatabaseToolsModal = true">🛠 Database Tools</button>
-                                    </div>
+                                        <option value="300">Every 5 minutes</option>
+                                        <option value="3600">Every hour</option>
+                                        <option value="86400">Every day</option>
+                                    </select>
                                 </div>
                             </div>
                         </section>
