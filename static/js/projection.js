@@ -5,7 +5,7 @@
  */
 
 import { db } from './db.js';
-import { parseISODate, daysBetween } from './utils.js';
+import { parseISODate, daysBetween, toLocalISODate } from './utils.js';
 
 /**
  * Convert amount to base currency
@@ -247,7 +247,7 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     if (rows.length === 0) return rows;
 
     const withGaps = [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalISODate(new Date());
     let todayDividerInserted = false;
 
     for (let i = 0; i < rows.length; i++) {

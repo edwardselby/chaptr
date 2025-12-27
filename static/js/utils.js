@@ -29,6 +29,18 @@ export function formatCurrency(amount, currency = 'GBP') {
 }
 
 /**
+ * Get local date as YYYY-MM-DD string (no timezone conversion)
+ * @param {Date} date - Date object
+ * @returns {string} ISO date string in local timezone (e.g., "2025-12-26")
+ */
+export function toLocalISODate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+/**
  * Format date for display
  * @param {string|Date} dateStr - ISO date string or Date object
  * @returns {string} Formatted date (e.g., "Dec 18")

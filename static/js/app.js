@@ -15,7 +15,8 @@ import {
     getClientId,
     clearAuth,
     generateUUID,
-    showToast
+    showToast,
+    toLocalISODate
 } from './utils.js';
 
 import { db } from './db.js';
@@ -199,15 +200,15 @@ window.app = function() {
 
                 // Calculate projection from today to end of month
                 const projection = await calculateProjection(
-                    today.toISOString().split('T')[0],
-                    endOfMonth.toISOString().split('T')[0],
+                    toLocalISODate(today),
+                    toLocalISODate(endOfMonth),
                     'all',
                     null,
                     this.settings.base_currency
                 );
 
                 // Find today's balance (first event on or after today, or last past event)
-                const todayStr = today.toISOString().split('T')[0];
+                const todayStr = toLocalISODate(today);
                 const todayEvent = projection.find(row => !row.isGap && row.event_date >= todayStr);
                 this.projectionToday = todayEvent ? todayEvent.balance : 0;
 
@@ -423,8 +424,8 @@ window.app = function() {
             const nextMonth = new Date(today);
             nextMonth.setMonth(nextMonth.getMonth() + 1);
 
-            this.projectionStartDate = today.toISOString().split('T')[0];
-            this.projectionEndDate = nextMonth.toISOString().split('T')[0];
+            this.projectionStartDate = toLocalISODate(today);
+            this.projectionEndDate = toLocalISODate(nextMonth);
         },
 
         /**
@@ -564,7 +565,7 @@ window.app = function() {
          * @returns {string} Lifecycle status
          */
         getStoryLifecycleStatus(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             if (story.end_date < today) {
                 return 'ENDED';
             } else if (story.start_date > today) {
@@ -580,7 +581,7 @@ window.app = function() {
          * @returns {string} CSS class name
          */
         getStoryStatusClass(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             // Lifecycle-based classes
             if (story.end_date < today) {
@@ -779,7 +780,7 @@ window.app = function() {
         openStoryModal() {
             this.storyForm = {
                 name: '',
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: toLocalISODate(new Date()),
                 end_date: '',
                 default_account_id: '',
                 display_currency: '',
@@ -981,7 +982,7 @@ window.app = function() {
             // For now, return mock data
             // TODO PR2: Implement real per-account projection calculation
             return dates.map(date => ({
-                date: date.toISOString().split('T')[0],
+                date: toLocalISODate(date),
                 balance: account.current_balance // Mock: just use current balance
             }));
         },
@@ -1370,7 +1371,7 @@ window.app = function() {
                 const url = URL.createObjectURL(dataBlob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `chaptr-backup-${new Date().toISOString().split('T')[0]}.json`;
+                link.download = `chaptr-backup-${toLocalISODate(new Date())}.json`;
                 link.click();
                 URL.revokeObjectURL(url);
 
@@ -1748,7 +1749,7 @@ window.app = function() {
          */
         addEvent() {
             // Find story covering today's date
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const coveringStories = this.stories.filter(s =>
                 !s.is_archived &&
                 s.start_date <= today &&
@@ -1843,7 +1844,7 @@ window.app = function() {
             this.balanceForm.currency = account.currency;
 
             // Calculate projected balance for this account at today's date
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const projectedBalance = this.calculateAccountBalance(account.id, today);
 
             this.balanceForm.projected_balance = projectedBalance;
@@ -1892,7 +1893,7 @@ window.app = function() {
          * @returns {Array} Array of virtual drift row objects
          */
         calculatePendingDrifts() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const virtualRows = [];
 
             // Find accounts with pending_reconciliation = true
@@ -2017,7 +2018,7 @@ window.app = function() {
          * Open event modal for adding new event (dashboard context - baseline auto-assign)
          */
         openEventModal() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             this.eventForm = {
                 date: today,
@@ -2044,7 +2045,7 @@ window.app = function() {
                 return;
             }
 
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             // Use story date range if today falls outside
             let defaultDate = today;
