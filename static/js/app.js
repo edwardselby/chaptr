@@ -1974,6 +1974,7 @@ window.app = function() {
                 const updatedAccount = {
                     ...account,
                     current_balance: parseFloat(this.balanceForm.actual_balance),
+                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
                     pending_reconciliation: true, // Mark for reconciliation per spec
                     updated_at: new Date().toISOString()
                 };
