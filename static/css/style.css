@@ -186,23 +186,7 @@ body::before {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-/* Type variants */
-.notification-area.type-success {
-    color: var(--green-bright);
-}
-
-.notification-area.type-error {
-    color: var(--red);
-}
-
-.notification-area.type-warning {
-    color: var(--amber);
-}
-
-.notification-area.type-info {
-    color: var(--pink-bright);
+    color: var(--pink-bright); /* All notifications are pink */
 }
 
 .btn-settings {
