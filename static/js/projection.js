@@ -77,19 +77,12 @@ export async function calculateProjection(
 
         // Get ALL events (we'll filter below)
         const allEvents = await db.events.toArray();
-        console.log('[PROJECTION] ALL events in IndexedDB:', allEvents.length);
-        if (allEvents.length > 0) {
-            console.log('[PROJECTION] First event:', allEvents[0]);
-        }
 
         // Separate opening balance events from regular historical events
         const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true);
         const regularHistoricalEvents = allEvents.filter(e =>
             e.is_opening_balance !== true && e.event_date < startDate
         );
-
-        console.log('[PROJECTION] Opening balance events:', openingBalanceEvents.length);
-        console.log('[PROJECTION] Start date:', startDate, 'End date:', endDate);
 
         // Process opening balance events (ALWAYS included for starting balance)
         for (const event of openingBalanceEvents) {
@@ -137,16 +130,11 @@ export async function calculateProjection(
             .between(startDate, endDate, true, true)
             .toArray();
 
-        console.log('[PROJECTION] Events in date range:', events.length);
-        console.log('[PROJECTION] View:', view);
-
         // Filter by view
         if (view === 'baseline') {
             events = events.filter(e => e.is_baseline);
-            console.log('[PROJECTION] After baseline filter:', events.length);
         } else if (view !== 'all' && storyId) {
             events = events.filter(e => e.story_id === storyId || e.is_baseline);
-            console.log('[PROJECTION] After story filter:', events.length);
         }
 
         // Exclude hypothetical for 'all' view
