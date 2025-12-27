@@ -175,7 +175,10 @@ window.app = function() {
                 }
 
                 // Initialize settings form
-                this.settingsForm = { ...this.settings };
+                this.settingsForm = {
+                    ...this.settings,
+                    rates: this.settings.rates || {}
+                };
 
                 // Initialize filtered stories (show all non-archived by default)
                 this.filteredStories = this.stories.filter(s => !s.is_archived);
@@ -212,7 +215,9 @@ window.app = function() {
                     toLocalISODate(endOfMonth),
                     'all',
                     null,
-                    this.settings.base_currency
+                    this.settings.base_currency,
+                    [],
+                    this.settings
                 );
 
                 // Find today's balance (first event on or after today, or last past event)
@@ -268,7 +273,9 @@ window.app = function() {
                                 story.end_date,
                                 story.id,
                                 story.id,
-                                currency
+                                currency,
+                                [],
+                                this.settings
                             );
 
                             const lastEvent = projection.filter(row => !row.isGap).pop();
@@ -508,7 +515,8 @@ window.app = function() {
                     this.currentView,
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
                     this.displayCurrency,
-                    virtualDrifts
+                    virtualDrifts,
+                    this.settings  // ← Pass the already-loaded settings!
                 );
 
                 // Extract starting balance from first row
@@ -1302,13 +1310,20 @@ window.app = function() {
          */
         async updateSettings() {
             try {
-                // For PR2, this will integrate with Dexie + API
-                console.log('Update settings:', this.settingsForm);
+                // Convert Alpine Proxy to plain object (IndexedDB can't store Proxies)
+                const plainSettings = JSON.parse(JSON.stringify(this.settingsForm));
 
-                // TODO PR2: Implement settings update
-                // - Write to Dexie settings table
-                // - Call API endpoint
-                // - Reload data
+                // Save settings via storage adapter
+                const updated = await storage.updateSettings(plainSettings);
+
+                // Update local settings object
+                this.settings = updated;
+
+                // Update settings form to reflect saved state
+                this.settingsForm = {
+                    ...updated,
+                    rates: updated.rates || {}
+                };
 
             } catch (error) {
                 console.error('Error updating settings:', error);
@@ -1329,21 +1344,11 @@ window.app = function() {
                 return;
             }
 
-            const rate = prompt(`Enter conversion rate for 1 ${upperCurrency} to ${this.settingsForm.base_currency}:`);
+            const rate = prompt(`Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`);
             if (!rate) return;
 
             this.settingsForm.rates[upperCurrency] = parseFloat(rate);
-            this.updateSettings();
-        },
-
-        /**
-         * Update conversion rate
-         * @param {string} currency - Currency code
-         * @param {string} value - New rate value
-         */
-        updateRate(currency, value) {
-            this.settingsForm.rates[currency] = parseFloat(value);
-            this.updateSettings();
+            // Note: User must click "Save Rates" button to persist
         },
 
         /**
@@ -1354,7 +1359,7 @@ window.app = function() {
             if (!confirm(`Remove ${currency} conversion rate?`)) return;
 
             delete this.settingsForm.rates[currency];
-            this.updateSettings();
+            // Note: User must click "Save Rates" button to persist
         },
 
         /**

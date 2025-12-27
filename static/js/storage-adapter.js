@@ -363,6 +363,50 @@ class StorageAdapter {
         }
     }
 
+    /**
+     * Update settings
+     *
+     * @param {Object} updates - Settings fields to update
+     * @returns {Promise<Object>} Updated settings
+     */
+    async updateSettings(updates) {
+        switch (this.mode) {
+            case 'full':
+                // Get existing settings (may have UUID from MongoDB or integer from local)
+                let existing = await db.settings.toArray().then(arr => arr[0]);
+
+                // Merge updates with existing settings (preserve rates and ID!)
+                const settingsData = {
+                    id: existing?.id || 1,  // Use existing ID or default to 1
+                    base_currency: 'GBP',
+                    rates: {},
+                    ...existing,  // Preserve existing data
+                    ...updates     // Apply updates
+                };
+
+                try {
+                    const putResult = await db.settings.put(settingsData);
+
+                    // Wait a bit for transaction to commit
+                    await new Promise(resolve => setTimeout(resolve, 50));
+
+                    // Get by the ID that was used/returned
+                    const retrieved = await db.settings.get(putResult);
+
+                    return retrieved;
+                } catch (putError) {
+                    console.error('[STORAGE] Put failed:', putError);
+                    throw putError;
+                }
+
+            case 'sync-only':
+            case 'basic':
+                // Update memory store
+                this.memoryStore.settings = { ...this.memoryStore.settings, ...updates };
+                return this.memoryStore.settings;
+        }
+    }
+
     // ==================== CREATE Operations ====================
 
     /**

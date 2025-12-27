@@ -31,7 +31,9 @@ function convertFromBaseCurrency(baseAmount, displayCurrency, baseCurrency, rate
     }
 
     const displayRate = rates[displayCurrency] || 1.0;
-    return Math.round(baseAmount * displayRate * 100) / 100;
+    const result = Math.round(baseAmount * displayRate * 100) / 100;
+
+    return result;
 }
 
 /**
@@ -57,7 +59,8 @@ export async function calculateProjection(
     view = 'all',
     storyId = null,
     displayCurrency = null,
-    virtualDrifts = []
+    virtualDrifts = [],
+    settings = null  // ← Accept settings as parameter!
 ) {
     try {
         // Validate dates
@@ -66,8 +69,10 @@ export async function calculateProjection(
             return [];
         }
 
-        // Get settings for currency conversion
-        const settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        // Use passed settings or fall back to loading from Dexie
+        if (!settings) {
+            settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        }
 
         // Step 1: Calculate starting balance from ALL historical events
         // This includes:
