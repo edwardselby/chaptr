@@ -88,7 +88,7 @@ class MockDB:
         self.events = MockCollection([
             {
                 "_id": uuid4(),
-                "date": date(2024, 12, 25),
+                "event_date": date(2024, 12, 25),
                 "description": "Salary",
                 "amount": Decimal("3000.00"),
                 "currency": "GBP",
@@ -138,7 +138,7 @@ async def verify_projected_mode():
     # Add story events
     db.events.data.append({
         "_id": uuid4(),
-        "date": date(2024, 12, 26),
+        "event_date": date(2024, 12, 26),
         "description": "Ski passes",
         "amount": Decimal("-600.00"),
         "currency": "GBP",
@@ -163,7 +163,7 @@ async def verify_projected_mode():
         amt = event.get("amount", event.get("base_amount", 0))
         balance = event["running_balance"]
         is_funding = "funding" in desc.lower()
-        print(f"  {event['date']} | {desc:20s} | {amt:>10} → £{balance}")
+        print(f"  {event['event_date']} | {desc:20s} | {amt:>10} → £{balance}")
 
         if is_funding:
             print("  ❌ UNEXPECTED: Funding event should NOT exist for projected mode")
@@ -213,7 +213,7 @@ async def verify_fixed_mode():
     # Add story events
     db.events.data.append({
         "_id": uuid4(),
-        "date": date(2024, 12, 26),
+        "event_date": date(2024, 12, 26),
         "description": "Hotel booking",
         "amount": Decimal("-800.00"),
         "currency": "GBP",
@@ -248,7 +248,7 @@ async def verify_fixed_mode():
         is_funding = "funding" in desc.lower()
         is_hypothetical = event.get("is_hypothetical", False)
 
-        print(f"  {event['date']} | {desc:30s} | {amt:>10} → £{balance} {'[planned]' if is_hypothetical else ''}")
+        print(f"  {event['event_date']} | {desc:30s} | {amt:>10} → £{balance} {'[planned]' if is_hypothetical else ''}")
 
         if is_funding:
             funding_event_found = True
@@ -315,7 +315,7 @@ async def verify_projected_plus_mode():
     # Add story events
     db.events.data.append({
         "_id": uuid4(),
-        "date": date(2024, 12, 26),
+        "event_date": date(2024, 12, 26),
         "description": "Materials",
         "amount": Decimal("-3000.00"),
         "currency": "GBP",
@@ -346,7 +346,7 @@ async def verify_projected_plus_mode():
         is_funding = "funding" in desc.lower()
         is_hypothetical = event.get("is_hypothetical", False)
 
-        print(f"  {event['date']} | {desc:30s} | {amt:>10} → £{balance} {'[planned]' if is_hypothetical else ''}")
+        print(f"  {event['event_date']} | {desc:30s} | {amt:>10} → £{balance} {'[planned]' if is_hypothetical else ''}")
 
         if is_funding:
             funding_event_found = True

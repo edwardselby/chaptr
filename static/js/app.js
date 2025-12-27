@@ -207,7 +207,7 @@ window.app = function() {
 
                 // Find today's balance (first event on or after today, or last past event)
                 const todayStr = today.toISOString().split('T')[0];
-                const todayEvent = projection.find(row => !row.isGap && row.date >= todayStr);
+                const todayEvent = projection.find(row => !row.isGap && row.event_date >= todayStr);
                 this.projectionToday = todayEvent ? todayEvent.balance : 0;
 
                 // Find end of month balance (last event)
@@ -238,8 +238,8 @@ window.app = function() {
                         const storyEvents = this.events.filter(e =>
                             e.story_id === story.id &&
                             e.amount < 0 &&
-                            e.date >= story.start_date &&
-                            e.date <= story.end_date
+                            e.event_date >= story.start_date &&
+                            e.event_date <= story.end_date
                         );
 
                         const totalSpent = Math.abs(storyEvents.reduce((sum, e) => sum + e.amount, 0));
@@ -1137,7 +1137,7 @@ window.app = function() {
                 id: localId,
                 description: eventData.description,
                 amount: String(parseFloat(eventData.amount)),
-                date: eventData.date,
+                event_date: eventData.event_date,
                 account_id: accountId,
                 currency: currency,
                 rate_to_base: rate_to_base,
@@ -1699,7 +1699,7 @@ window.app = function() {
             // Add all events for this account up to date
             const accountEvents = this.events.filter(e =>
                 e.account_id === accountId &&
-                e.date <= date
+                e.event_date <= date
             );
 
             for (const event of accountEvents) {
@@ -1918,7 +1918,7 @@ window.app = function() {
 
             this.eventForm = {
                 id: event.id,
-                date: event.date,
+                event_date: event.event_date,
                 description: event.description,
                 amount: event.amount,
                 account_id: event.account_id,
@@ -1937,7 +1937,7 @@ window.app = function() {
          */
         async saveEvent() {
             // Validation: Required fields
-            if (!this.eventForm.date) {
+            if (!this.eventForm.event_date) {
                 alert('Event date is required');
                 return;
             }
@@ -1962,7 +1962,7 @@ window.app = function() {
             if (this.eventForm.story_id && this.eventForm.story_id !== 'auto') {
                 const story = this.stories.find(s => s.id === this.eventForm.story_id);
                 if (story) {
-                    const eventDate = this.eventForm.date;
+                    const eventDate = this.eventForm.event_date;
 
                     if (eventDate < story.start_date) {
                         showToast(
@@ -2003,7 +2003,7 @@ window.app = function() {
                 const isEdit = !!this.eventForm.id;
 
                 const eventData = {
-                    date: this.eventForm.date,
+                    event_date: this.eventForm.event_date,
                     description: this.eventForm.description.trim(),
                     amount: parseFloat(this.eventForm.amount),
                     account_id: resolvedAccountId,
