@@ -641,6 +641,19 @@ body::before {
     color: var(--green-dim);  /* Dimmed amount */
 }
 
+/* Auto-adjustment styling */
+.auto-tag {
+    color: var(--text-dim);
+    font-size: 0.85em;
+    margin-left: 0.5em;
+    opacity: 0.7;
+}
+
+.timeline-row.auto-adjustment {
+    opacity: 0.6;
+    font-style: italic;
+}
+
 /* TODAY Divider */
 .today-divider {
     display: flex;

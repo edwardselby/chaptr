@@ -234,12 +234,13 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline' }"
+                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.event_date)"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
+                                    <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
                                     <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
