@@ -134,6 +134,12 @@ window.app = function() {
         // Expanded gaps tracking
         expandedGaps: new Set(),
 
+        // Conflict resolution
+        showConflictModal: false,
+        conflicts: [],
+        currentConflict: null,
+        currentConflictIndex: 0,
+
         // ===== LIFECYCLE =====
 
         /**
@@ -167,6 +173,11 @@ window.app = function() {
 
             // Load data from storage adapter
             await this.loadData();
+
+            // Check for unresolved conflicts (Task 110)
+            if (storage.mode === 'full') {
+                await this.checkForConflicts();
+            }
 
             // Setup network reconnection handler - auto-retry sync when online
             window.addEventListener('online', async () => {
@@ -2446,6 +2457,102 @@ window.app = function() {
                 // Silent fail - this is a background operation
                 // Reconciliation will happen on next sync anyway
             }
+        },
+
+        /**
+         * Check for unresolved conflicts on app load (Task 110)
+         */
+        async checkForConflicts() {
+            this.conflicts = await db.getUnresolvedConflicts();
+
+            if (this.conflicts.length > 0) {
+                console.log(`Found ${this.conflicts.length} unresolved conflicts`);
+                this.currentConflictIndex = 0;
+                this.currentConflict = this.conflicts[0];
+                this.showConflictModal = true;
+            }
+        },
+
+        /**
+         * Resolve conflict by choosing version (Tasks 115-119)
+         */
+        async resolveConflict(choice) {
+            if (!this.currentConflict) return;
+
+            const conflict = this.currentConflict;
+
+            // Task 115: Determine selected version
+            let selectedVersion;
+            if (choice === 'keep_mine') {
+                selectedVersion = conflict.client_version;
+            } else {
+                selectedVersion = conflict.server_version;
+            }
+
+            try {
+                // Task 116: Update local Dexie with selected version
+                if (selectedVersion) {
+                    // Update event in local database
+                    await db.events.put({
+                        ...selectedVersion,
+                        updated_at: new Date().toISOString() // Fresh timestamp
+                    });
+
+                    // Task 117: Queue resolution for sync
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'update',
+                        selectedVersion,
+                        selectedVersion.updated_at // Use selected version's timestamp as base
+                    );
+                } else {
+                    // Selected version is null (delete case)
+                    await db.events.delete(conflict.entity_id);
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'delete',
+                        null,
+                        conflict.server_version?.updated_at
+                    );
+                }
+
+                // Task 118: Mark conflict as resolved
+                await db.resolveConflict(conflict.id);
+
+                // Task 119: Process next conflict if multiple exist
+                this.currentConflictIndex++;
+                if (this.currentConflictIndex < this.conflicts.length) {
+                    this.currentConflict = this.conflicts[this.currentConflictIndex];
+                } else {
+                    // All conflicts resolved
+                    this.closeConflictModal();
+                    this.showNotification('All conflicts resolved', 'success');
+
+                    // Reload data to reflect changes
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+
+                    // Trigger sync to send resolved changes
+                    if (storage.mode === 'full') {
+                        await storage.sync();
+                    }
+                }
+            } catch (error) {
+                console.error('Error resolving conflict:', error);
+                this.showNotification('Resolution failed', 'error');
+            }
+        },
+
+        /**
+         * Close conflict resolution modal
+         */
+        closeConflictModal() {
+            this.showConflictModal = false;
+            this.currentConflict = null;
+            this.conflicts = [];
+            this.currentConflictIndex = 0;
         },
 
         /**
