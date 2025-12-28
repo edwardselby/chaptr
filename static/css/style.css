@@ -646,13 +646,22 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: 10px 16px;
     background: var(--bg-primary);
     font-size: 11px;
     font-weight: 700;
     color: var(--green-bright);
     letter-spacing: 2px;
     border-bottom: 1px solid var(--border);
+}
+
+/* Baseline row styling */
+.timeline-row.baseline-row {
+    color: var(--text-dim);
+}
+
+.timeline-row.baseline-row .amount {
+    color: var(--text-dim);
 }
 
 /* Gap Indicator */
@@ -722,6 +731,7 @@ body::before {
     border: 1px solid var(--border);
     color: var(--green-bright);
     padding: 12px 8px;
+    min-height: 44px;
     font-family: inherit;
     font-size: 11px;
     display: flex;

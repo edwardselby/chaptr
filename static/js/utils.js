@@ -89,7 +89,9 @@ export function formatRelativeTime(dateStr) {
  * @returns {Date} Date object
  */
 export function parseISODate(dateStr) {
-    return new Date(dateStr + 'T00:00:00');
+    // Parse as local date at midnight, not UTC
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
 }
 
 /**
@@ -98,9 +100,11 @@ export function parseISODate(dateStr) {
  * @returns {boolean} True if date is today
  */
 export function isToday(dateStr) {
-    const date = parseISODate(dateStr);
     const today = new Date();
-    return date.toDateString() === today.toDateString();
+    const checkDate = parseISODate(dateStr);
+    return checkDate.getFullYear() === today.getFullYear() &&
+           checkDate.getMonth() === today.getMonth() &&
+           checkDate.getDate() === today.getDate();
 }
 
 /**

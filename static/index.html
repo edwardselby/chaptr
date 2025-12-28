@@ -234,13 +234,13 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift }"
+                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline' }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.event_date)"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
-                                    <span class="tag" x-show="row.source" x-text="'[' + row.source + ']'"></span>
+                                    <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
@@ -248,7 +248,7 @@
 
                             <!-- TODAY Divider -->
                             <div class="today-divider" x-show="row.showTodayDivider">
-                                <span>━━━ TODAY ━━━</span>
+                                <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
                             </div>
 
                             <!-- Gap Indicator Row -->
@@ -279,7 +279,6 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Accounts</h2>
-                        <button class="btn-add" @click="openAccountModal()">+ Add</button>
                     </div>
                     <div class="accounts-list">
                         <template x-if="accounts.length === 0">
@@ -486,8 +485,7 @@
                                         <div class="table-col">
                                             <input
                                                 type="number"
-                                                :value="rate"
-                                                @change="updateRate(currency, $event.target.value)"
+                                                x-model.number="settingsForm.rates[currency]"
                                                 step="0.01"
                                                 class="form-input rate-input">
                                         </div>
@@ -496,6 +494,9 @@
                                         </div>
                                     </div>
                                 </template>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="btn-primary" @click="updateSettings()">Save Rates</button>
                             </div>
                         </section>
 
@@ -690,7 +691,6 @@
                     <span class="form-hint">Default account used for new events</span>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" @click="showAccountModal = false">Cancel</button>
                     <button type="submit" class="btn-primary">Save Account</button>
                     <button
                         type="button"
