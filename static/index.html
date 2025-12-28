@@ -1169,6 +1169,76 @@
         </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" x-show="showConfirmModal" @click="closeConfirmModal()" @keydown.escape.window="closeConfirmModal()" x-cloak>
+        <div class="modal modal-sm" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="confirmModalData.title"></h2>
+                <button class="modal-close" @click="closeConfirmModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="confirm-message" x-text="confirmModalData.message" style="white-space: pre-line;"></p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" @click="closeConfirmModal()">Cancel</button>
+                <button
+                    type="button"
+                    :class="confirmModalData.confirmStyle === 'danger' ? 'btn-danger' : 'btn-primary'"
+                    @click="confirmAction()">
+                    <span x-text="confirmModalData.confirmText"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Modal -->
+    <div class="modal-overlay" x-show="showInputModal" @click="closeInputModal()" @keydown.escape.window="closeInputModal()" x-cloak>
+        <div class="modal modal-sm" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="inputModalData.title"></h2>
+                <button class="modal-close" @click="closeInputModal()">✕</button>
+            </div>
+            <form @submit.prevent="submitInput()" class="modal-body">
+                <p class="input-message" x-text="inputModalData.message" style="white-space: pre-line; margin-bottom: 16px;"></p>
+                <input
+                    type="text"
+                    x-model="inputModalData.inputValue"
+                    :placeholder="inputModalData.placeholder"
+                    :pattern="inputModalData.pattern"
+                    class="form-input"
+                    autofocus>
+            </form>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" @click="closeInputModal()">Cancel</button>
+                <button type="button" class="btn-primary" @click="submitInput()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div class="modal-overlay" x-show="showPasswordModal" @click="closePasswordModal()" @keydown.escape.window="closePasswordModal()" x-cloak>
+        <div class="modal modal-sm" @click.stop>
+            <div class="modal-header" style="border-bottom-color: var(--red);">
+                <h2 x-text="passwordModalData.title" style="color: var(--red);"></h2>
+                <button class="modal-close" @click="closePasswordModal()">✕</button>
+            </div>
+            <form @submit.prevent="submitPassword()" class="modal-body">
+                <p class="password-message" x-text="passwordModalData.message" style="white-space: pre-line; margin-bottom: 16px; color: var(--red);"></p>
+                <input
+                    type="password"
+                    x-model="passwordModalData.passwordValue"
+                    :placeholder="passwordModalData.placeholder"
+                    class="form-input"
+                    style="border-color: var(--red);"
+                    autofocus>
+            </form>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" @click="closePasswordModal()">Cancel</button>
+                <button type="button" class="btn-danger" @click="submitPassword()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts - Load Dexie first (needed by modules) -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
 
