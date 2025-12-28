@@ -361,7 +361,7 @@ class AccountRepository(BaseRepository[Account]):
 
         # Create opening balance event
         event_data = EventCreate(
-            event_date=date.today(),  # Opening balance dated today
+            event_date=account.created_at.date(),  # Opening balance dated at account creation
             description="opening balance",
             amount=account.current_balance,  # Amount = account starting balance
             currency=account.currency,

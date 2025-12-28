@@ -6,6 +6,7 @@ Provides destructive operations for development and user-specific resets:
 - POST /api/admin/nuclear-reset - Clear entire database (dev only, password protected)
 """
 
+import os
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Body
@@ -77,10 +78,14 @@ async def nuclear_reset(
     Returns:
         dict: Counts of deleted documents per collection
     """
-    import os
+    # Password check - require ADMIN_PASSWORD from environment (no fallback)
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_password:
+        raise HTTPException(
+            status_code=500,
+            detail="ADMIN_PASSWORD environment variable not set"
+        )
 
-    # Password check - use ADMIN_PASSWORD from environment
-    admin_password = os.getenv("ADMIN_PASSWORD", "Password123!")
     if request.password != admin_password:
         raise HTTPException(status_code=403, detail="Invalid password")
 
