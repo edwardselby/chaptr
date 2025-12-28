@@ -78,14 +78,23 @@
             </div>
         </div>
         <div class="header-right">
-            <div class="sync-indicator" x-show="isSyncing">
-                <span class="sync-dot"></span>
-                <span class="sync-text">syncing</span>
+            <!-- Inline notification (shows when currentNotification is set) -->
+            <div class="notification-area"
+                 x-show="currentNotification"
+                 :class="'type-' + (currentNotification?.type || 'info')"
+                 x-text="currentNotification?.message">
             </div>
-            <div class="sync-pending-indicator" x-show="syncQueueCount > 0 && !isSyncing" @click="manualSync()" title="Click to sync now">
+
+            <!-- Sync badge (shows when NO notification and queue has items) -->
+            <div class="sync-pending-indicator"
+                 x-show="!currentNotification && syncQueueCount > 0 && !isSyncing"
+                 @click="manualSync()"
+                 title="Click to sync now">
+                <span>(</span>
                 <span class="sync-pending-count" x-text="syncQueueCount"></span>
-                <span class="sync-pending-text">pending</span>
+                <span>)</span>
             </div>
+
             <button class="btn-settings" @click="switchScreen('settings')">
                 <span>⚙</span>
             </button>
@@ -107,9 +116,9 @@
 
                 <!-- Stories Section -->
                 <section class="section">
-                    <div class="section-header">
+                    <div class="section-header" @click="openStoriesManage()">
                         <h2>Stories</h2>
-                        <button class="btn-section-action" @click="openStoriesManage()">MANAGE</button>
+                        <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="stories-list">
                         <!-- View All static entry -->
@@ -143,9 +152,9 @@
 
                 <!-- Accounts Section -->
                 <section class="section">
-                    <div class="section-header">
+                    <div class="section-header" @click="switchScreen('accounts')">
                         <h2>Accounts</h2>
-                        <button class="btn-section-action" @click="switchScreen('accounts')">MANAGE</button>
+                        <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="accounts-list">
                         <template x-for="account in accounts.slice(0, 3)" :key="account.id">
@@ -225,13 +234,13 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift }"
+                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline' }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.event_date)"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
-                                    <span class="tag" x-show="row.source" x-text="'[' + row.source + ']'"></span>
+                                    <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
@@ -239,7 +248,7 @@
 
                             <!-- TODAY Divider -->
                             <div class="today-divider" x-show="row.showTodayDivider">
-                                <span>━━━ TODAY ━━━</span>
+                                <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
                             </div>
 
                             <!-- Gap Indicator Row -->
@@ -270,7 +279,6 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Accounts</h2>
-                        <button class="btn-add" @click="openAccountModal()">+ Add</button>
                     </div>
                     <div class="accounts-list">
                         <template x-if="accounts.length === 0">
@@ -346,7 +354,7 @@
                                 <div class="projection-dates">
                                     <template x-for="(projection, index) in getAccountProjections(account.id)" :key="index">
                                         <div class="projection-date-row">
-                                            <span class="projection-date" x-text="formatDate(projection.date)"></span>
+                                            <span class="projection-date" x-text="formatDate(projection.event_date)"></span>
                                             <span class="projection-balance" :class="projection.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projection.balance, account.currency)"></span>
                                         </div>
                                     </template>
@@ -375,11 +383,22 @@
                 <template x-if="user && user.role === 'admin'">
                     <div>
 
+                        <!-- Mode -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Mode</h2>
+                            </div>
+                            <div class="mode-display">
+                                <span x-text="storage.mode === 'full' ? 'Offline Capable' :
+                                               storage.mode === 'sync-only' ? 'Online Only' : 'Basic'">
+                                </span>
+                            </div>
+                        </section>
+
                         <!-- User Management -->
                         <section class="section">
                             <div class="section-header">
                                 <h2>User Management</h2>
-                                <button class="btn-add" @click="openUserModal()">+ Add User</button>
                             </div>
                             <div class="users-list">
                                 <template x-if="users.length === 0">
@@ -398,25 +417,6 @@
                                         </div>
                                     </div>
                                 </template>
-                            </div>
-                        </section>
-
-                        <!-- Runtime Information -->
-                        <section class="section">
-                            <div class="runtime-info">
-                                <h3>Runtime Information</h3>
-                                <div class="info-row">
-                                    <span class="label">Mode:</span>
-                                    <span class="value" x-text="getModeDisplay()"></span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="label">Capabilities:</span>
-                                    <span class="value" x-html="getCapabilitiesDisplay()"></span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="label">Storage:</span>
-                                    <span class="value" x-text="getStorageDisplay()"></span>
-                                </div>
                             </div>
                         </section>
 
@@ -485,8 +485,7 @@
                                         <div class="table-col">
                                             <input
                                                 type="number"
-                                                :value="rate"
-                                                @change="updateRate(currency, $event.target.value)"
+                                                x-model.number="settingsForm.rates[currency]"
                                                 step="0.01"
                                                 class="form-input rate-input">
                                         </div>
@@ -496,29 +495,29 @@
                                     </div>
                                 </template>
                             </div>
+                            <div class="panel-actions">
+                                <button class="btn-primary" @click="updateSettings()">Save Rates</button>
+                            </div>
                         </section>
 
-                        <!-- Backup / Restore -->
+                        <!-- Backup & Restore -->
                         <section class="section">
                             <div class="section-header">
                                 <h2>Backup & Restore</h2>
                             </div>
                             <div class="backup-actions">
-                                <button class="btn-primary" @click="downloadBackup()">
-                                    📥 Download Backup (JSON)
+                                <button class="btn-secondary" @click="downloadBackup()">
+                                    Backup
                                 </button>
-                                <div class="form-group">
-                                    <label for="restore-file" class="btn-secondary file-upload-label">
-                                        📤 Upload Backup
-                                        <input
-                                            id="restore-file"
-                                            type="file"
-                                            accept="application/json"
-                                            @change="uploadBackup($event)"
-                                            style="display: none;">
-                                    </label>
-                                    <span class="form-hint">⚠ This will overwrite all existing data</span>
-                                </div>
+                                <label for="restore-file" class="btn-secondary file-upload-label">
+                                    Restore
+                                    <input
+                                        id="restore-file"
+                                        type="file"
+                                        accept="application/json"
+                                        @change="uploadBackup($event)"
+                                        style="display: none;">
+                                </label>
                             </div>
                         </section>
 
@@ -527,32 +526,18 @@
                             <div class="section-header">
                                 <h2>Sync Settings</h2>
                             </div>
-                            <div class="settings-form">
+                            <div class="sync-settings-form">
                                 <div class="form-group">
-                                    <label for="auto-sync">Auto-Sync Interval (seconds)</label>
-                                    <input
-                                        id="auto-sync"
-                                        type="number"
+                                    <label for="sync-interval">Sync Interval</label>
+                                    <select
+                                        id="sync-interval"
                                         x-model="settingsForm.auto_sync_interval"
                                         @change="updateSettings()"
-                                        min="60"
-                                        step="60"
                                         class="form-input">
-                                    <span class="form-hint">Set to 0 to disable auto-sync</span>
-                                </div>
-                                <div class="sync-status">
-                                    <div class="status-row">
-                                        <span class="status-label">Last Sync:</span>
-                                        <span class="status-value" x-text="formatRelativeTime(settings.last_sync_at || new Date())"></span>
-                                    </div>
-                                    <div class="status-row" x-show="storageMode === 'full'">
-                                        <span class="status-label">Pending Changes:</span>
-                                        <span class="status-value" x-text="syncQueueCount"></span>
-                                    </div>
-                                    <div class="sync-actions">
-                                        <button class="btn-secondary" @click="triggerManualSync()">Sync Now</button>
-                                        <button class="btn-danger" @click="clearSyncQueue()" x-show="storageMode === 'full' && syncQueueCount > 0">Clear Queue</button>
-                                    </div>
+                                        <option value="300">Every 5 minutes</option>
+                                        <option value="3600">Every hour</option>
+                                        <option value="86400">Every day</option>
+                                    </select>
                                 </div>
                             </div>
                         </section>
@@ -706,7 +691,6 @@
                     <span class="form-hint">Default account used for new events</span>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" @click="showAccountModal = false">Cancel</button>
                     <button type="submit" class="btn-primary">Save Account</button>
                     <button
                         type="button"
@@ -1081,6 +1065,106 @@
                     <h3>Accounts</h3>
                     <p>Manage accounts and view projected balances. Drift shows difference between actual and projected.</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Tools Modal -->
+    <div class="modal-overlay" x-show="showDatabaseToolsModal" @click="showDatabaseToolsModal = false" x-cloak>
+        <div class="modal database-tools-modal" @click.stop>
+            <div class="modal-header">
+                <h2>🛠 Database Management Tools</h2>
+                <button class="modal-close" @click="showDatabaseToolsModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- SAFE OPERATIONS -->
+                <div class="db-tools-section safe">
+                    <h3 class="section-badge safe-badge">🟢 SAFE OPERATIONS</h3>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Clear Sync Queue</h4>
+                            <span class="tool-tag">Safe</span>
+                        </div>
+                        <p class="tool-description">Removes pending changes from sync queue</p>
+                        <ul class="tool-details">
+                            <li>Deletes unsynced local changes</li>
+                            <li>Only affects this device</li>
+                        </ul>
+                        <button
+                            class="btn-secondary"
+                            @click="clearSyncQueue()"
+                            x-show="storageMode === 'full' && syncQueueCount > 0">
+                            Clear Queue (<span x-text="syncQueueCount"></span> items)
+                        </button>
+                        <span class="form-hint" x-show="storageMode === 'full' && syncQueueCount === 0">No pending items</span>
+                        <span class="form-hint" x-show="storageMode !== 'full'">Not available in this mode</span>
+                    </div>
+                </div>
+
+                <!-- RESET OPERATIONS -->
+                <div class="db-tools-section reset">
+                    <h3 class="section-badge reset-badge">🟡 RESET OPERATIONS</h3>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Reset Local Database</h4>
+                            <span class="tool-tag">Non-destructive</span>
+                        </div>
+                        <p class="tool-description">Clear & re-download from server</p>
+                        <ul class="tool-details">
+                            <li>Clears local data only</li>
+                            <li>Server data preserved</li>
+                            <li>Good for fixing sync issues</li>
+                        </ul>
+                        <button class="btn-warning" @click="clearDatabaseAndResync()">
+                            Reset Local
+                        </button>
+                    </div>
+
+                    <div class="db-tool-card">
+                        <div class="tool-header">
+                            <h4>Reset Local + Change Log</h4>
+                            <span class="tool-tag">User-specific</span>
+                        </div>
+                        <p class="tool-description">Fresh start for this user</p>
+                        <ul class="tool-details">
+                            <li>Clears your change history</li>
+                            <li>Other users unaffected</li>
+                            <li>Server data preserved</li>
+                        </ul>
+                        <button class="btn-warning" @click="clearDatabaseAndChangeLog()">
+                            Reset Local + Log
+                        </button>
+                    </div>
+                </div>
+
+                <!-- DESTRUCTIVE OPERATIONS -->
+                <div class="db-tools-section danger">
+                    <h3 class="section-badge danger-badge">🔴 DESTRUCTIVE OPERATIONS (DEV ONLY)</h3>
+
+                    <div class="db-tool-card danger-card">
+                        <div class="tool-header">
+                            <h4>Nuclear Reset</h4>
+                            <span class="tool-tag danger-tag">⚠️ DANGEROUS</span>
+                        </div>
+                        <p class="tool-description">⚠️ DELETES ALL DATA FOR ALL USERS</p>
+                        <ul class="tool-details">
+                            <li>Wipes entire database</li>
+                            <li>Cannot be undone</li>
+                            <li>Requires password</li>
+                        </ul>
+                        <button class="btn-danger" @click="nuclearReset()">
+                            Nuclear Reset
+                        </button>
+                        <span class="form-hint danger-hint">Development only - requires admin password (ADMIN_PASSWORD from .env)</span>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @click="showDatabaseToolsModal = false">Close</button>
             </div>
         </div>
     </div>

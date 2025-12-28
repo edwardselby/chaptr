@@ -165,5 +165,25 @@ db.resolveConflict = async function(conflictId) {
     });
 };
 
+/**
+ * Helper: Clear all local data (admin only)
+ *
+ * Clears all tables in the database. This is a destructive operation
+ * that should only be performed by admin users. After clearing, the
+ * app should trigger a full sync to re-download all data from server.
+ *
+ * @returns {Promise<void>}
+ */
+db.clearAllData = async function() {
+    await db.accounts.clear();
+    await db.stories.clear();
+    await db.events.clear();
+    await db.recurring_rules.clear();
+    await db.conflicts.clear();
+    await db.sync_queue.clear();
+    await db.sync_meta.clear();
+    // Note: users and settings are preserved to maintain login and preferences
+};
+
 // Export database instance
 export { db };

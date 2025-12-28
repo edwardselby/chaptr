@@ -140,6 +140,7 @@ class EventRepository(BaseRepository[Event]):
             is_baseline=data.is_baseline,
             is_hypothetical=data.is_hypothetical,
             is_auto_adjustment=data.is_auto_adjustment,  # Use value from EventCreate data
+            is_opening_balance=data.is_opening_balance,  # Use value from EventCreate data
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),

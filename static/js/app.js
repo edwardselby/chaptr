@@ -15,7 +15,8 @@ import {
     getClientId,
     clearAuth,
     generateUUID,
-    showToast
+    showToast,
+    toLocalISODate
 } from './utils.js';
 
 import { db } from './db.js';
@@ -60,12 +61,18 @@ window.app = function() {
         isSyncing: false,
         syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
+
+        // Notification State
+        currentNotification: null,      // { message: string, type: string }
+        notificationTimeout: null,       // Timeout ID for auto-dismiss
+
         showAccountModal: false,
         showStoryModal: false,
         showEventModal: false,
         showUserModal: false,
         showHelpModal: false,
         showBalanceModal: false,
+        showDatabaseToolsModal: false,
         accountForm: {},
         storyForm: {},
         eventForm: {},
@@ -143,6 +150,9 @@ window.app = function() {
                 }
             });
 
+            // Expose notification method globally for utils.js and storage-adapter.js
+            window.showNotification = this.showNotification.bind(this);
+
             console.log('CHAPTR ready!');
         },
 
@@ -165,7 +175,10 @@ window.app = function() {
                 }
 
                 // Initialize settings form
-                this.settingsForm = { ...this.settings };
+                this.settingsForm = {
+                    ...this.settings,
+                    rates: this.settings.rates || {}
+                };
 
                 // Initialize filtered stories (show all non-archived by default)
                 this.filteredStories = this.stories.filter(s => !s.is_archived);
@@ -198,15 +211,17 @@ window.app = function() {
 
                 // Calculate projection from today to end of month
                 const projection = await calculateProjection(
-                    today.toISOString().split('T')[0],
-                    endOfMonth.toISOString().split('T')[0],
+                    toLocalISODate(today),
+                    toLocalISODate(endOfMonth),
                     'all',
                     null,
-                    this.settings.base_currency
+                    this.settings.base_currency,
+                    [],
+                    this.settings
                 );
 
                 // Find today's balance (first event on or after today, or last past event)
-                const todayStr = today.toISOString().split('T')[0];
+                const todayStr = toLocalISODate(today);
                 const todayEvent = projection.find(row => !row.isGap && row.event_date >= todayStr);
                 this.projectionToday = todayEvent ? todayEvent.balance : 0;
 
@@ -258,7 +273,9 @@ window.app = function() {
                                 story.end_date,
                                 story.id,
                                 story.id,
-                                currency
+                                currency,
+                                [],
+                                this.settings
                             );
 
                             const lastEvent = projection.filter(row => !row.isGap).pop();
@@ -283,30 +300,61 @@ window.app = function() {
 
         /**
          * Perform full sync with backend
+         * Uses /api/sync/full endpoint to get current database state
          */
         async fullSync() {
             try {
                 this.isSyncing = true;
 
-                const response = await apiRequest('/api/sync', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        client_id: await getClientId(),
-                        last_sync_at: null,
-                        changes: []
-                    })
+                const response = await apiRequest('/api/sync/full', {
+                    method: 'GET'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Sync failed');
+                    throw new Error('Full sync failed');
                 }
 
                 const data = await response.json();
-                await this.populateDexie(data.server_changes || []);
 
-                console.log('Full sync complete');
+                // Populate database with full dataset
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_meta], async () => {
+                    // Put all accounts
+                    for (const account of data.accounts || []) {
+                        await db.accounts.put(account);
+                    }
+
+                    // Put all stories
+                    for (const story of data.stories || []) {
+                        await db.stories.put(story);
+                    }
+
+                    // Put all events
+                    for (const event of data.events || []) {
+                        await db.events.put(event);
+                    }
+
+                    // Put all recurring rules
+                    for (const rule of data.recurring_rules || []) {
+                        await db.recurring_rules.put(rule);
+                    }
+
+                    // Update settings
+                    if (data.settings) {
+                        await db.settings.put(data.settings);
+                    }
+
+                    // CRITICAL: Store sync timestamp to prevent re-downloading old change_log entries
+                    if (data.sync_timestamp) {
+                        await db.sync_meta.put({ id: 'lastSyncAt', value: data.sync_timestamp });
+                    }
+                });
+
+                // Reload data into Alpine state
+                await this.loadData();
+
+                console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
-                console.error('Sync error:', error);
+                console.error('[CHAPTR] Full sync error:', error);
             } finally {
                 this.isSyncing = false;
             }
@@ -391,8 +439,8 @@ window.app = function() {
             const nextMonth = new Date(today);
             nextMonth.setMonth(nextMonth.getMonth() + 1);
 
-            this.projectionStartDate = today.toISOString().split('T')[0];
-            this.projectionEndDate = nextMonth.toISOString().split('T')[0];
+            this.projectionStartDate = toLocalISODate(today);
+            this.projectionEndDate = toLocalISODate(nextMonth);
         },
 
         /**
@@ -467,7 +515,8 @@ window.app = function() {
                     this.currentView,
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
                     this.displayCurrency,
-                    virtualDrifts
+                    virtualDrifts,
+                    this.settings  // ← Pass the already-loaded settings!
                 );
 
                 // Extract starting balance from first row
@@ -532,7 +581,7 @@ window.app = function() {
          * @returns {string} Lifecycle status
          */
         getStoryLifecycleStatus(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             if (story.end_date < today) {
                 return 'ENDED';
             } else if (story.start_date > today) {
@@ -548,7 +597,7 @@ window.app = function() {
          * @returns {string} CSS class name
          */
         getStoryStatusClass(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             // Lifecycle-based classes
             if (story.end_date < today) {
@@ -599,13 +648,14 @@ window.app = function() {
 
             try {
                 this.isSyncing = true;
+                this.showNotification('Syncing...', 'info');
 
                 const result = await storage.manualSync();
 
                 if (result.conflicts && result.conflicts > 0) {
-                    showToast(`Sync complete: ${result.conflicts} conflicts need resolution`, 'warning', 5000);
+                    this.showNotification(`${result.conflicts} conflicts`, 'warning');
                 } else if (result.applied && result.applied > 0) {
-                    showToast(`Synced ${result.applied} changes`, 'success');
+                    this.showNotification(`Synced ${result.applied}`, 'success');
                 }
 
                 // Update queue count
@@ -747,7 +797,7 @@ window.app = function() {
         openStoryModal() {
             this.storyForm = {
                 name: '',
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: toLocalISODate(new Date()),
                 end_date: '',
                 default_account_id: '',
                 display_currency: '',
@@ -949,7 +999,7 @@ window.app = function() {
             // For now, return mock data
             // TODO PR2: Implement real per-account projection calculation
             return dates.map(date => ({
-                date: date.toISOString().split('T')[0],
+                date: toLocalISODate(date),
                 balance: account.current_balance // Mock: just use current balance
             }));
         },
@@ -1260,13 +1310,20 @@ window.app = function() {
          */
         async updateSettings() {
             try {
-                // For PR2, this will integrate with Dexie + API
-                console.log('Update settings:', this.settingsForm);
+                // Convert Alpine Proxy to plain object (IndexedDB can't store Proxies)
+                const plainSettings = JSON.parse(JSON.stringify(this.settingsForm));
 
-                // TODO PR2: Implement settings update
-                // - Write to Dexie settings table
-                // - Call API endpoint
-                // - Reload data
+                // Save settings via storage adapter
+                const updated = await storage.updateSettings(plainSettings);
+
+                // Update local settings object
+                this.settings = updated;
+
+                // Update settings form to reflect saved state
+                this.settingsForm = {
+                    ...updated,
+                    rates: updated.rates || {}
+                };
 
             } catch (error) {
                 console.error('Error updating settings:', error);
@@ -1287,21 +1344,11 @@ window.app = function() {
                 return;
             }
 
-            const rate = prompt(`Enter conversion rate for 1 ${upperCurrency} to ${this.settingsForm.base_currency}:`);
+            const rate = prompt(`Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`);
             if (!rate) return;
 
             this.settingsForm.rates[upperCurrency] = parseFloat(rate);
-            this.updateSettings();
-        },
-
-        /**
-         * Update conversion rate
-         * @param {string} currency - Currency code
-         * @param {string} value - New rate value
-         */
-        updateRate(currency, value) {
-            this.settingsForm.rates[currency] = parseFloat(value);
-            this.updateSettings();
+            // Note: User must click "Save Rates" button to persist
         },
 
         /**
@@ -1312,7 +1359,7 @@ window.app = function() {
             if (!confirm(`Remove ${currency} conversion rate?`)) return;
 
             delete this.settingsForm.rates[currency];
-            this.updateSettings();
+            // Note: User must click "Save Rates" button to persist
         },
 
         /**
@@ -1338,7 +1385,7 @@ window.app = function() {
                 const url = URL.createObjectURL(dataBlob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `chaptr-backup-${new Date().toISOString().split('T')[0]}.json`;
+                link.download = `chaptr-backup-${toLocalISODate(new Date())}.json`;
                 link.click();
                 URL.revokeObjectURL(url);
 
@@ -1440,7 +1487,7 @@ window.app = function() {
                 const queueCount = await this.updateSyncQueueCount();
 
                 if (queueCount === 0) {
-                    showToast('No changes to sync', 'info');
+                    // No notification needed - silence is golden
                     return;
                 }
 
@@ -1451,15 +1498,15 @@ window.app = function() {
                 if (storage.mode === 'full') {
                     const conflicts = await db.conflicts.count();
                     if (conflicts > 0) {
-                        showToast(
-                            `⚠ ${conflicts} conflict${conflicts > 1 ? 's' : ''} detected. Review in Settings.`,
+                        this.showNotification(
+                            `${conflicts} conflicts`,
                             'warning'
                         );
                     } else {
-                        showToast(`✓ Synced ${queueCount} change${queueCount > 1 ? 's' : ''}`, 'success');
+                        this.showNotification(`Synced ${queueCount}`, 'success');
                     }
                 } else {
-                    showToast(`✓ Sync complete`, 'success');
+                    this.showNotification('Sync complete', 'success');
                 }
 
             } catch (error) {
@@ -1494,10 +1541,146 @@ window.app = function() {
                     await this.updateProjectionRows();
                 }
 
-                showToast(`Cleared ${count} pending sync items`, 'success');
+                this.showNotification('Queue cleared', 'success');
             } catch (error) {
                 console.error('Clear queue error:', error);
-                showToast('Failed to clear sync queue', 'error');
+                alert('Failed to clear sync queue: ' + error.message);
+            }
+        },
+
+        /**
+         * Clear local database and force full resync
+         *
+         * Non-destructive escape hatch for when sync gets out of sync.
+         * Clears all local data and re-downloads everything from server.
+         * User login and settings are preserved.
+         */
+        async clearDatabaseAndResync() {
+            try {
+                this.isSyncing = true;
+
+                // Clear all local data (preserves users and settings)
+                await db.clearAllData();
+                console.log('[CHAPTR] Local database cleared');
+
+                // Clear reactive state immediately
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+                console.log('[CHAPTR] Reactive state cleared');
+
+                // Trigger full sync to re-download all data
+                await this.fullSync();
+
+                console.log('[CHAPTR] Database reset complete');
+            } catch (error) {
+                console.error('[CHAPTR] Clear database error:', error);
+                alert('Failed to reset database: ' + error.message);
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Clear local database AND server change log, then resync
+         *
+         * User-specific reset that clears both local data and this user's
+         * change log entries on the server. Other users are unaffected.
+         */
+        async clearDatabaseAndChangeLog() {
+            try {
+                this.isSyncing = true;
+
+                // Clear all local data
+                await db.clearAllData();
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+
+                // Clear user's change log on server
+                const response = await apiRequest('/api/admin/clear-changelog', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to clear change log');
+                }
+
+                const data = await response.json();
+                console.log('[CHAPTR] Cleared change log:', data.deleted_count, 'entries');
+
+                // Trigger full sync
+                await this.fullSync();
+
+                console.log(`[CHAPTR] Reset complete - cleared ${data.deleted_count} change log entries`);
+            } catch (error) {
+                console.error('[CHAPTR] Clear database + changelog error:', error);
+                alert('Failed to reset database and change log: ' + error.message);
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Nuclear reset - wipes entire database (all users)
+         *
+         * 🔴 DESTRUCTIVE OPERATION 🔴
+         * Development only. Requires password confirmation.
+         */
+        async nuclearReset() {
+            const password = prompt(
+                '🔴 NUCLEAR RESET - ALL DATA WILL BE DELETED\n\n' +
+                'This will permanently delete:\n' +
+                '• ALL accounts, stories, events (all users)\n' +
+                '• ALL change log history\n' +
+                '• ALL conflicts\n\n' +
+                'Only users and settings are preserved.\n\n' +
+                'Enter password to confirm:'
+            );
+
+            if (!password) {
+                return; // User cancelled
+            }
+
+            try {
+                this.isSyncing = true;
+                this.showNotification('Resetting...', 'info');
+
+                // Call nuclear reset endpoint with password
+                const response = await apiRequest('/api/admin/nuclear-reset', {
+                    method: 'POST',
+                    body: JSON.stringify({ password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Nuclear reset failed');
+                }
+
+                const data = await response.json();
+                console.log('[CHAPTR] Nuclear reset complete:', data);
+
+                // Clear local database
+                await db.clearAllData();
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+
+                // Resync (will get empty state)
+                await this.fullSync();
+
+                console.log('[CHAPTR] Nuclear reset complete - all data wiped');
+            } catch (error) {
+                console.error('[CHAPTR] Nuclear reset error:', error);
+                alert(error.message || 'Nuclear reset failed');
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
             }
         },
 
@@ -1575,7 +1758,7 @@ window.app = function() {
          */
         addEvent() {
             // Find story covering today's date
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const coveringStories = this.stories.filter(s =>
                 !s.is_archived &&
                 s.start_date <= today &&
@@ -1670,7 +1853,7 @@ window.app = function() {
             this.balanceForm.currency = account.currency;
 
             // Calculate projected balance for this account at today's date
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const projectedBalance = this.calculateAccountBalance(account.id, today);
 
             this.balanceForm.projected_balance = projectedBalance;
@@ -1693,10 +1876,31 @@ window.app = function() {
             const account = this.accounts.find(a => a.id === accountId);
             if (!account) return 0;
 
-            // Start with account's current balance
-            let balance = account.current_balance;
+            // If balance has been manually updated, start from that snapshot
+            // and only include events AFTER the update
+            if (account.balance_updated_at) {
+                const balanceDate = account.balance_updated_at.split('T')[0]; // YYYY-MM-DD
 
-            // Add all events for this account up to date
+                let balance = parseFloat(account.current_balance || 0);
+
+                // Add events that occurred AFTER the last balance update
+                const accountEvents = this.events.filter(e =>
+                    e.account_id === accountId &&
+                    e.event_date > balanceDate &&
+                    e.event_date <= date &&
+                    !e.is_opening_balance // Never include opening balance when starting from manual update
+                );
+
+                for (const event of accountEvents) {
+                    balance += event.amount;
+                }
+
+                return balance;
+            }
+
+            // No manual update yet - calculate from opening balance event
+            let balance = 0;
+
             const accountEvents = this.events.filter(e =>
                 e.account_id === accountId &&
                 e.event_date <= date
@@ -1719,7 +1923,7 @@ window.app = function() {
          * @returns {Array} Array of virtual drift row objects
          */
         calculatePendingDrifts() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             const virtualRows = [];
 
             // Find accounts with pending_reconciliation = true
@@ -1779,6 +1983,7 @@ window.app = function() {
                 const updatedAccount = {
                     ...account,
                     current_balance: parseFloat(this.balanceForm.actual_balance),
+                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
                     pending_reconciliation: true, // Mark for reconciliation per spec
                     updated_at: new Date().toISOString()
                 };
@@ -1810,10 +2015,7 @@ window.app = function() {
                 this.showBalanceModal = false;
 
                 // Show notification
-                const driftText = this.balanceForm.drift > 0
-                    ? `+${formatCurrency(this.balanceForm.drift, this.balanceForm.currency)}`
-                    : formatCurrency(this.balanceForm.drift, this.balanceForm.currency);
-                showToast(`Balance updated. Drift: ${driftText} - Reconciliation will run on next trigger.`, 'success');
+                this.showNotification('Balance updated', 'success');
 
             } catch (error) {
                 console.error('Error updating balance:', error);
@@ -1844,7 +2046,7 @@ window.app = function() {
          * Open event modal for adding new event (dashboard context - baseline auto-assign)
          */
         openEventModal() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             this.eventForm = {
                 date: today,
@@ -1871,7 +2073,7 @@ window.app = function() {
                 return;
             }
 
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             // Use story date range if today falls outside
             let defaultDate = today;
@@ -1965,17 +2167,15 @@ window.app = function() {
                     const eventDate = this.eventForm.event_date;
 
                     if (eventDate < story.start_date) {
-                        showToast(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`,
-                            'error'
+                        alert(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`
                         );
                         return;
                     }
 
                     if (story.end_date && eventDate > story.end_date) {
-                        showToast(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`,
-                            'error'
+                        alert(
+                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`
                         );
                         return;
                     }
@@ -2165,6 +2365,42 @@ window.app = function() {
             const drift = this.accountsTotal - this.projectionToday;
             const sign = drift >= 0 ? '+' : '';
             return sign + formatCurrency(drift, this.settings.base_currency);
+        },
+
+        // ===== NOTIFICATION SYSTEM =====
+
+        /**
+         * Show inline notification in header
+         * @param {string} message - Short message (~3 words max)
+         * @param {string} type - Type: 'info' | 'success' | 'warning' | 'error'
+         * @param {number} duration - Duration in ms (default: 10000)
+         */
+        showNotification(message, type = 'info', duration = 10000) {
+            // Clear existing timeout
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+
+            // Set new notification (replaces previous)
+            this.currentNotification = { message, type };
+
+            // Auto-dismiss
+            this.notificationTimeout = setTimeout(() => {
+                this.currentNotification = null;
+                this.notificationTimeout = null;
+            }, duration);
+        },
+
+        /**
+         * Clear notification immediately
+         */
+        clearNotification() {
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+            this.currentNotification = null;
         },
 
         // ===== MODE DISPLAY HELPERS =====

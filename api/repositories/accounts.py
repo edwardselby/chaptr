@@ -8,9 +8,10 @@ for is_default enforcement, archiving, and reconciliation tracking.
 from uuid import UUID
 from typing import Optional
 from decimal import Decimal
+from datetime import date
 
 from api.repositories.base import BaseRepository
-from api.models import Account, AccountCreate, AccountUpdate
+from api.models import Account, AccountCreate, AccountUpdate, EventCreate
 from api.utils.db import generate_id, utc_now, to_str
 from api.utils.errors import ResourceConflictError
 
@@ -114,6 +115,20 @@ class AccountRepository(BaseRepository[Account]):
             account.model_dump(mode="json"),
             self._get_user_id(current_user),
             client_id
+        )
+
+        # Create opening balance event (fixes reconciliation architecture)
+        # Without this, event sourcing calculates projected balance from £0,
+        # but account starts with current_balance, causing incorrect drift.
+        #
+        # Example:
+        # - Account created with 1000 GBP
+        # - Without opening balance event: projected = 0, actual = 1000, drift = +1000 (WRONG!)
+        # - With opening balance event: projected = 1000, actual = 1000, drift = 0 (CORRECT!)
+        await self._create_opening_balance_event(
+            account=account,
+            current_user=current_user,
+            client_id=client_id
         )
 
         return account
@@ -295,3 +310,86 @@ class AccountRepository(BaseRepository[Account]):
             return None
 
         return Account(**doc)
+
+    async def _create_opening_balance_event(
+        self,
+        account: Account,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> None:
+        """
+        Create opening balance event for new account.
+
+        Opening balance events enable proper event sourcing reconciliation:
+        - Account balance serves as starting point
+        - Events track all changes from that point
+        - Projected balance = opening_balance + sum(events)
+
+        Without opening balance events, projected = sum(events) starts from £0,
+        which causes incorrect drift calculations when reconciling.
+
+        The event is:
+        - Created on account creation date (today)
+        - Amount = account current_balance
+        - Baseline event (not part of any story)
+        - Marked with is_opening_balance=True flag
+        - Uses account's currency and conversion rate from settings
+
+        :param account: Newly created account
+        :type account: Account
+        :param current_user: User creating the account
+        :type current_user: Optional[dict]
+        :param client_id: Client/device identifier for sync
+        :type client_id: Optional[str]
+        :return: None
+        :rtype: None
+        """
+        from api.repositories.events import EventRepository
+        from api.repositories.settings import SettingsRepository
+
+        # Get settings for rate_to_base conversion
+        settings_repo = SettingsRepository(self.db)
+        settings = await settings_repo.get_or_create_default()
+
+        # Calculate rate_to_base for this currency
+        # If account currency matches base currency, rate = 1.0
+        # Otherwise, look up rate from settings
+        if account.currency == settings.base_currency:
+            rate_to_base = Decimal('1.0')
+        else:
+            rate_to_base = settings.rates.get(account.currency, Decimal('1.0'))
+
+        # Create opening balance event
+        event_data = EventCreate(
+            event_date=account.created_at.date(),  # Opening balance dated at account creation
+            description="opening balance",
+            amount=account.current_balance,  # Amount = account starting balance
+            currency=account.currency,
+            rate_to_base=rate_to_base,
+            account_id=account.id,
+            story_id=None,  # Opening balance is baseline (not part of any story)
+            is_baseline=True,
+            is_hypothetical=False,
+            is_auto_adjustment=False,
+            is_opening_balance=True  # Mark as opening balance event
+        )
+
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Creating opening balance event with is_opening_balance={event_data.is_opening_balance}")
+        logger.info(f"Event data dict: {event_data.model_dump()}")
+
+        # Use EventRepository to create the event
+        # This ensures proper validation, change log, etc.
+        event_repo = EventRepository(self.db)
+        created_event = await event_repo.create(
+            data=event_data,
+            current_user=current_user,
+            client_id=client_id
+        )
+
+        # Log for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Created opening balance event: {created_event.id} for account {account.id} with amount {account.current_balance}")

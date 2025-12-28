@@ -5,7 +5,7 @@
  */
 
 import { db } from './db.js';
-import { parseISODate, daysBetween } from './utils.js';
+import { parseISODate, daysBetween, toLocalISODate } from './utils.js';
 
 /**
  * Convert amount to base currency
@@ -31,7 +31,9 @@ function convertFromBaseCurrency(baseAmount, displayCurrency, baseCurrency, rate
     }
 
     const displayRate = rates[displayCurrency] || 1.0;
-    return Math.round(baseAmount * displayRate * 100) / 100;
+    const result = Math.round(baseAmount * displayRate * 100) / 100;
+
+    return result;
 }
 
 /**
@@ -57,7 +59,8 @@ export async function calculateProjection(
     view = 'all',
     storyId = null,
     displayCurrency = null,
-    virtualDrifts = []
+    virtualDrifts = [],
+    settings = null  // ← Accept settings as parameter!
 ) {
     try {
         // Validate dates
@@ -66,19 +69,64 @@ export async function calculateProjection(
             return [];
         }
 
-        // Get settings for currency conversion
-        const settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        // Use passed settings or fall back to loading from Dexie
+        if (!settings) {
+            settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        }
 
-        // Step 1: Sum all account current_balance as starting point
-        const allAccounts = await db.accounts.toArray();
-        const accounts = allAccounts.filter(a => !a.is_archived);
+        // Step 1: Calculate starting balance from ALL historical events
+        // This includes:
+        // - Opening balance events (is_opening_balance=true) - ALWAYS included regardless of date
+        // - All other events before startDate
         let startingBalance = 0;
 
-        for (const account of accounts) {
-            const balance = parseFloat(account.current_balance || 0);
-            const rateToBase = parseFloat(account.rate_to_base || 1.0);
-            const baseBalance = convertToBaseCurrency(balance, rateToBase);
-            startingBalance += baseBalance;
+        // Get ALL events (we'll filter below)
+        const allEvents = await db.events.toArray();
+
+        // Separate opening balance events from regular historical events
+        const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true);
+        const regularHistoricalEvents = allEvents.filter(e =>
+            e.is_opening_balance !== true && e.event_date < startDate
+        );
+
+        // Process opening balance events (ALWAYS included for starting balance)
+        for (const event of openingBalanceEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
+        }
+
+        // Process regular historical events (before projection start)
+        for (const event of regularHistoricalEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
         }
 
         // Step 2: Fetch events in date range
@@ -192,7 +240,7 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     if (rows.length === 0) return rows;
 
     const withGaps = [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalISODate(new Date());
     let todayDividerInserted = false;
 
     for (let i = 0; i < rows.length; i++) {

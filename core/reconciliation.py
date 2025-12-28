@@ -142,14 +142,14 @@ async def calculate_auto_adjustment(
         return None
     # Create EventCreate object for [auto] adjustment
     return EventCreate(
-        date=today_str,  # EventCreate expects ISO string for date field
+        event_date=today_str,  # EventCreate expects ISO string for event_date field
         description="balance adjustment",
         amount=drift,
         account_id=account_id,
         currency=account.currency,
         rate_to_base=Decimal('1.0'),  # Will be set by EventRepository
         story_id=None,  # Auto-adjustments are not part of any story
-        is_baseline=False,
+        is_baseline=True,  # Auto-adjustments are baseline events (part of reality)
         is_hypothetical=False,
         is_auto_adjustment=True  # Mark as [auto]
     )
