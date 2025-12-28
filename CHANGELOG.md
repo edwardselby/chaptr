@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-28
+
 ### Added
 - CPTR-f7c0a19e, c5fd40a7, 8445af0c, d1fcc8a3: Conflict resolution modal with automatic detection on app load and side-by-side version comparison
 - CPTR-f7c0a19e: Conflict detection system checks for unresolved conflicts in Dexie on app initialization (full mode only)
