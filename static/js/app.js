@@ -508,6 +508,9 @@ window.app = function() {
         async setView(view) {
             this.currentView = view;
 
+            // Clear expanded gaps to prevent memory leak across view changes
+            this.expandedGaps.clear();
+
             // Trigger reconciliation if viewing projection with pending accounts
             if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
                 await this.triggerReconciliation();
@@ -2113,13 +2116,17 @@ window.app = function() {
                 await this.loadData();
                 await this.updateDashboardProjection();
 
+                // Trigger reconciliation to create [auto] adjustments immediately
+                await this.triggerReconciliation();
+
+                // Reload data again to show new [auto] adjustments
+                await this.loadData();
+                await this.updateDashboardProjection();
+
                 this.showBalanceModal = false;
 
                 // Show notification
                 this.showNotification('Balance updated', 'success');
-
-                // Trigger reconciliation to create [auto] adjustments immediately
-                await this.triggerReconciliation();
 
             } catch (error) {
                 console.error('Error updating balance:', error);
@@ -2492,6 +2499,11 @@ window.app = function() {
             try {
                 // Task 116: Update local Dexie with selected version
                 if (selectedVersion) {
+                    // Determine base_updated_at from the version we're accepting
+                    const baseUpdatedAt = choice === 'keep_mine'
+                        ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
+                        : conflict.server_version?.updated_at;
+
                     // Update event in local database
                     await db.events.put({
                         ...selectedVersion,
@@ -2504,17 +2516,20 @@ window.app = function() {
                         conflict.entity_id,
                         'update',
                         selectedVersion,
-                        selectedVersion.updated_at // Use selected version's timestamp as base
+                        baseUpdatedAt // Use original timestamp before conflict
                     );
                 } else {
-                    // Selected version is null (delete case)
+                    // Selected version is null (delete case - keep_mine on delete/edit conflict)
+                    // Null guard: Use server version's timestamp if it exists
+                    const baseUpdatedAt = conflict.server_version?.updated_at || conflict.client_version?.updated_at;
+
                     await db.events.delete(conflict.entity_id);
                     await db.queueChange(
                         'event',
                         conflict.entity_id,
                         'delete',
                         null,
-                        conflict.server_version?.updated_at
+                        baseUpdatedAt
                     );
                 }
 
