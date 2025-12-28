@@ -496,6 +496,12 @@ window.app = function() {
          */
         async setView(view) {
             this.currentView = view;
+
+            // Trigger reconciliation if viewing projection with pending accounts
+            if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
+                await this.triggerReconciliation();
+            }
+
             // Reset display currency when switching views
             if (view !== 'all') {
                 this.displayCurrency = null;
@@ -2101,6 +2107,9 @@ window.app = function() {
                 // Show notification
                 this.showNotification('Balance updated', 'success');
 
+                // Trigger reconciliation to create [auto] adjustments immediately
+                await this.triggerReconciliation();
+
             } catch (error) {
                 console.error('Error updating balance:', error);
                 this.showNotification('Update failed', 'error');
@@ -2412,6 +2421,31 @@ window.app = function() {
          */
         formatRelativeTime(date) {
             return formatRelativeTime(date);
+        },
+
+        /**
+         * Trigger reconciliation for all pending accounts
+         */
+        async triggerReconciliation() {
+            if (storage.mode !== 'full') {
+                return; // Only in full mode
+            }
+
+            try {
+                const response = await apiRequest('/api/reconciliation/trigger', {
+                    method: 'POST'
+                });
+
+                if (response.reconciled) {
+                    // Reload data to get new [auto] adjustment events
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+                }
+            } catch (error) {
+                console.error('Reconciliation trigger failed:', error);
+                // Silent fail - this is a background operation
+                // Reconciliation will happen on next sync anyway
+            }
         },
 
         /**
