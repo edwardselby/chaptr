@@ -2560,6 +2560,12 @@ window.app = function() {
         submitInput() {
             const value = this.inputModalData.inputValue.trim();
 
+            // Check for empty input
+            if (!value) {
+                this.showNotification('Input required', 'error');
+                return;
+            }
+
             // Validate with custom validator if provided
             if (this.inputModalData.validator) {
                 const validationError = this.inputModalData.validator(value);

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # CORS
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
 
+    # Admin Operations
+    admin_password: Optional[str] = None
+
     # Change Log Pruning Configuration
     change_log_retention_days: int = 31
 
