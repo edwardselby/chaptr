@@ -137,9 +137,11 @@ export async function calculateProjection(
 
         // Filter by view
         if (view === 'baseline') {
-            events = events.filter(e => e.is_baseline);
+            // Baseline view: only baseline events, exclude auto-adjustments (shown only in ALL view)
+            events = events.filter(e => e.is_baseline && !e.is_auto_adjustment);
         } else if (view !== 'all' && storyId) {
-            events = events.filter(e => e.story_id === storyId || e.is_baseline);
+            // Show story events + baseline, but exclude auto-adjustments (only shown in ALL view)
+            events = events.filter(e => (e.story_id === storyId || e.is_baseline) && !e.is_auto_adjustment);
         }
 
         // Exclude hypothetical for 'all' view
@@ -196,7 +198,8 @@ export async function calculateProjection(
                 amount: event.base_amount,
                 balance: runningBalance,
                 source: source,
-                isGap: false
+                isGap: false,
+                is_auto_adjustment: event.is_auto_adjustment || false
             };
 
             // Convert to display currency if requested

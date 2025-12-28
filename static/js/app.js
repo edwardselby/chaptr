@@ -134,6 +134,12 @@ window.app = function() {
         // Expanded gaps tracking
         expandedGaps: new Set(),
 
+        // Conflict resolution
+        showConflictModal: false,
+        conflicts: [],
+        currentConflict: null,
+        currentConflictIndex: 0,
+
         // ===== LIFECYCLE =====
 
         /**
@@ -167,6 +173,11 @@ window.app = function() {
 
             // Load data from storage adapter
             await this.loadData();
+
+            // Check for unresolved conflicts (Task 110)
+            if (storage.mode === 'full') {
+                await this.checkForConflicts();
+            }
 
             // Setup network reconnection handler - auto-retry sync when online
             window.addEventListener('online', async () => {
@@ -496,6 +507,15 @@ window.app = function() {
          */
         async setView(view) {
             this.currentView = view;
+
+            // Clear expanded gaps to prevent memory leak across view changes
+            this.expandedGaps.clear();
+
+            // Trigger reconciliation if viewing projection with pending accounts
+            if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
+                await this.triggerReconciliation();
+            }
+
             // Reset display currency when switching views
             if (view !== 'all') {
                 this.displayCurrency = null;
@@ -2096,6 +2116,13 @@ window.app = function() {
                 await this.loadData();
                 await this.updateDashboardProjection();
 
+                // Trigger reconciliation to create [auto] adjustments immediately
+                await this.triggerReconciliation();
+
+                // Reload data again to show new [auto] adjustments
+                await this.loadData();
+                await this.updateDashboardProjection();
+
                 this.showBalanceModal = false;
 
                 // Show notification
@@ -2412,6 +2439,135 @@ window.app = function() {
          */
         formatRelativeTime(date) {
             return formatRelativeTime(date);
+        },
+
+        /**
+         * Trigger reconciliation for all pending accounts
+         */
+        async triggerReconciliation() {
+            if (storage.mode !== 'full') {
+                return; // Only in full mode
+            }
+
+            try {
+                const response = await apiRequest('/api/reconciliation/trigger', {
+                    method: 'POST'
+                });
+
+                if (response.reconciled) {
+                    // Reload data to get new [auto] adjustment events
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+                }
+            } catch (error) {
+                console.error('Reconciliation trigger failed:', error);
+                // Silent fail - this is a background operation
+                // Reconciliation will happen on next sync anyway
+            }
+        },
+
+        /**
+         * Check for unresolved conflicts on app load (Task 110)
+         */
+        async checkForConflicts() {
+            this.conflicts = await db.getUnresolvedConflicts();
+
+            if (this.conflicts.length > 0) {
+                console.log(`Found ${this.conflicts.length} unresolved conflicts`);
+                this.currentConflictIndex = 0;
+                this.currentConflict = this.conflicts[0];
+                this.showConflictModal = true;
+            }
+        },
+
+        /**
+         * Resolve conflict by choosing version (Tasks 115-119)
+         */
+        async resolveConflict(choice) {
+            if (!this.currentConflict) return;
+
+            const conflict = this.currentConflict;
+
+            // Task 115: Determine selected version
+            let selectedVersion;
+            if (choice === 'keep_mine') {
+                selectedVersion = conflict.client_version;
+            } else {
+                selectedVersion = conflict.server_version;
+            }
+
+            try {
+                // Task 116: Update local Dexie with selected version
+                if (selectedVersion) {
+                    // Determine base_updated_at from the version we're accepting
+                    const baseUpdatedAt = choice === 'keep_mine'
+                        ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
+                        : conflict.server_version?.updated_at;
+
+                    // Update event in local database
+                    await db.events.put({
+                        ...selectedVersion,
+                        updated_at: new Date().toISOString() // Fresh timestamp
+                    });
+
+                    // Task 117: Queue resolution for sync
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'update',
+                        selectedVersion,
+                        baseUpdatedAt // Use original timestamp before conflict
+                    );
+                } else {
+                    // Selected version is null (delete case - keep_mine on delete/edit conflict)
+                    // Null guard: Use server version's timestamp if it exists
+                    const baseUpdatedAt = conflict.server_version?.updated_at || conflict.client_version?.updated_at;
+
+                    await db.events.delete(conflict.entity_id);
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'delete',
+                        null,
+                        baseUpdatedAt
+                    );
+                }
+
+                // Task 118: Mark conflict as resolved
+                await db.resolveConflict(conflict.id);
+
+                // Task 119: Process next conflict if multiple exist
+                this.currentConflictIndex++;
+                if (this.currentConflictIndex < this.conflicts.length) {
+                    this.currentConflict = this.conflicts[this.currentConflictIndex];
+                } else {
+                    // All conflicts resolved
+                    this.closeConflictModal();
+                    this.showNotification('All conflicts resolved', 'success');
+
+                    // Reload data to reflect changes
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+
+                    // Trigger sync to send resolved changes
+                    if (storage.mode === 'full') {
+                        await storage.sync();
+                    }
+                }
+            } catch (error) {
+                console.error('Error resolving conflict:', error);
+                this.showNotification('Resolution failed', 'error');
+            }
+        },
+
+        /**
+         * Close conflict resolution modal
+         */
+        closeConflictModal() {
+            this.showConflictModal = false;
+            this.currentConflict = null;
+            this.conflicts = [];
+            this.currentConflictIndex = 0;
         },
 
         /**

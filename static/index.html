@@ -234,12 +234,13 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline' }"
+                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="formatDate(row.event_date)"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
+                                    <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
                                     <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
@@ -1254,6 +1255,80 @@
                     <button type="submit" class="btn-danger">Confirm</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Conflict Resolution Modal (Tasks 111-114) -->
+    <div class="modal-overlay" x-show="showConflictModal" @keydown.escape.window="closeConflictModal()" x-cloak>
+        <div class="modal modal-conflict" @click.stop>
+            <div class="modal-header" style="border-bottom-color: var(--amber);">
+                <h2 style="color: var(--amber);">⚠ Sync Conflict Detected</h2>
+                <span class="conflict-count" x-text="`Conflict ${currentConflictIndex + 1} of ${conflicts.length}`"></span>
+            </div>
+
+            <div class="modal-body">
+                <!-- Edit/Edit Conflict (Task 112) -->
+                <template x-if="currentConflict?.conflict_type === 'edit_edit'">
+                    <div>
+                        <p class="conflict-message">Both you and another device edited this event. Choose which version to keep:</p>
+
+                        <div class="conflict-versions">
+                            <div class="version version-mine">
+                                <h3>Your Version</h3>
+                                <div class="version-details">
+                                    <p><strong>Description:</strong> <span x-text="currentConflict.client_version?.description"></span></p>
+                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount)"></span></p>
+                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.client_version?.event_date)"></span></p>
+                                </div>
+                            </div>
+
+                            <div class="version version-theirs">
+                                <h3>Server Version</h3>
+                                <div class="version-details">
+                                    <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
+                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount)"></span></p>
+                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Delete/Edit Conflict (Task 114) -->
+                <template x-if="currentConflict?.conflict_type === 'delete_edit'">
+                    <div>
+                        <p class="conflict-message">You tried to delete this event, but it was modified on another device:</p>
+
+                        <div class="conflict-versions">
+                            <div class="version version-mine">
+                                <h3>Your Action</h3>
+                                <p style="color: var(--amber);">Delete this event</p>
+                            </div>
+
+                            <div class="version version-theirs">
+                                <h3>Server Version</h3>
+                                <div class="version-details">
+                                    <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
+                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount)"></span></p>
+                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <div class="modal-footer">
+                <!-- Task 113: Keep Mine / Keep Theirs buttons -->
+                <button @click="resolveConflict('keep_mine')" class="btn btn-primary">
+                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep My Version</span>
+                    <span x-show="currentConflict?.conflict_type === 'delete_edit'">Keep Deleted</span>
+                </button>
+                <button @click="resolveConflict('keep_theirs')" class="btn btn-secondary">
+                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Server Version</span>
+                    <span x-show="currentConflict?.conflict_type === 'delete_edit'">Restore Event</span>
+                </button>
+            </div>
         </div>
     </div>
 

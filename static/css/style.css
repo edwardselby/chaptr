@@ -641,6 +641,88 @@ body::before {
     color: var(--green-dim);  /* Dimmed amount */
 }
 
+/* Auto-adjustment styling */
+.auto-tag {
+    color: var(--text-dim);
+    font-size: 0.85em;
+    margin-left: 0.5em;
+    opacity: 0.7;
+}
+
+.timeline-row.auto-adjustment {
+    opacity: 0.6;
+    font-style: italic;
+}
+
+/* Conflict Modal Styling */
+.modal-conflict {
+    max-width: 900px;
+}
+
+.conflict-count {
+    font-size: 0.9em;
+    color: var(--text-dim);
+    font-weight: normal;
+}
+
+.conflict-message {
+    margin-bottom: 1.5em;
+    padding: 1em;
+    background: rgba(255, 193, 7, 0.1);
+    border-left: 3px solid var(--amber);
+    color: var(--text);
+}
+
+.conflict-versions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5em;
+    margin-bottom: 1.5em;
+}
+
+.version {
+    padding: 1.5em;
+    border: 1px solid var(--green-dim);
+    background: rgba(74, 246, 38, 0.02);
+    border-radius: 4px;
+}
+
+.version h3 {
+    margin: 0 0 1em 0;
+    padding-bottom: 0.75em;
+    border-bottom: 1px solid var(--green-dim);
+    font-size: 1em;
+    color: var(--green);
+}
+
+.version-mine h3 {
+    color: var(--green);
+}
+
+.version-theirs h3 {
+    color: var(--amber);
+}
+
+.version-mine {
+    border-color: var(--green);
+    background: rgba(74, 246, 38, 0.05);
+}
+
+.version-theirs {
+    border-color: var(--amber);
+    background: rgba(255, 193, 7, 0.05);
+}
+
+.version-details p {
+    margin: 0.5em 0;
+    font-size: 0.95em;
+}
+
+.version-details strong {
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
 /* TODAY Divider */
 .today-divider {
     display: flex;

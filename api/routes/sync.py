@@ -415,3 +415,34 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
         "settings": (await settings_repo.get_or_create_default()).model_dump(mode="json"),  # Settings are global
         "sync_timestamp": utc_now()
     }
+
+
+@router.post("/reconciliation/trigger")
+async def trigger_reconciliation_endpoint(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(MongoDB.get_database)
+):
+    """
+    Manually trigger reconciliation for all pending accounts.
+
+    Creates [auto] adjustment events to align projected vs actual balances.
+    Triggered by: balance updates, projection views, or manual user action.
+
+    Returns:
+        {"reconciled": bool, "message": str}
+    """
+    from core.reconciliation import trigger_reconciliation
+
+    user_id = UUID(current_user["id"])
+
+    result = await trigger_reconciliation(
+        trigger_reason="manual",
+        db=db,
+        user_id=user_id,
+        client_id=None
+    )
+
+    return {
+        "reconciled": result,
+        "message": "Reconciliation complete" if result else "No pending accounts"
+    }
