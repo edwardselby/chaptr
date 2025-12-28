@@ -6,13 +6,12 @@ Provides destructive operations for development and user-specific resets:
 - POST /api/admin/nuclear-reset - Clear entire database (dev only, password protected)
 """
 
-import os
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 
-from api.config import MongoDB
+from api.config import MongoDB, settings
 from api.utils.auth import get_current_user
 from api.utils.db import utc_now
 
@@ -78,15 +77,14 @@ async def nuclear_reset(
     Returns:
         dict: Counts of deleted documents per collection
     """
-    # Password check - require ADMIN_PASSWORD from environment (no fallback)
-    admin_password = os.environ.get("ADMIN_PASSWORD")
-    if not admin_password:
+    # Password check - require ADMIN_PASSWORD from settings
+    if not settings.admin_password:
         raise HTTPException(
             status_code=500,
             detail="ADMIN_PASSWORD environment variable not set"
         )
 
-    if request.password != admin_password:
+    if request.password != settings.admin_password:
         raise HTTPException(status_code=403, detail="Invalid password")
 
     db = MongoDB.get_database()

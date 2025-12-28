@@ -73,6 +73,33 @@ window.app = function() {
         showHelpModal: false,
         showBalanceModal: false,
         showDatabaseToolsModal: false,
+        showConfirmModal: false,
+        showInputModal: false,
+        showPasswordModal: false,
+        confirmModalData: {
+            title: '',
+            message: '',
+            confirmText: 'Confirm',
+            confirmStyle: 'primary', // 'primary' or 'danger'
+            onConfirm: null
+        },
+        inputModalData: {
+            title: '',
+            message: '',
+            placeholder: '',
+            inputValue: '',
+            inputType: 'text', // 'text' or 'number'
+            pattern: null, // Regex pattern for validation
+            onSubmit: null,
+            validator: null // Custom validation function
+        },
+        passwordModalData: {
+            title: '',
+            message: '',
+            placeholder: '',
+            passwordValue: '',
+            onSubmit: null
+        },
         accountForm: {},
         storyForm: {},
         eventForm: {},
@@ -713,7 +740,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error saving account:', error);
-                alert('Failed to save account');
+                this.showNotification('Save failed', 'error');
             }
         },
 
@@ -765,28 +792,32 @@ window.app = function() {
          * Delete account (via storage adapter)
          */
         async deleteAccount() {
-            if (!confirm(`Delete account "${this.accountForm.name}"?`)) {
-                return;
-            }
+            this.showConfirm(
+                'Delete Account',
+                `Delete account "${this.accountForm.name}"?\n\nThis action cannot be undone.`,
+                async () => {
+                    try {
+                        const accountId = this.accountForm.id;
 
-            try {
-                const accountId = this.accountForm.id;
+                        // Use storage adapter (handles all 3 modes)
+                        await storage.deleteAccount(accountId);
 
-                // Use storage adapter (handles all 3 modes)
-                await storage.deleteAccount(accountId);
+                        // Update sync queue count for UI indicator
+                        await this.updateSyncQueueCount();
 
-                // Update sync queue count for UI indicator
-                await this.updateSyncQueueCount();
+                        this.showAccountModal = false;
 
-                this.showAccountModal = false;
+                        // Reload data
+                        await this.loadData();
 
-                // Reload data
-                await this.loadData();
-
-            } catch (error) {
-                console.error('Error deleting account:', error);
-                alert('Failed to delete account');
-            }
+                    } catch (error) {
+                        console.error('Error deleting account:', error);
+                        this.showNotification('Delete failed', 'error');
+                    }
+                },
+                'Delete',
+                'danger'
+            );
         },
 
         // ===== STORIES =====
@@ -836,23 +867,23 @@ window.app = function() {
         async saveStory() {
             // Validation
             if (this.storyForm.end_date && this.storyForm.end_date < this.storyForm.start_date) {
-                alert('End date must be after start date');
+                this.showNotification('Invalid date range', 'error');
                 return;
             }
 
             if ((this.storyForm.funding_mode === 'fixed' || this.storyForm.funding_mode === 'projected_plus')
                 && !this.storyForm.funding_amount) {
-                alert('Funding amount is required for this funding mode');
+                this.showNotification('Funding required', 'error');
                 return;
             }
 
             if (this.storyForm.goal_type && this.storyForm.goal_type !== 'none' && !this.storyForm.goal_amount) {
-                alert('Goal amount is required when goal type is set');
+                this.showNotification('Goal amount required', 'error');
                 return;
             }
 
             if (this.storyForm.display_currency && !/^[A-Z]{3}$/.test(this.storyForm.display_currency.toUpperCase())) {
-                alert('Display currency must be a 3-letter code (e.g., GBP, USD)');
+                this.showNotification('Invalid currency', 'error');
                 return;
             }
 
@@ -884,7 +915,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error saving story:', error);
-                alert('Failed to save story');
+                this.showNotification('Save failed', 'error');
             }
         },
 
@@ -897,7 +928,7 @@ window.app = function() {
                 this.showStoryModal = false;
             } catch (error) {
                 console.error('Error deleting story:', error);
-                alert('Failed to delete story');
+                this.showNotification('Delete failed', 'error');
             }
         },
 
@@ -941,18 +972,22 @@ window.app = function() {
                 ? `Unarchive "${story.name}"?\n\nIt will be visible again.`
                 : `Archive "${story.name}"?\n\nIt will be hidden but not deleted.`;
 
-            if (!confirm(confirmMessage)) {
-                return;
-            }
-
-            try {
-                await this.updateStory(storyId, { is_archived: !story.is_archived });
-                await this.loadData();
-                this.filterStories(); // Refresh filtered list
-            } catch (error) {
-                console.error(`Error ${action.toLowerCase()}ing story:`, error);
-                alert(`Failed to ${action.toLowerCase()} story: ` + error.message);
-            }
+            this.showConfirm(
+                `${action} Story`,
+                confirmMessage,
+                async () => {
+                    try {
+                        await this.updateStory(storyId, { is_archived: !story.is_archived });
+                        await this.loadData();
+                        this.filterStories(); // Refresh filtered list
+                    } catch (error) {
+                        console.error(`Error ${action.toLowerCase()}ing story:`, error);
+                        this.showNotification(`${action} failed`, 'error');
+                    }
+                },
+                action,
+                'danger'
+            );
         },
 
         /**
@@ -1085,21 +1120,29 @@ window.app = function() {
             // Check for associated events
             const associatedEvents = this.events.filter(e => e.story_id === storyId);
 
-            if (associatedEvents.length > 0) {
-                const confirmMsg = `Delete story "${story.name}"?\n\nThis will also delete ${associatedEvents.length} associated event(s).`;
-                if (!confirm(confirmMsg)) {
-                    return;
-                }
+            const confirmMsg = associatedEvents.length > 0
+                ? `Delete story "${story.name}"?\n\nThis will also delete ${associatedEvents.length} associated event(s).`
+                : `Delete story "${story.name}"?`;
 
-                // Delete associated events
-                for (const event of associatedEvents) {
-                    await this.deleteEvent(event.id);
-                }
-            } else {
-                if (!confirm(`Delete story "${story.name}"?`)) {
-                    return;
-                }
-            }
+            this.showConfirm(
+                'Delete Story',
+                confirmMsg,
+                async () => {
+                    // Delete associated events if any
+                    if (associatedEvents.length > 0) {
+                        for (const event of associatedEvents) {
+                            await this.deleteEvent(event.id);
+                        }
+                    }
+
+                    await this.performStoryDeletion(storyId, story);
+                },
+                'Delete',
+                'danger'
+            );
+        },
+
+        async performStoryDeletion(storyId, story) {
 
             // 0. Get current entity for conflict detection (capture base_updated_at)
             const currentStory = await db.stories.get(storyId);
@@ -1170,7 +1213,7 @@ window.app = function() {
             );
 
             if (!accountId) {
-                alert('No account available. Please create an account first.');
+                this.showNotification('Account required', 'error');
                 return;
             }
 
@@ -1327,7 +1370,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error updating settings:', error);
-                alert('Failed to update settings');
+                this.showNotification('Update failed', 'error');
             }
         },
 
@@ -1335,20 +1378,41 @@ window.app = function() {
          * Add a new conversion rate
          */
         addConversionRate() {
-            const currency = prompt('Enter currency code (e.g., EUR, CAD):');
-            if (!currency) return;
+            this.showInput(
+                'Add Currency',
+                'Enter currency code (e.g., EUR, CAD):',
+                (currency) => {
+                    const upperCurrency = currency.toUpperCase();
 
-            const upperCurrency = currency.toUpperCase();
-            if (upperCurrency.length !== 3) {
-                alert('Currency code must be 3 letters');
-                return;
-            }
-
-            const rate = prompt(`Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`);
-            if (!rate) return;
-
-            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
-            // Note: User must click "Save Rates" button to persist
+                    // Continue with rate input
+                    this.showInput(
+                        'Conversion Rate',
+                        `Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`,
+                        (rate) => {
+                            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
+                            // Note: User must click "Save Rates" button to persist
+                        },
+                        '1.27',
+                        null,
+                        (value) => {
+                            const rateNum = parseFloat(value);
+                            if (isNaN(rateNum) || rateNum <= 0) {
+                                return 'Please enter a valid positive number';
+                            }
+                            return null; // Valid
+                        }
+                    );
+                },
+                'EUR',
+                null,
+                (value) => {
+                    const upper = value.toUpperCase();
+                    if (upper.length !== 3) {
+                        return 'Currency code must be 3 letters';
+                    }
+                    return null; // Valid
+                }
+            );
         },
 
         /**
@@ -1356,10 +1420,16 @@ window.app = function() {
          * @param {string} currency - Currency code
          */
         deleteRate(currency) {
-            if (!confirm(`Remove ${currency} conversion rate?`)) return;
-
-            delete this.settingsForm.rates[currency];
-            // Note: User must click "Save Rates" button to persist
+            this.showConfirm(
+                'Remove Currency',
+                `Remove ${currency} conversion rate?`,
+                () => {
+                    delete this.settingsForm.rates[currency];
+                    // Note: User must click "Save Rates" button to persist
+                },
+                'Remove',
+                'danger'
+            );
         },
 
         /**
@@ -1392,7 +1462,7 @@ window.app = function() {
                 console.log('Backup downloaded');
             } catch (error) {
                 console.error('Error downloading backup:', error);
-                alert('Failed to download backup');
+                this.showNotification('Download failed', 'error');
             }
         },
 
@@ -1407,16 +1477,28 @@ window.app = function() {
             // Validate file size (max 10MB)
             const maxSizeMB = 10;
             if (file.size > maxSizeMB * 1024 * 1024) {
-                alert(`File too large. Maximum size is ${maxSizeMB}MB.`);
+                this.showNotification(`File too large (max ${maxSizeMB}MB)`, 'error');
                 event.target.value = '';
                 return;
             }
 
-            if (!confirm('⚠ This will OVERWRITE all existing data. Continue?')) {
-                event.target.value = '';
-                return;
-            }
+            this.showConfirm(
+                '⚠️ Restore Backup',
+                'This will OVERWRITE all existing data.\n\nAll current accounts, stories, and events will be replaced.\n\nContinue?',
+                async () => {
+                    try {
+                        await this.performBackupRestore(file, event);
+                    } catch (error) {
+                        console.error('Restore error:', error);
+                        this.showNotification(error.message || 'Restore failed', 'error');
+                    }
+                },
+                'Restore',
+                'danger'
+            );
+        },
 
+        async performBackupRestore(file, event) {
             try {
                 const text = await file.text();
                 const backup = JSON.parse(text);
@@ -1464,11 +1546,11 @@ window.app = function() {
                     await db.recurring_rules.bulkAdd(backup.recurring_rules || []);
                 });
 
-                alert('✓ Backup restored successfully');
+                this.showNotification('Backup restored', 'success');
                 await this.loadData();
             } catch (error) {
                 console.error('Error restoring backup:', error);
-                alert('Failed to restore backup: ' + error.message);
+                this.showNotification('Restore failed', 'error');
             }
 
             event.target.value = '';
@@ -1511,7 +1593,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Sync error:', error);
-                alert('Failed to sync: ' + error.message);
+                this.showNotification('Sync failed', 'error');
             } finally {
                 this.isSyncing = false;
                 this.syncButtonSpinner = false; // Hide spinner
@@ -1527,25 +1609,29 @@ window.app = function() {
          * Useful for development/testing to clear stale queue items.
          */
         async clearSyncQueue() {
-            if (!confirm('Clear all pending sync items?\n\nThis will delete unsynced entities (events, accounts, etc.) and cannot be undone.')) {
-                return;
-            }
+            this.showConfirm(
+                'Clear Sync Queue',
+                'Clear all pending sync items?\n\nThis will delete unsynced entities (events, accounts, etc.) and cannot be undone.',
+                async () => {
+                    try {
+                        const count = await storage.clearSyncQueue();
+                        await this.updateSyncQueueCount();
 
-            try {
-                const count = await storage.clearSyncQueue();
-                await this.updateSyncQueueCount();
+                        // Recalculate projection to reflect deletion of unsynced entities
+                        // This ensures drift updates correctly
+                        if (this.currentScreen === 'dashboard') {
+                            await this.updateProjectionRows();
+                        }
 
-                // Recalculate projection to reflect deletion of unsynced entities
-                // This ensures drift updates correctly
-                if (this.currentScreen === 'dashboard') {
-                    await this.updateProjectionRows();
-                }
-
-                this.showNotification('Queue cleared', 'success');
-            } catch (error) {
-                console.error('Clear queue error:', error);
-                alert('Failed to clear sync queue: ' + error.message);
-            }
+                        this.showNotification('Queue cleared', 'success');
+                    } catch (error) {
+                        console.error('Clear queue error:', error);
+                        this.showNotification('Clear failed', 'error');
+                    }
+                },
+                'Clear',
+                'danger'
+            );
         },
 
         /**
@@ -1576,7 +1662,7 @@ window.app = function() {
                 console.log('[CHAPTR] Database reset complete');
             } catch (error) {
                 console.error('[CHAPTR] Clear database error:', error);
-                alert('Failed to reset database: ' + error.message);
+                this.showNotification('Reset failed', 'error');
             } finally {
                 this.isSyncing = false;
                 this.showDatabaseToolsModal = false;
@@ -1618,7 +1704,7 @@ window.app = function() {
                 console.log(`[CHAPTR] Reset complete - cleared ${data.deleted_count} change log entries`);
             } catch (error) {
                 console.error('[CHAPTR] Clear database + changelog error:', error);
-                alert('Failed to reset database and change log: ' + error.message);
+                this.showNotification('Reset failed', 'error');
             } finally {
                 this.isSyncing = false;
                 this.showDatabaseToolsModal = false;
@@ -1632,56 +1718,54 @@ window.app = function() {
          * Development only. Requires password confirmation.
          */
         async nuclearReset() {
-            const password = prompt(
-                '🔴 NUCLEAR RESET - ALL DATA WILL BE DELETED\n\n' +
+            this.showPassword(
+                '🔴 NUCLEAR RESET',
                 'This will permanently delete:\n' +
                 '• ALL accounts, stories, events (all users)\n' +
                 '• ALL change log history\n' +
                 '• ALL conflicts\n\n' +
                 'Only users and settings are preserved.\n\n' +
-                'Enter password to confirm:'
+                'Enter password to confirm:',
+                async (password) => {
+                    try {
+                        this.isSyncing = true;
+                        this.showNotification('Resetting...', 'info');
+
+                        // Call nuclear reset endpoint with password
+                        const response = await apiRequest('/api/admin/nuclear-reset', {
+                            method: 'POST',
+                            body: JSON.stringify({ password })
+                        });
+
+                        if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.detail || 'Nuclear reset failed');
+                        }
+
+                        const data = await response.json();
+                        console.log('[CHAPTR] Nuclear reset complete:', data);
+
+                        // Clear local database
+                        await db.clearAllData();
+                        this.accounts = [];
+                        this.stories = [];
+                        this.events = [];
+                        this.projectionRows = [];
+
+                        // Resync (will get empty state)
+                        await this.fullSync();
+
+                        console.log('[CHAPTR] Nuclear reset complete - all data wiped');
+                    } catch (error) {
+                        console.error('[CHAPTR] Nuclear reset error:', error);
+                        this.showNotification(error.message || 'Nuclear reset failed', 'error');
+                    } finally {
+                        this.isSyncing = false;
+                        this.showDatabaseToolsModal = false;
+                    }
+                },
+                'Enter admin password'
             );
-
-            if (!password) {
-                return; // User cancelled
-            }
-
-            try {
-                this.isSyncing = true;
-                this.showNotification('Resetting...', 'info');
-
-                // Call nuclear reset endpoint with password
-                const response = await apiRequest('/api/admin/nuclear-reset', {
-                    method: 'POST',
-                    body: JSON.stringify({ password })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Nuclear reset failed');
-                }
-
-                const data = await response.json();
-                console.log('[CHAPTR] Nuclear reset complete:', data);
-
-                // Clear local database
-                await db.clearAllData();
-                this.accounts = [];
-                this.stories = [];
-                this.events = [];
-                this.projectionRows = [];
-
-                // Resync (will get empty state)
-                await this.fullSync();
-
-                console.log('[CHAPTR] Nuclear reset complete - all data wiped');
-            } catch (error) {
-                console.error('[CHAPTR] Nuclear reset error:', error);
-                alert(error.message || 'Nuclear reset failed');
-            } finally {
-                this.isSyncing = false;
-                this.showDatabaseToolsModal = false;
-            }
         },
 
         // ===== COMMAND BAR (Context-Sensitive) =====
@@ -1800,7 +1884,7 @@ window.app = function() {
          */
         addEventToStory() {
             if (this.currentView === 'all' || this.currentView === 'baseline') {
-                alert('Please select a specific story first');
+                this.showNotification('Select story first', 'error');
                 return;
             }
             this.openEventModalForStory(this.currentView);
@@ -2019,7 +2103,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error updating balance:', error);
-                alert('Failed to update balance: ' + error.message);
+                this.showNotification('Update failed', 'error');
             }
         },
 
@@ -2031,12 +2115,12 @@ window.app = function() {
             console.log('Edit funding - Projection context, view:', this.currentView);
 
             if (this.currentView === 'all' || this.currentView === 'baseline') {
-                alert('Please select a specific story first');
+                this.showNotification('Select story first', 'error');
                 return;
             }
 
             const story = this.stories.find(s => s.id === this.currentView);
-            alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+            this.showNotification('Coming soon', 'info');
         },
 
 
@@ -2069,7 +2153,7 @@ window.app = function() {
         openEventModalForStory(storyId) {
             const story = this.stories.find(s => s.id === storyId);
             if (!story) {
-                alert('Story not found');
+                this.showNotification('Story not found', 'error');
                 return;
             }
 
@@ -2140,23 +2224,23 @@ window.app = function() {
         async saveEvent() {
             // Validation: Required fields
             if (!this.eventForm.event_date) {
-                alert('Event date is required');
+                this.showNotification('Date required', 'error');
                 return;
             }
 
             if (!this.eventForm.description || this.eventForm.description.trim() === '') {
-                alert('Description is required');
+                this.showNotification('Description required', 'error');
                 return;
             }
 
             if (this.eventForm.amount === null || this.eventForm.amount === undefined) {
-                alert('Amount is required');
+                this.showNotification('Amount required', 'error');
                 return;
             }
 
             // Validation: Currency format
             if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
-                alert('Currency must be a 3-letter code (e.g., GBP, USD)');
+                this.showNotification('Invalid currency', 'error');
                 return;
             }
 
@@ -2167,16 +2251,12 @@ window.app = function() {
                     const eventDate = this.eventForm.event_date;
 
                     if (eventDate < story.start_date) {
-                        alert(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${story.end_date ? formatDate(story.end_date) : 'Ongoing'})`
-                        );
+                        this.showNotification('Date outside story', 'error');
                         return;
                     }
 
                     if (story.end_date && eventDate > story.end_date) {
-                        alert(
-                            `Event date must be within story period (${formatDate(story.start_date)} - ${formatDate(story.end_date)})`
-                        );
+                        this.showNotification('Date outside story', 'error');
                         return;
                     }
                 }
@@ -2184,7 +2264,7 @@ window.app = function() {
 
             // Validation: Baseline XOR Story
             if (this.eventForm.is_baseline && this.eventForm.story_id) {
-                alert('Event cannot be both baseline and assigned to a story');
+                this.showNotification('Baseline/story conflict', 'error');
                 return;
             }
 
@@ -2195,7 +2275,7 @@ window.app = function() {
             );
 
             if (!resolvedAccountId) {
-                alert('No account available. Please create an account first or select one manually.');
+                this.showNotification('Account required', 'error');
                 return;
             }
 
@@ -2223,7 +2303,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error saving event:', error);
-                alert('Failed to save event: ' + error.message);
+                this.showNotification('Save failed', 'error');
             }
         },
 
@@ -2231,17 +2311,21 @@ window.app = function() {
          * Delete event from modal with confirmation
          */
         async deleteEventFromModal() {
-            if (!confirm(`Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`)) {
-                return;
-            }
-
-            try {
-                await this.deleteEvent(this.eventForm.id);
-                this.showEventModal = false;
-            } catch (error) {
-                console.error('Error deleting event:', error);
-                alert('Failed to delete event: ' + error.message);
-            }
+            this.showConfirm(
+                'Delete Event',
+                `Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`,
+                async () => {
+                    try {
+                        await this.deleteEvent(this.eventForm.id);
+                        this.showEventModal = false;
+                    } catch (error) {
+                        console.error('Error deleting event:', error);
+                        this.showNotification('Delete failed', 'error');
+                    }
+                },
+                'Delete',
+                'danger'
+            );
         },
 
         /**
@@ -2401,6 +2485,168 @@ window.app = function() {
                 this.notificationTimeout = null;
             }
             this.currentNotification = null;
+        },
+
+        // ===== MODAL SYSTEM =====
+
+        /**
+         * Show confirmation modal
+         * @param {string} title - Modal title
+         * @param {string} message - Confirmation message (supports newlines)
+         * @param {function} onConfirm - Callback function when confirmed
+         * @param {string} confirmText - Text for confirm button (default: 'Confirm')
+         * @param {string} confirmStyle - Button style: 'primary' or 'danger' (default: 'primary')
+         */
+        showConfirm(title, message, onConfirm, confirmText = 'Confirm', confirmStyle = 'primary') {
+            this.confirmModalData = {
+                title,
+                message,
+                confirmText,
+                confirmStyle,
+                onConfirm
+            };
+            this.showConfirmModal = true;
+        },
+
+        /**
+         * Execute confirmation action and close modal
+         */
+        confirmAction() {
+            if (this.confirmModalData.onConfirm) {
+                this.confirmModalData.onConfirm();
+            }
+            this.closeConfirmModal();
+        },
+
+        /**
+         * Close confirmation modal and reset state
+         */
+        closeConfirmModal() {
+            this.showConfirmModal = false;
+            this.confirmModalData = {
+                title: '',
+                message: '',
+                confirmText: 'Confirm',
+                confirmStyle: 'primary',
+                onConfirm: null
+            };
+        },
+
+        /**
+         * Show input modal
+         * @param {string} title - Modal title
+         * @param {string} message - Instruction message
+         * @param {function} onSubmit - Callback function with input value
+         * @param {string} placeholder - Input placeholder text
+         * @param {string} pattern - Regex pattern for HTML validation
+         * @param {function} validator - Custom validation function (returns error message or null)
+         */
+        showInput(title, message, onSubmit, placeholder = '', pattern = null, validator = null) {
+            this.inputModalData = {
+                title,
+                message,
+                placeholder,
+                inputValue: '',
+                pattern,
+                onSubmit,
+                validator
+            };
+            this.showInputModal = true;
+        },
+
+        /**
+         * Submit input value with validation
+         */
+        submitInput() {
+            const value = this.inputModalData.inputValue.trim();
+
+            // Check for empty input
+            if (!value) {
+                this.showNotification('Input required', 'error');
+                return;
+            }
+
+            // Validate with custom validator if provided
+            if (this.inputModalData.validator) {
+                const validationError = this.inputModalData.validator(value);
+                if (validationError) {
+                    this.showNotification(validationError, 'error');
+                    return;
+                }
+            }
+
+            // Call callback with value
+            if (this.inputModalData.onSubmit) {
+                this.inputModalData.onSubmit(value);
+            }
+
+            this.closeInputModal();
+        },
+
+        /**
+         * Close input modal and reset state
+         */
+        closeInputModal() {
+            this.showInputModal = false;
+            this.inputModalData = {
+                title: '',
+                message: '',
+                placeholder: '',
+                inputValue: '',
+                pattern: null,
+                onSubmit: null,
+                validator: null
+            };
+        },
+
+        /**
+         * Show password modal
+         * @param {string} title - Modal title
+         * @param {string} message - Warning/instruction message
+         * @param {function} onSubmit - Callback function with password value
+         * @param {string} placeholder - Input placeholder text
+         */
+        showPassword(title, message, onSubmit, placeholder = '') {
+            this.passwordModalData = {
+                title,
+                message,
+                placeholder,
+                passwordValue: '',
+                onSubmit
+            };
+            this.showPasswordModal = true;
+        },
+
+        /**
+         * Submit password with validation
+         */
+        submitPassword() {
+            const password = this.passwordModalData.passwordValue;
+
+            if (!password) {
+                this.showNotification('Password required', 'error');
+                return;
+            }
+
+            if (this.passwordModalData.onSubmit) {
+                this.passwordModalData.onSubmit(password);
+            }
+
+            this.closePasswordModal();
+        },
+
+        /**
+         * Close password modal and reset state
+         */
+        closePasswordModal() {
+            this.showPasswordModal = false;
+            this.passwordModalData = {
+                title: '',
+                message: '',
+                placeholder: '',
+                passwordValue: '',
+                onSubmit: null
+            };
         },
 
         // ===== MODE DISPLAY HELPERS =====

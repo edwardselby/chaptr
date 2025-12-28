@@ -478,7 +478,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'create account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'create account'), 'error');
             throw error;
         }
     }
@@ -501,7 +501,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'create account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'create account'), 'error');
             throw error;
         }
     }
@@ -571,7 +571,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'update account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'update account'), 'error');
             throw error;
         }
     }
@@ -597,7 +597,7 @@ class StorageAdapter {
 
             return serverData;
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'update account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'update account'), 'error');
             throw error;
         }
     }
@@ -659,7 +659,7 @@ class StorageAdapter {
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'delete account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
             throw error;
         }
     }
@@ -677,7 +677,7 @@ class StorageAdapter {
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
         } catch (error) {
-            alert(getModeAwareErrorMessage(this.mode, 'delete account'));
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
             throw error;
         }
     }
@@ -788,7 +788,7 @@ class StorageAdapter {
 
         } catch (error) {
             console.error('[CHAPTR] Manual sync failed:', error);
-            alert('Sync failed. Changes still queued: ' + error.message);
+            window.showNotification('Sync failed', 'error');
             throw error;
         }
     }
@@ -939,7 +939,7 @@ class StorageAdapter {
     async clearSyncQueue() {
         if (this.mode !== 'full') {
             console.warn('[CHAPTR] clearSyncQueue only available in Mode 1 (Full)');
-            alert('Sync queue only available in full mode');
+            window.showNotification('Full mode required', 'error');
             return 0;
         }
 

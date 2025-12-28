@@ -1428,6 +1428,41 @@ body::before {
     font-weight: 400;
 }
 
+/* ===== CONFIRMATION/INPUT MODAL STYLES ===== */
+
+/* Smaller modal variant for confirmations and inputs */
+.modal-sm {
+    max-width: 480px;
+}
+
+/* Confirmation message styling */
+.confirm-message {
+    color: var(--text-bright);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Input/password message styling */
+.input-message,
+.password-message {
+    color: var(--text-bright);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Input focus in modals */
+.modal .form-input:focus {
+    outline: none;
+    border-color: var(--green-dim);
+    box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1);
+}
+
+/* Danger state for password modal */
+.modal .form-input[style*="border-color: var(--red)"]:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.1);
+}
+
 /* ===== SETTINGS SCREEN STYLES ===== */
 
 /* Access denied */
