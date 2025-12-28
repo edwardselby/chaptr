@@ -137,7 +137,8 @@ export async function calculateProjection(
 
         // Filter by view
         if (view === 'baseline') {
-            events = events.filter(e => e.is_baseline);
+            // Baseline view: only baseline events, exclude auto-adjustments (shown only in ALL view)
+            events = events.filter(e => e.is_baseline && !e.is_auto_adjustment);
         } else if (view !== 'all' && storyId) {
             // Show story events + baseline, but exclude auto-adjustments (only shown in ALL view)
             events = events.filter(e => (e.story_id === storyId || e.is_baseline) && !e.is_auto_adjustment);
