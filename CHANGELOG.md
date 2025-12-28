@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CPTR-f7c0a19e, c5fd40a7, 8445af0c, d1fcc8a3: Conflict resolution modal with automatic detection on app load and side-by-side version comparison
+- CPTR-f7c0a19e: Conflict detection system checks for unresolved conflicts in Dexie on app initialization (full mode only)
+- CPTR-c5fd40a7, 8445af0c, d1fcc8a3: Conflict modal UI displays edit/edit and delete/edit conflicts with clear visual distinction (green vs amber)
+- CPTR-d1fcc8a3: Keep Mine / Keep Theirs action buttons with context-sensitive labels for different conflict types
+- CPTR-43ca583a: Delete/edit conflict handling with "Keep Deleted" / "Restore Event" options
+- CPTR-d82301d4, 64245d11, cc51f5f9, 9e43f144, 4ae1d57c: Conflict resolution workflow updates local Dexie, queues for sync, marks resolved, processes next conflict sequentially
+- CPTR-560f3f4f: POST /api/reconciliation/trigger endpoint for manual reconciliation of pending accounts
+- CPTR-560f3f4f: Reconciliation trigger integration test (test_reconciliation_trigger_endpoint) verifying auth, response format, auto-adjustment creation
+- CPTR-ae1af1ac, e439e242, b46238bd: Auto-adjustment visual styling with [auto] tag, dimmed opacity (0.6), and italic text for distinction
 - CPTR-2d7da502: Stories Management screen with search filter, archive/unarchive, delete functionality following Accounts pattern
 - CPTR-2d7da502, CPTR-79a73eab: Story search filter with real-time filtering by name in Stories Management screen
 - CPTR-36dc6afc: "View All" static entry in Dashboard stories panel for filtering to all stories + baseline projection
@@ -40,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-2cf0e42d: Enhanced FastAPI validation error logging with detailed request body and error messages
 
 ### Changed
+- CPTR-560f3f4f, ebfe2468: Reconciliation triggers added to balance update, projection screen view, and projection view switch for immediate auto-adjustment creation
+- CPTR-ae1af1ac, e439e242: Auto-adjustment events filtered from story and baseline views (only visible in "All" view per spec)
+- CPTR-ebfe2468: setView() method clears expandedGaps Set on view change to prevent memory leak
 - CPTR-b50349be: Dashboard story click behavior changed from opening edit modal to navigating to Projection view filtered by story
 - CPTR-45994c2f: openStoriesManage() changed from opening story modal to switching to Stories Management screen
 - CPTR-cd8c01a8: VIEW ALL button removed from Dashboard (replaced by "View All" story entry)
@@ -55,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-fa98623d: BaseRepository.delete() signature extended to accept current_user and client_id parameters for change logging
 
 ### Fixed
+- CPTR-d82301d4, 64245d11: Conflict resolution base_updated_at field uses original timestamps before conflict (client_version.base_updated_at for keep_mine, server_version.updated_at for keep_theirs)
+- CPTR-64245d11: Delete flow null guard for server_version with fallback to client_version timestamp
+- CPTR-8445af0c: Auto-adjustment filtering in baseline view prevents auto-adjustments from appearing outside "All" view
+- CPTR-560f3f4f: Balance update reconciliation flow uses single triggerReconciliation() call instead of duplicate loadData() calls
 - CPTR-fef45d59: loadFromDexie error in event CRUD methods - changed to loadData() in populateDexie() and backup restore handler (2 locations)
 - CPTR-80cea8fb: Token key inconsistency resolved (apiRequest() now reads 'auth_token' instead of 'jwt_token', fixing logout loop bug)
 - CPTR-7d470b3e: Admin access to settings screen - changed user.is_admin checks to user.role === 'admin' for frontend-backend field consistency
