@@ -2120,13 +2120,6 @@ window.app = function() {
                 // (This will reload data and update projection internally)
                 await this.triggerReconciliation();
 
-                // Trigger reconciliation to create [auto] adjustments immediately
-                await this.triggerReconciliation();
-
-                // Reload data again to show new [auto] adjustments
-                await this.loadData();
-                await this.updateDashboardProjection();
-
                 this.showBalanceModal = false;
 
                 // Show notification
