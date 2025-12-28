@@ -857,3 +857,74 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
     # Verify new adjustment has updated drift (1500 - 500 = 1000)
     new_auto = auto_events[0]
     assert Decimal(str(new_auto["amount"])) == Decimal("1000.00"), "Should have updated drift"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_reconciliation_trigger_endpoint(
+    async_client_real,
+    auth_headers_real,
+    sample_user_real,
+    account_repo_real,
+    event_repo_real
+):
+    """
+    Test POST /api/reconciliation/trigger endpoint (Task 120).
+
+    Verifies:
+    - Endpoint requires authentication
+    - Triggers reconciliation for all pending accounts
+    - Returns proper response format
+    - Creates auto-adjustment events when needed
+    """
+    # Create account with drift (needs reconciliation)
+    account = await account_repo_real.create(
+        {
+            "name": "Test Account",
+            "currency": "GBP",
+            "current_balance": Decimal("1000.00"),
+            "is_default": True,
+            "pending_reconciliation": True
+        },
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create baseline event (projected balance = 500)
+    await event_repo_real.create(
+        {
+            "date": "2025-01-10",
+            "description": "salary",
+            "amount": Decimal("500.00"),
+            "account_id": account.id,
+            "currency": "GBP",
+            "rate_to_base": Decimal("1.0"),
+            "is_baseline": True
+        },
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Trigger reconciliation via endpoint
+    response = await async_client_real.post(
+        "/api/reconciliation/trigger",
+        headers=auth_headers_real
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response format
+    assert "reconciled" in data
+    assert "message" in data
+    assert data["reconciled"] is True
+    assert "complete" in data["message"].lower()
+
+    # Verify auto-adjustment event was created
+    auto_events = await event_repo_real.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(auto_events) == 1, "Should create auto-adjustment event"
+    assert Decimal(str(auto_events[0]["amount"])) == Decimal("500.00"), "Drift should be 1000 - 500 = 500"

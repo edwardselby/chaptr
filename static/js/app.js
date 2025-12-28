@@ -449,6 +449,10 @@ window.app = function() {
 
             // Update projection when viewing projection screen
             if (screen === 'projection') {
+                // Trigger reconciliation if there are pending accounts
+                if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
+                    await this.triggerReconciliation();
+                }
                 await this.updateProjectionRows();
             }
         },
@@ -2112,16 +2116,9 @@ window.app = function() {
                     Object.assign(account, updatedAccount);
                 }
 
-                // Reload data to reflect changes
-                await this.loadData();
-                await this.updateDashboardProjection();
-
                 // Trigger reconciliation to create [auto] adjustments immediately
+                // (This will reload data and update projection internally)
                 await this.triggerReconciliation();
-
-                // Reload data again to show new [auto] adjustments
-                await this.loadData();
-                await this.updateDashboardProjection();
 
                 this.showBalanceModal = false;
 
