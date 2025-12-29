@@ -731,7 +731,12 @@ class StorageAdapter {
     async manualSync() {
         if (this.mode !== 'full') {
             console.log('[CHAPTR] Manual sync not needed - Mode 2/3 syncs immediately');
-            return { success: true, message: 'No sync needed' };
+            return {
+                success: true,
+                message: 'No sync needed',
+                applied: 0,      // ← Add missing field
+                conflicts: 0     // ← Add missing field
+            };
         }
 
         console.log('[CHAPTR] Starting manual sync...');

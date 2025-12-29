@@ -781,6 +781,80 @@ window.app = function() {
         },
 
         /**
+         * Create opening balance event for new account (mirrors backend logic)
+         *
+         * @param {Object} account - Account object with id, currency, current_balance
+         * @returns {Object} Event object ready for Dexie insertion
+         */
+        async _createOpeningBalanceEvent(account) {
+            const eventId = generateUUID();
+
+            // Use account's created_at date for event_date (not today)
+            // This matches backend behavior: opening balance is dated when account was created
+            const accountCreatedDate = account.created_at
+                ? toLocalISODate(new Date(account.created_at))
+                : toLocalISODate(new Date());
+
+            // Get rate_to_base from settings (same logic as backend)
+            let rate_to_base = 1.0;
+            if (account.currency !== this.settings.base_currency) {
+                rate_to_base = this.settings.rates?.[account.currency] || 1.0;
+            }
+
+            return {
+                id: eventId,
+                event_date: accountCreatedDate,         // Use account creation date
+                description: 'opening balance',         // Match backend description
+                amount: String(parseFloat(account.current_balance)),
+                currency: account.currency,
+                rate_to_base: rate_to_base,
+                account_id: account.id,
+                story_id: null,                         // Baseline (not part of story)
+                is_baseline: true,
+                is_hypothetical: false,
+                is_auto_adjustment: false,
+                is_opening_balance: true,               // ← Special flag
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+        },
+
+        /**
+         * Create balance adjustment event (mirrors reconciliation logic)
+         *
+         * @param {Object} account - Account object
+         * @param {number} drift - Amount to adjust (actual - projected)
+         * @returns {Object} Event object ready for Dexie insertion
+         */
+        async _createAdjustmentEvent(account, drift) {
+            const eventId = generateUUID();
+            const today = toLocalISODate(new Date());
+
+            // Get rate_to_base from settings
+            let rate_to_base = 1.0;
+            if (account.currency !== this.settings.base_currency) {
+                rate_to_base = this.settings.rates?.[account.currency] || 1.0;
+            }
+
+            return {
+                id: eventId,
+                event_date: today,                      // Today (when adjustment made)
+                description: 'balance adjustment',      // Match backend description
+                amount: String(parseFloat(drift)),      // Drift amount
+                currency: account.currency,
+                rate_to_base: rate_to_base,
+                account_id: account.id,
+                story_id: null,                         // Baseline (not story-specific)
+                is_baseline: true,
+                is_hypothetical: false,
+                is_auto_adjustment: true,               // ← Mark as [auto]
+                is_opening_balance: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+        },
+
+        /**
          * Create new account (via storage adapter)
          */
         async createAccount() {
@@ -792,7 +866,28 @@ window.app = function() {
             };
 
             // Use storage adapter (handles all 3 modes)
-            await storage.createAccount(accountData);
+            const createdAccount = await storage.createAccount(accountData);
+
+            // In full offline mode, create opening balance event locally
+            // (mirrors backend behavior in api/repositories/accounts.py:128)
+            if (storage.mode === 'full' && parseFloat(accountData.current_balance) !== 0) {
+                // Check for existing opening balance event to prevent duplicates
+                const existingOpeningBalance = await db.events
+                    .where({ account_id: createdAccount.id, is_opening_balance: true })
+                    .count();
+
+                if (existingOpeningBalance === 0) {
+                    // Pass full createdAccount object (includes created_at field)
+                    const openingEvent = await this._createOpeningBalanceEvent(createdAccount);
+
+                    await db.events.add(openingEvent);
+                    await db.queueChange('event', openingEvent.id, 'create', openingEvent);
+
+                    console.log(`[CHAPTR] Created opening balance event ${openingEvent.id} for account ${createdAccount.id}`);
+                } else {
+                    console.log(`[CHAPTR] Skipped duplicate opening balance event for account ${createdAccount.id}`);
+                }
+            }
 
             // Update sync queue count for UI indicator
             await this.updateSyncQueueCount();
@@ -2094,45 +2189,44 @@ window.app = function() {
             }
 
             try {
-                // Update local account current_balance and mark for reconciliation
+                // Get account and calculate drift
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
                 if (!account) {
                     throw new Error('Account not found');
                 }
 
-                const updatedAccount = {
-                    ...account,
-                    current_balance: parseFloat(this.balanceForm.actual_balance),
-                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
-                    pending_reconciliation: true, // Mark for reconciliation per spec
-                    updated_at: new Date().toISOString()
-                };
+                const drift = this.balanceForm.drift;
 
                 if (storage.mode === 'full') {
-                    // Get base_updated_at for conflict detection
-                    const baseUpdatedAt = account.updated_at;
+                    // Create adjustment event instead of updating account
+                    // (mirrors backend reconciliation behavior)
+                    const adjustmentEvent = await this._createAdjustmentEvent(account, drift);
 
-                    // Update account in Dexie
-                    await db.accounts.put(updatedAccount);
+                    await db.events.add(adjustmentEvent);
+                    await db.queueChange('event', adjustmentEvent.id, 'create', adjustmentEvent);
 
-                    // Queue account update for sync
-                    await db.queueChange(
-                        'account',
-                        account.id,
-                        'update',
-                        updatedAccount,
-                        baseUpdatedAt
-                    );
+                    console.log(`[CHAPTR] Created adjustment event ${adjustmentEvent.id} with drift ${drift}`);
+
+                    // Update account metadata only (no balance field update needed)
+                    await db.accounts.update(account.id, {
+                        balance_updated_at: new Date().toISOString(),
+                        pending_reconciliation: false,  // We just created the adjustment
+                        updated_at: new Date().toISOString()
+                    });
                 } else {
-                    // Mode 0: Direct update without sync
-                    Object.assign(account, updatedAccount);
+                    // Mode 2/3: Update account directly (no events)
+                    Object.assign(account, {
+                        current_balance: parseFloat(this.balanceForm.actual_balance),
+                        balance_updated_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
                 }
 
-                // Trigger reconciliation to create [auto] adjustments immediately
-                // (This will reload data and update projection internally)
-                await this.triggerReconciliation();
-
                 this.showBalanceModal = false;
+
+                // Reload data to show new adjustment event in projection
+                await this.loadData();
+                await this.updateProjectionRows();
 
                 // Show notification
                 this.showNotification('Balance updated', 'success');
@@ -2202,6 +2296,7 @@ window.app = function() {
             const today = toLocalISODate(new Date());
 
             this.eventForm = {
+                id: null,
                 event_date: today,
                 description: '',
                 amount: 0,
@@ -2209,7 +2304,14 @@ window.app = function() {
                 currency: this.settings.base_currency || 'GBP',
                 story_id: '', // Empty = baseline
                 is_baseline: true,
-                is_hypothetical: false
+                is_hypothetical: false,
+
+                // Recurring fields
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: today,
+                end_date: ''
             };
 
             this.showEventModal = true;
@@ -2242,6 +2344,7 @@ window.app = function() {
                 : null;
 
             this.eventForm = {
+                id: null,
                 event_date: defaultDate,
                 description: '',
                 amount: 0,
@@ -2249,7 +2352,14 @@ window.app = function() {
                 currency: story.display_currency || (defaultAccount ? defaultAccount.currency : null) || this.settings.base_currency || 'GBP',
                 story_id: storyId,
                 is_baseline: false,
-                is_hypothetical: false
+                is_hypothetical: false,
+
+                // Recurring fields
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: defaultDate,
+                end_date: ''
             };
 
             this.showEventModal = true;
@@ -2259,7 +2369,7 @@ window.app = function() {
          * View event details for editing (opens edit modal)
          * @param {string} eventId - Event UUID
          */
-        viewEventDetails(eventId) {
+        async viewEventDetails(eventId) {
             if (!eventId) {
                 console.error('viewEventDetails called without eventId');
                 return;
@@ -2271,6 +2381,23 @@ window.app = function() {
                 return;
             }
 
+            // Check if this is a phantom event
+            if (event._clientGenerated) {
+                // Show warning and convert phantom to real
+                this.showConfirm(
+                    'Edit Recurring Event Instance',
+                    'This is a generated event. Editing creates an independent copy. Edit the rule to change all occurrences.',
+                    async () => {
+                        // Convert phantom to real event
+                        await this.convertPhantomToReal(event);
+                    },
+                    'Edit Instance',
+                    'primary'
+                );
+                return;
+            }
+
+            // Normal event editing
             this.eventForm = {
                 id: event.id,
                 event_date: event.event_date,
@@ -2281,7 +2408,62 @@ window.app = function() {
                 story_id: event.story_id || '',
                 is_baseline: event.is_baseline,
                 is_hypothetical: event.is_hypothetical,
-                updated_at: event.updated_at
+                updated_at: event.updated_at,
+
+                // Recurring fields (always false for event editing)
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: event.event_date,
+                end_date: ''
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * View recurring rule details (opens for editing)
+         * @param {string} recurringRuleId - Recurring rule UUID
+         */
+        async viewRecurringRule(recurringRuleId) {
+            if (!recurringRuleId) {
+                console.error('viewRecurringRule called without recurringRuleId');
+                return;
+            }
+
+            const rule = await db.recurring_rules.get(recurringRuleId);
+
+            if (rule) {
+                await this.editRecurringRule(rule);
+            } else {
+                this.showNotification('Recurring rule not found', 'error');
+            }
+        },
+
+        /**
+         * Edit recurring rule (opens modal with rule data)
+         * @param {Object} rule - Recurring rule object
+         */
+        async editRecurringRule(rule) {
+            // Populate form with existing rule data
+            this.eventForm = {
+                id: rule.id,
+                event_date: '',  // Not used for recurring
+                description: rule.description,
+                amount: rule.amount,
+                account_id: rule.account_id,
+                currency: rule.currency,
+                story_id: '',  // Recurring rules don't have stories
+                is_baseline: false,  // Not used for recurring
+                is_hypothetical: false,  // Not used for recurring
+                updated_at: rule.updated_at,
+
+                // Set recurring mode
+                is_recurring: true,
+                frequency: rule.frequency,
+                day: rule.day,
+                start_date: rule.start_date,
+                end_date: rule.end_date || ''
             };
 
             this.showEventModal = true;
@@ -2291,12 +2473,7 @@ window.app = function() {
          * Save event (create or update) with validation
          */
         async saveEvent() {
-            // Validation: Required fields
-            if (!this.eventForm.event_date) {
-                this.showNotification('Date required', 'error');
-                return;
-            }
-
+            // Description and Amount are required for both simple and recurring
             if (!this.eventForm.description || this.eventForm.description.trim() === '') {
                 this.showNotification('Description required', 'error');
                 return;
@@ -2310,6 +2487,63 @@ window.app = function() {
             // Validation: Currency format
             if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
                 this.showNotification('Invalid currency', 'error');
+                return;
+            }
+
+            // Validation for Simple Events
+            if (!this.eventForm.is_recurring) {
+                if (!this.eventForm.event_date) {
+                    this.showNotification('Date required', 'error');
+                    return;
+                }
+            }
+
+            // Validation for Recurring Events
+            if (this.eventForm.is_recurring) {
+                if (!this.eventForm.frequency) {
+                    this.showNotification('Frequency required for recurring events', 'error');
+                    return;
+                }
+
+                if (!this.eventForm.day) {
+                    this.showNotification('Day required for recurring events', 'error');
+                    return;
+                }
+
+                if (!this.eventForm.start_date) {
+                    this.showNotification('Start date required for recurring events', 'error');
+                    return;
+                }
+
+                // Validate day range based on frequency
+                if (this.eventForm.frequency === 'weekly' && (this.eventForm.day < 1 || this.eventForm.day > 7)) {
+                    this.showNotification('Day must be 1-7 for weekly events', 'error');
+                    return;
+                }
+
+                if (this.eventForm.frequency === 'monthly' && (this.eventForm.day < 1 || this.eventForm.day > 31)) {
+                    this.showNotification('Day must be 1-31 for monthly events', 'error');
+                    return;
+                }
+
+                if (this.eventForm.frequency === 'annual' && (this.eventForm.day < 1 || this.eventForm.day > 31)) {
+                    this.showNotification('Day must be 1-31 for annual events', 'error');
+                    return;
+                }
+
+                // Route to recurring rule creation or update
+                const isEdit = !!this.eventForm.id;
+                try {
+                    if (isEdit) {
+                        await this.updateRecurringRule();
+                    } else {
+                        await this.createRecurringRule();
+                    }
+                    this.showEventModal = false;
+                } catch (error) {
+                    console.error('Error saving recurring rule:', error);
+                    this.showNotification('Save failed', 'error');
+                }
                 return;
             }
 
@@ -2395,6 +2629,281 @@ window.app = function() {
                 'Delete',
                 'danger'
             );
+        },
+
+        /**
+         * Create recurring rule from eventForm
+         */
+        async createRecurringRule() {
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                null  // Recurring rules don't have stories
+            );
+
+            if (!resolvedAccountId) {
+                this.showNotification('Account required', 'error');
+                throw new Error('No account resolved');
+            }
+
+            const ruleData = {
+                description: this.eventForm.description.trim(),
+                amount: parseFloat(this.eventForm.amount),
+                currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                account_id: resolvedAccountId,
+                frequency: this.eventForm.frequency,
+                day: parseInt(this.eventForm.day),
+                start_date: this.eventForm.start_date,
+                end_date: this.eventForm.end_date || null
+            };
+
+            if (storage.mode === 'full') {
+                // Offline mode: queue for sync
+                const ruleId = generateUUID();
+                ruleData.id = ruleId;
+                ruleData.created_at = new Date().toISOString();
+                ruleData.updated_at = new Date().toISOString();
+
+                // Save to Dexie
+                await db.recurring_rules.put(ruleData);
+
+                // Queue for sync
+                await db.queueChange('recurring_rule', ruleId, 'create', ruleData);
+
+                this.showNotification('Recurring rule created (will sync)', 'success');
+            } else {
+                // Online mode: direct API call
+                const response = await apiRequest('/api/recurring-rules', {
+                    method: 'POST',
+                    body: JSON.stringify(ruleData)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error:', errorText);
+                    throw new Error('Failed to create recurring rule');
+                }
+
+                this.showNotification('Recurring rule created', 'success');
+            }
+
+            // Reload data to show new rule and generated events
+            await this.loadData();
+            await this.updateDashboardProjection();
+        },
+
+        /**
+         * Update recurring rule with queue deduplication
+         */
+        async updateRecurringRule() {
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                null  // Recurring rules don't have stories
+            );
+
+            if (!resolvedAccountId) {
+                this.showNotification('Account required', 'error');
+                throw new Error('No account resolved');
+            }
+
+            const ruleData = {
+                description: this.eventForm.description.trim(),
+                amount: parseFloat(this.eventForm.amount),
+                currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                account_id: resolvedAccountId,
+                frequency: this.eventForm.frequency,
+                day: parseInt(this.eventForm.day),
+                start_date: this.eventForm.start_date,
+                end_date: this.eventForm.end_date || null
+            };
+
+            if (storage.mode === 'full') {
+                // Offline mode: queue deduplication
+                // Remove old queue entries for this rule
+                await db.sync_queue.where({
+                    entity_type: 'recurring_rule',
+                    entity_id: this.eventForm.id
+                }).delete();
+
+                // Update in Dexie
+                ruleData.id = this.eventForm.id;
+                ruleData.created_at = (await db.recurring_rules.get(this.eventForm.id))?.created_at || new Date().toISOString();
+                ruleData.updated_at = new Date().toISOString();
+                await db.recurring_rules.put(ruleData);
+
+                // Queue updated rule
+                await db.queueChange('recurring_rule', this.eventForm.id, 'update', ruleData, this.eventForm.updated_at);
+
+                this.showNotification('Recurring rule updated (will sync)', 'success');
+            } else {
+                // Online mode: direct API call
+                const response = await apiRequest(`/api/recurring-rules/${this.eventForm.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(ruleData)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error:', errorText);
+                    throw new Error('Failed to update recurring rule');
+                }
+
+                this.showNotification('Recurring rule updated', 'success');
+            }
+
+            // Reload data to show updated rule and regenerated events
+            await this.loadData();
+            await this.updateDashboardProjection();
+        },
+
+        /**
+         * Delete recurring rule from modal with confirmation
+         */
+        async deleteRecurringRuleFromModal() {
+            if (!this.eventForm.id) return;
+
+            try {
+                // Calculate how many future events will be deleted
+                const today = toLocalISODate(new Date());
+                const futureCount = await db.events.where('recurring_rule_id')
+                    .equals(this.eventForm.id)
+                    .and(e => e.event_date >= today)
+                    .and(e => e.created_at === e.updated_at)  // Unedited only
+                    .count();
+
+                const message = futureCount > 0
+                    ? `Delete this recurring rule and ${futureCount} future unedited event(s)? Past events and manually edited events will be preserved.`
+                    : `Delete this recurring rule? (No future events to remove)`;
+
+                this.showConfirm(
+                    'Delete Recurring Rule',
+                    message,
+                    async () => {
+                        try {
+                            if (storage.mode === 'full') {
+                                // Offline mode: queue deletion
+                                await db.recurring_rules.delete(this.eventForm.id);
+                                await db.queueChange('recurring_rule', this.eventForm.id, 'delete', null, this.eventForm.updated_at);
+
+                                // Also delete future unedited events locally
+                                await this.deleteFutureRecurringEvents(this.eventForm.id);
+
+                                this.showNotification('Recurring rule deleted (will sync)', 'success');
+                            } else {
+                                // Online mode: API call
+                                const response = await apiRequest(`/api/recurring-rules/${this.eventForm.id}`, {
+                                    method: 'DELETE'
+                                });
+
+                                if (!response.ok) {
+                                    throw new Error('Failed to delete recurring rule');
+                                }
+
+                                this.showNotification('Recurring rule deleted', 'success');
+                            }
+
+                            this.showEventModal = false;
+                            await this.loadData();
+                            await this.updateDashboardProjection();
+                        } catch (error) {
+                            console.error('Error deleting recurring rule:', error);
+                            this.showNotification('Delete failed', 'error');
+                        }
+                    },
+                    'Delete',
+                    'danger'
+                );
+            } catch (error) {
+                console.error('Error calculating future events:', error);
+                this.showNotification('Error preparing delete', 'error');
+            }
+        },
+
+        /**
+         * Delete future unedited recurring events for a rule
+         * @param {string} recurringRuleId - Recurring rule UUID
+         */
+        async deleteFutureRecurringEvents(recurringRuleId) {
+            const today = toLocalISODate(new Date());
+
+            // Get future unedited events
+            const futureEvents = await db.events.where('recurring_rule_id')
+                .equals(recurringRuleId)
+                .and(e => e.event_date >= today)
+                .and(e => e.created_at === e.updated_at)
+                .toArray();
+
+            // Delete each one
+            for (const event of futureEvents) {
+                await db.events.delete(event.id);
+                // Queue deletion for sync
+                await db.queueChange('event', event.id, 'delete', null, event.updated_at);
+            }
+        },
+
+        /**
+         * Convert phantom recurring event to real event for editing
+         * @param {Object} phantom - Phantom event object
+         */
+        async convertPhantomToReal(phantom) {
+            try {
+                // Create real event from phantom
+                const realEvent = {
+                    id: generateUUID(),
+                    event_date: phantom.event_date,
+                    description: phantom.description,
+                    amount: phantom.amount,
+                    currency: phantom.currency,
+                    rate_to_base: phantom.rate_to_base || 1.0,
+                    account_id: phantom.account_id,
+                    story_id: phantom.story_id || null,
+                    recurring_rule_id: phantom.recurring_rule_id,  // Preserve link
+                    is_baseline: phantom.is_baseline !== undefined ? phantom.is_baseline : false,
+                    is_hypothetical: false,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+
+                // Save to Dexie
+                await db.events.put(realEvent);
+
+                // Queue for sync
+                await db.queueChange('event', realEvent.id, 'create', realEvent);
+
+                this.showNotification('Phantom event converted to real event', 'success');
+
+                // Open for editing
+                this.eventForm = {
+                    id: realEvent.id,
+                    event_date: realEvent.event_date,
+                    description: realEvent.description,
+                    amount: realEvent.amount,
+                    account_id: realEvent.account_id,
+                    currency: realEvent.currency,
+                    story_id: realEvent.story_id || '',
+                    is_baseline: realEvent.is_baseline,
+                    is_hypothetical: realEvent.is_hypothetical,
+                    updated_at: realEvent.updated_at,
+
+                    // Recurring fields (always false for event editing)
+                    is_recurring: false,
+                    frequency: '',
+                    day: null,
+                    start_date: realEvent.event_date,
+                    end_date: ''
+                };
+
+                this.showEventModal = true;
+
+                // Reload data
+                await this.loadData();
+                await this.updateDashboardProjection();
+
+            } catch (error) {
+                console.error('Error converting phantom to real event:', error);
+                this.showNotification('Conversion failed', 'error');
+            }
         },
 
         /**
