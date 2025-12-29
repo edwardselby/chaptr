@@ -74,7 +74,7 @@ export async function generateRecurringEventsClientSide(rules, windowStart, wind
                 currency: rule.currency,
                 rate_to_base: rateToBase,
                 account_id: rule.account_id,
-                story_id: rule.story_id || null,  // Preserve rule's story assignment
+                story_id: null,  // Recurring events not tied to stories
                 is_baseline: isBaseline,  // Inherit from account
                 recurring_rule_id: rule.id,
                 _clientGenerated: true  // Flag for phantom events
