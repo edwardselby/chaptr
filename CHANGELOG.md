@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CPTR-44a44752, acc5a57a, 0debfa03, c81cdb3f, 8b3ea066: Recurring events feature with toggle in event modal to switch between simple and recurring modes
+- CPTR-44a44752: Recurring event fields (frequency, day, start_date, end_date) with conditional validation based on frequency type
+- CPTR-c81cdb3f: [recurring] tag in timeline for generated events with click handler to edit parent rule
+- CPTR-8b3ea066: Client-side phantom event generation for offline mode (recurring.js) mirroring backend generation logic
+- CPTR-acc5a57a: Edit recurring rule functionality with queue deduplication to prevent duplicate sync entries
+- CPTR-0debfa03: Delete recurring rule with future event cleanup and confirmation showing affected event count
+- CPTR-8b3ea066: Phantom-to-real event conversion when user edits recurring event instance
+
+### Changed
+- CPTR-44a44752: Event modal now supports two modes (simple/recurring) controlled by toggle switch
+- CPTR-acc5a57a: updateRecurringRule() deduplicates sync queue by removing old entries before adding updated rule
+- CPTR-0debfa03: deleteRecurringRuleFromModal() preserves past events and manually edited instances, only removes future unedited events
+- CPTR-8b3ea066: Projection calculation merges phantom events with real events when offline or in full mode
+
 ## [0.2.0] - 2025-12-28
 
 ### Added
