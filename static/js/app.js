@@ -2247,7 +2247,7 @@ window.app = function() {
                 // Show warning and convert phantom to real
                 this.showConfirm(
                     'Edit Recurring Event Instance',
-                    'This event is generated from a recurring rule. Editing will create an independent event for this date only. To change all future events, edit the recurring rule instead.',
+                    'This is a generated event. Editing creates an independent copy. Edit the rule to change all occurrences.',
                     async () => {
                         // Convert phantom to real event
                         await this.convertPhantomToReal(event);

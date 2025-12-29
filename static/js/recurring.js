@@ -12,10 +12,15 @@ import { db } from './db.js';
  * @param {Array} rules - Array of recurring rules
  * @param {Date} windowStart - Start of generation window
  * @param {Date} windowEnd - End of generation window
+ * @param {Object} settings - Settings object with rates and base_currency
  * @returns {Array} Array of phantom event objects
  */
-export async function generateRecurringEventsClientSide(rules, windowStart, windowEnd) {
+export async function generateRecurringEventsClientSide(rules, windowStart, windowEnd, settings) {
     const phantomEvents = [];
+
+    // Get all accounts to check baseline status
+    const accounts = await db.accounts.toArray();
+    const accountMap = new Map(accounts.map(acc => [acc.id, acc]));
 
     for (const rule of rules) {
         // Check if rule overlaps with window
@@ -45,6 +50,21 @@ export async function generateRecurringEventsClientSide(rules, windowStart, wind
                 continue; // Skip if already exists
             }
 
+            // Look up account to determine baseline status
+            const account = accountMap.get(rule.account_id);
+            const isBaseline = account ? (account.is_default || false) : false;
+
+            // Calculate rate_to_base from settings
+            const baseCurrency = settings?.base_currency || 'GBP';
+            const ruleCurrency = rule.currency || baseCurrency;
+            let rateToBase = 1.0;
+
+            if (ruleCurrency !== baseCurrency && settings?.rates) {
+                // Convert from rule currency to base currency
+                // If rate exists in settings, use it; otherwise default to 1.0
+                rateToBase = settings.rates[ruleCurrency] || 1.0;
+            }
+
             // Create phantom event
             phantomEvents.push({
                 id: `phantom-${rule.id}-${dateStr}`,  // Temporary ID
@@ -52,10 +72,10 @@ export async function generateRecurringEventsClientSide(rules, windowStart, wind
                 description: rule.description,
                 amount: rule.amount,
                 currency: rule.currency,
-                rate_to_base: 1.0,  // Will be resolved during projection
+                rate_to_base: rateToBase,
                 account_id: rule.account_id,
-                story_id: null,
-                is_baseline: false,
+                story_id: rule.story_id || null,  // Preserve rule's story assignment
+                is_baseline: isBaseline,  // Inherit from account
                 recurring_rule_id: rule.id,
                 _clientGenerated: true  // Flag for phantom events
             });

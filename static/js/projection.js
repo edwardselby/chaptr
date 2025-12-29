@@ -149,7 +149,7 @@ export async function calculateProjection(
                     const windowStart = parseISODate(startDate);
                     const windowEnd = parseISODate(endDate);
 
-                    const phantomEvents = await generateRecurringEventsClientSide(rules, windowStart, windowEnd);
+                    const phantomEvents = await generateRecurringEventsClientSide(rules, windowStart, windowEnd, settings);
 
                     // Merge phantom events with real events
                     events = [...events, ...phantomEvents];
