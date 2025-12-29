@@ -242,7 +242,7 @@
                                     <span x-text="row.description"></span>
                                     <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
                                     <span class="tag recurring-tag" x-show="row.recurring_rule_id" @click.stop="viewRecurringRule(row.recurring_rule_id)">[recurring]</span>
-                                    <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
+                                    <span class="tag" x-show="row.source && row.source !== 'baseline' && currentView === 'all'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
@@ -654,7 +654,7 @@
     </main>
 
     <!-- Account Modal -->
-    <div class="modal-overlay" x-show="showAccountModal" @click="showAccountModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showAccountModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
@@ -717,7 +717,7 @@
     </div>
 
     <!-- Story Modal -->
-    <div class="modal-overlay" x-show="showStoryModal" @click="showStoryModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showStoryModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
@@ -738,6 +738,11 @@
                     <label for="story-start-date">Start Date</label>
                     <input id="story-start-date" type="date" x-model="storyForm.start_date"
                         required class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.start_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.start_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.start_date')">Tomorrow</button>
+                    </div>
                 </div>
 
                 <!-- End Date (Optional) -->
@@ -745,6 +750,11 @@
                     <label for="story-end-date">End Date</label>
                     <input id="story-end-date" type="date" x-model="storyForm.end_date"
                         class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.end_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.end_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.end_date')">Tomorrow</button>
+                    </div>
                     <span class="form-hint">Leave blank for ongoing stories</span>
                 </div>
 
@@ -825,7 +835,7 @@
     </div>
 
     <!-- Balance Reconciliation Modal -->
-    <div class="modal-overlay" x-show="showBalanceModal" @click="showBalanceModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showBalanceModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2>Update Account Balance</h2>
@@ -905,7 +915,7 @@
     </div>
 
     <!-- Event Modal -->
-    <div class="modal-overlay" x-show="showEventModal" @click="showEventModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showEventModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
@@ -938,6 +948,11 @@
                             x-model="eventForm.event_date"
                             :required="!eventForm.is_recurring"
                             class="form-input">
+                        <div class="date-quick-buttons">
+                            <button type="button" class="btn-quick-date" @click="setDateToYesterday('eventForm.event_date')">Yesterday</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToToday('eventForm.event_date')">Today</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToTomorrow('eventForm.event_date')">Tomorrow</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1141,7 +1156,7 @@
 
 
     <!-- Help Modal -->
-    <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showHelpModal" x-cloak>
         <div class="modal help-modal" @click.stop>
             <div class="modal-header">
                 <h2>Help & Tips</h2>
@@ -1176,7 +1191,7 @@
     </div>
 
     <!-- Database Tools Modal -->
-    <div class="modal-overlay" x-show="showDatabaseToolsModal" @click="showDatabaseToolsModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showDatabaseToolsModal" x-cloak>
         <div class="modal database-tools-modal" @click.stop>
             <div class="modal-header">
                 <h2>🛠 Database Management Tools</h2>
@@ -1276,7 +1291,7 @@
     </div>
 
     <!-- Confirmation Modal -->
-    <div class="modal-overlay" x-show="showConfirmModal" @click="closeConfirmModal()" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showConfirmModal" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="confirmModalData.title" id="confirm-modal-title"></h2>
@@ -1298,7 +1313,7 @@
     </div>
 
     <!-- Input Modal -->
-    <div class="modal-overlay" x-show="showInputModal" @click="closeInputModal()" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showInputModal" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="inputModalData.title" id="input-modal-title"></h2>
@@ -1325,7 +1340,7 @@
     </div>
 
     <!-- Password Modal -->
-    <div class="modal-overlay" x-show="showPasswordModal" @click="closePasswordModal()" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showPasswordModal" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header" style="border-bottom-color: var(--red);">
                 <h2 x-text="passwordModalData.title" style="color: var(--red);" id="password-modal-title"></h2>

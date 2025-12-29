@@ -66,6 +66,9 @@ window.app = function() {
         currentNotification: null,      // { message: string, type: string }
         notificationTimeout: null,       // Timeout ID for auto-dismiss
 
+        // Reconciliation State
+        needsProjectionRefresh: false,  // Flag to refresh projection after reconciliation
+
         showAccountModal: false,
         showStoryModal: false,
         showEventModal: false,
@@ -390,6 +393,9 @@ window.app = function() {
                 // Reload data into Alpine state
                 await this.loadData();
 
+                // Set flag to refresh projection (sync may have cleared pending_reconciliation flags)
+                this.needsProjectionRefresh = true;
+
                 console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
                 console.error('[CHAPTR] Full sync error:', error);
@@ -453,6 +459,12 @@ window.app = function() {
                 if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
                     await this.triggerReconciliation();
                 }
+
+                // Refresh projection if reconciliation occurred while on another screen
+                if (this.needsProjectionRefresh) {
+                    this.needsProjectionRefresh = false;
+                }
+
                 await this.updateProjectionRows();
             }
         },
@@ -2242,6 +2254,39 @@ window.app = function() {
         },
 
 
+        // ===== DATE HELPER FUNCTIONS =====
+
+        /**
+         * Set date field to yesterday
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToYesterday(formField) {
+            const date = new Date();
+            date.setDate(date.getDate() - 1);
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(date);
+        },
+
+        /**
+         * Set date field to today
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToToday(formField) {
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(new Date());
+        },
+
+        /**
+         * Set date field to tomorrow
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToTomorrow(formField) {
+            const date = new Date();
+            date.setDate(date.getDate() + 1);
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(date);
+        },
+
         // ===== EVENT MODAL METHODS =====
 
         /**
@@ -2964,6 +3009,9 @@ window.app = function() {
                     // Reload data to get new [auto] adjustment events
                     await this.loadData();
                     await this.updateDashboardProjection();
+
+                    // Set flag to refresh projection when user navigates to it
+                    this.needsProjectionRefresh = true;
                 }
             } catch (error) {
                 console.error('Reconciliation trigger failed:', error);

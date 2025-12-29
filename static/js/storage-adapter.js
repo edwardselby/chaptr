@@ -11,7 +11,7 @@
  */
 
 import { db } from './db.js';
-import { apiRequest, generateClientId, showToast, getModeAwareErrorMessage, generateUUID } from './utils.js';
+import { apiRequest, generateClientId, getModeAwareErrorMessage, generateUUID } from './utils.js';
 
 class StorageAdapter {
     constructor() {
@@ -699,7 +699,7 @@ class StorageAdapter {
         const count = await db.sync_queue.count();
 
         if (count === 400) {
-            showToast('400+ pending', 'warning', 5000);
+            window.showNotification('400+ pending changes', 'warning', 10000);
         } else if (count >= 500) {
             // Hard block at 500 changes - modal UI deferred to Phase 7
             // TODO Phase 7: Implement modal with "Sync Now" / "Cancel" buttons
@@ -906,7 +906,7 @@ class StorageAdapter {
     async handleFullSyncRequired() {
         console.warn('[CHAPTR] Full sync required - client is stale');
 
-        showToast('Syncing...', 'info', 2000);
+        window.showNotification('Full sync in progress...', 'info', 5000);
 
         // Clear Dexie and re-download
         await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_queue], async () => {
@@ -921,7 +921,7 @@ class StorageAdapter {
         // Re-fetch from server
         await this.fetchAndPopulateDexie();
 
-        showToast('Updated', 'success');
+        window.showNotification('Full sync complete', 'success');
     }
 
     /**

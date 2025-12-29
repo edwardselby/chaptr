@@ -1397,6 +1397,35 @@ body::before {
     color: var(--text-dim);
 }
 
+/* Date Quick Buttons */
+.date-quick-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.btn-quick-date {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    background-color: transparent;
+    color: var(--green-bright);
+    border: 1px solid var(--green-bright);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-quick-date:hover {
+    background-color: var(--green-bright);
+    color: var(--bg-primary);
+}
+
+.btn-quick-date:active {
+    transform: scale(0.98);
+}
+
 .form-checkbox {
     display: flex;
     align-items: center;
