@@ -15,7 +15,8 @@ import {
     getClientId,
     clearAuth,
     generateUUID,
-    showToast
+    showToast,
+    toLocalISODate
 } from './utils.js';
 
 import { db } from './db.js';
@@ -32,6 +33,7 @@ window.app = function() {
 
         // Storage adapter (exposed for UI access)
         storage: storage,
+        storageMode: null,  // Reactive copy of storage.mode for Alpine bindings
 
         // Navigation
         currentScreen: 'dashboard',
@@ -57,16 +59,64 @@ window.app = function() {
 
         // UI State
         isSyncing: false,
+        syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
+
+        // Notification State
+        currentNotification: null,      // { message: string, type: string }
+        notificationTimeout: null,       // Timeout ID for auto-dismiss
+
         showAccountModal: false,
+        showStoryModal: false,
         showEventModal: false,
         showUserModal: false,
         showHelpModal: false,
+        showBalanceModal: false,
+        showDatabaseToolsModal: false,
+        showConfirmModal: false,
+        showInputModal: false,
+        showPasswordModal: false,
+        confirmModalData: {
+            title: '',
+            message: '',
+            confirmText: 'Confirm',
+            confirmStyle: 'primary', // 'primary' or 'danger'
+            onConfirm: null
+        },
+        inputModalData: {
+            title: '',
+            message: '',
+            placeholder: '',
+            inputValue: '',
+            inputType: 'text', // 'text' or 'number'
+            pattern: null, // Regex pattern for validation
+            onSubmit: null,
+            validator: null // Custom validation function
+        },
+        passwordModalData: {
+            title: '',
+            message: '',
+            placeholder: '',
+            passwordValue: '',
+            onSubmit: null
+        },
         accountForm: {},
+        storyForm: {},
         eventForm: {},
         userForm: {},
         settingsForm: {},
+        balanceForm: {
+            account_id: '',
+            projected_balance: 0,
+            actual_balance: 0,
+            drift: null,
+            currency: 'GBP'
+        },
         accountsTotal: 0,
+
+        // Story Management
+        storySearchFilter: '',
+        filteredStories: [],
 
         // Projection State
         currentView: 'all',
@@ -83,6 +133,12 @@ window.app = function() {
 
         // Expanded gaps tracking
         expandedGaps: new Set(),
+
+        // Conflict resolution
+        showConflictModal: false,
+        conflicts: [],
+        currentConflict: null,
+        currentConflictIndex: 0,
 
         // ===== LIFECYCLE =====
 
@@ -107,6 +163,9 @@ window.app = function() {
             // Initialize storage adapter (detects mode and bootstraps)
             await storage.init();
 
+            // Sync storage mode to reactive property for Alpine bindings
+            this.storageMode = storage.mode;
+
             // Add mode-3-active class to body if in Basic mode (for CSS styling)
             if (storage.mode === 'basic') {
                 document.body.classList.add('mode-3-active');
@@ -114,6 +173,11 @@ window.app = function() {
 
             // Load data from storage adapter
             await this.loadData();
+
+            // Check for unresolved conflicts (Task 110)
+            if (storage.mode === 'full') {
+                await this.checkForConflicts();
+            }
 
             // Setup network reconnection handler - auto-retry sync when online
             window.addEventListener('online', async () => {
@@ -123,6 +187,9 @@ window.app = function() {
                     await this.manualSync();
                 }
             });
+
+            // Expose notification method globally for utils.js and storage-adapter.js
+            window.showNotification = this.showNotification.bind(this);
 
             console.log('CHAPTR ready!');
         },
@@ -146,7 +213,13 @@ window.app = function() {
                 }
 
                 // Initialize settings form
-                this.settingsForm = { ...this.settings };
+                this.settingsForm = {
+                    ...this.settings,
+                    rates: this.settings.rates || {}
+                };
+
+                // Initialize filtered stories (show all non-archived by default)
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
 
                 console.log(`[CHAPTR] Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
@@ -176,16 +249,18 @@ window.app = function() {
 
                 // Calculate projection from today to end of month
                 const projection = await calculateProjection(
-                    today.toISOString().split('T')[0],
-                    endOfMonth.toISOString().split('T')[0],
+                    toLocalISODate(today),
+                    toLocalISODate(endOfMonth),
                     'all',
                     null,
-                    this.settings.base_currency
+                    this.settings.base_currency,
+                    [],
+                    this.settings
                 );
 
                 // Find today's balance (first event on or after today, or last past event)
-                const todayStr = today.toISOString().split('T')[0];
-                const todayEvent = projection.find(row => !row.isGap && row.date >= todayStr);
+                const todayStr = toLocalISODate(today);
+                const todayEvent = projection.find(row => !row.isGap && row.event_date >= todayStr);
                 this.projectionToday = todayEvent ? todayEvent.balance : 0;
 
                 // Find end of month balance (last event)
@@ -216,8 +291,8 @@ window.app = function() {
                         const storyEvents = this.events.filter(e =>
                             e.story_id === story.id &&
                             e.amount < 0 &&
-                            e.date >= story.start_date &&
-                            e.date <= story.end_date
+                            e.event_date >= story.start_date &&
+                            e.event_date <= story.end_date
                         );
 
                         const totalSpent = Math.abs(storyEvents.reduce((sum, e) => sum + e.amount, 0));
@@ -236,7 +311,9 @@ window.app = function() {
                                 story.end_date,
                                 story.id,
                                 story.id,
-                                currency
+                                currency,
+                                [],
+                                this.settings
                             );
 
                             const lastEvent = projection.filter(row => !row.isGap).pop();
@@ -261,30 +338,61 @@ window.app = function() {
 
         /**
          * Perform full sync with backend
+         * Uses /api/sync/full endpoint to get current database state
          */
         async fullSync() {
             try {
                 this.isSyncing = true;
 
-                const response = await apiRequest('/api/sync', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        client_id: await getClientId(),
-                        last_sync_at: null,
-                        changes: []
-                    })
+                const response = await apiRequest('/api/sync/full', {
+                    method: 'GET'
                 });
 
                 if (!response.ok) {
-                    throw new Error('Sync failed');
+                    throw new Error('Full sync failed');
                 }
 
                 const data = await response.json();
-                await this.populateDexie(data.server_changes || []);
 
-                console.log('Full sync complete');
+                // Populate database with full dataset
+                await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_meta], async () => {
+                    // Put all accounts
+                    for (const account of data.accounts || []) {
+                        await db.accounts.put(account);
+                    }
+
+                    // Put all stories
+                    for (const story of data.stories || []) {
+                        await db.stories.put(story);
+                    }
+
+                    // Put all events
+                    for (const event of data.events || []) {
+                        await db.events.put(event);
+                    }
+
+                    // Put all recurring rules
+                    for (const rule of data.recurring_rules || []) {
+                        await db.recurring_rules.put(rule);
+                    }
+
+                    // Update settings
+                    if (data.settings) {
+                        await db.settings.put(data.settings);
+                    }
+
+                    // CRITICAL: Store sync timestamp to prevent re-downloading old change_log entries
+                    if (data.sync_timestamp) {
+                        await db.sync_meta.put({ id: 'lastSyncAt', value: data.sync_timestamp });
+                    }
+                });
+
+                // Reload data into Alpine state
+                await this.loadData();
+
+                console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
-                console.error('Sync error:', error);
+                console.error('[CHAPTR] Full sync error:', error);
             } finally {
                 this.isSyncing = false;
             }
@@ -323,7 +431,7 @@ window.app = function() {
                     }
                 });
 
-                await this.loadFromDexie();
+                await this.loadData();
             } catch (error) {
                 console.error('Error populating Dexie:', error);
             }
@@ -336,10 +444,15 @@ window.app = function() {
          * @param {string} screen - Screen name (dashboard, projection, accounts, settings)
          */
         async switchScreen(screen) {
+            const previousScreen = this.currentScreen;
             this.currentScreen = screen;
 
-            // Update projection rows when switching to projection screen
+            // Update projection when viewing projection screen
             if (screen === 'projection') {
+                // Trigger reconciliation if there are pending accounts
+                if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
+                    await this.triggerReconciliation();
+                }
                 await this.updateProjectionRows();
             }
         },
@@ -368,8 +481,8 @@ window.app = function() {
             const nextMonth = new Date(today);
             nextMonth.setMonth(nextMonth.getMonth() + 1);
 
-            this.projectionStartDate = today.toISOString().split('T')[0];
-            this.projectionEndDate = nextMonth.toISOString().split('T')[0];
+            this.projectionStartDate = toLocalISODate(today);
+            this.projectionEndDate = toLocalISODate(nextMonth);
         },
 
         /**
@@ -383,11 +496,30 @@ window.app = function() {
         },
 
         /**
+         * Navigate to Projection view filtered by story
+         * Used when clicking a story in the Dashboard stories panel
+         * @param {string} storyId - Story UUID
+         */
+        navigateToStoryProjection(storyId) {
+            this.setView(storyId);
+            this.switchScreen('projection');
+        },
+
+        /**
          * Set projection view (all, baseline, or story ID)
          * @param {string} view - View identifier
          */
         async setView(view) {
             this.currentView = view;
+
+            // Clear expanded gaps to prevent memory leak across view changes
+            this.expandedGaps.clear();
+
+            // Trigger reconciliation if viewing projection with pending accounts
+            if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
+                await this.triggerReconciliation();
+            }
+
             // Reset display currency when switching views
             if (view !== 'all') {
                 this.displayCurrency = null;
@@ -425,12 +557,17 @@ window.app = function() {
          */
         async updateProjectionRows() {
             try {
+                // Calculate virtual drift rows for pending reconciliations
+                const virtualDrifts = this.calculatePendingDrifts();
+
                 this.projectionRows = await calculateProjection(
                     this.projectionStartDate,
                     this.projectionEndDate,
                     this.currentView,
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
-                    this.displayCurrency
+                    this.displayCurrency,
+                    virtualDrifts,
+                    this.settings  // ← Pass the already-loaded settings!
                 );
 
                 // Extract starting balance from first row
@@ -495,7 +632,7 @@ window.app = function() {
          * @returns {string} Lifecycle status
          */
         getStoryLifecycleStatus(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
             if (story.end_date < today) {
                 return 'ENDED';
             } else if (story.start_date > today) {
@@ -511,7 +648,7 @@ window.app = function() {
          * @returns {string} CSS class name
          */
         getStoryStatusClass(story) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalISODate(new Date());
 
             // Lifecycle-based classes
             if (story.end_date < today) {
@@ -562,13 +699,14 @@ window.app = function() {
 
             try {
                 this.isSyncing = true;
+                this.showNotification('Syncing...', 'info');
 
                 const result = await storage.manualSync();
 
                 if (result.conflicts && result.conflicts > 0) {
-                    showToast(`Sync complete: ${result.conflicts} conflicts need resolution`, 'warning', 5000);
+                    this.showNotification(`${result.conflicts} conflicts`, 'warning');
                 } else if (result.applied && result.applied > 0) {
-                    showToast(`Synced ${result.applied} changes`, 'success');
+                    this.showNotification(`Synced ${result.applied}`, 'success');
                 }
 
                 // Update queue count
@@ -626,7 +764,7 @@ window.app = function() {
 
             } catch (error) {
                 console.error('Error saving account:', error);
-                alert('Failed to save account');
+                this.showNotification('Save failed', 'error');
             }
         },
 
@@ -637,7 +775,7 @@ window.app = function() {
             const accountData = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -660,7 +798,7 @@ window.app = function() {
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: parseFloat(this.accountForm.current_balance || 0),
+                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
                 is_default: this.accountForm.is_default || false
             };
 
@@ -678,28 +816,225 @@ window.app = function() {
          * Delete account (via storage adapter)
          */
         async deleteAccount() {
-            if (!confirm(`Delete account "${this.accountForm.name}"?`)) {
+            this.showConfirm(
+                'Delete Account',
+                `Delete account "${this.accountForm.name}"?\n\nThis action cannot be undone.`,
+                async () => {
+                    try {
+                        const accountId = this.accountForm.id;
+
+                        // Use storage adapter (handles all 3 modes)
+                        await storage.deleteAccount(accountId);
+
+                        // Update sync queue count for UI indicator
+                        await this.updateSyncQueueCount();
+
+                        this.showAccountModal = false;
+
+                        // Reload data
+                        await this.loadData();
+
+                    } catch (error) {
+                        console.error('Error deleting account:', error);
+                        this.showNotification('Delete failed', 'error');
+                    }
+                },
+                'Delete',
+                'danger'
+            );
+        },
+
+        // ===== STORIES =====
+
+        /**
+         * Open story modal for adding new story
+         */
+        openStoryModal() {
+            this.storyForm = {
+                name: '',
+                start_date: toLocalISODate(new Date()),
+                end_date: '',
+                default_account_id: '',
+                display_currency: '',
+                funding_mode: 'projected',
+                funding_amount: '0',
+                goal_type: 'none',
+                goal_amount: '0'
+            };
+            this.showStoryModal = true;
+        },
+
+        /**
+         * View story details (open edit modal)
+         * @param {string} storyId - Story UUID
+         */
+        viewStoryDetails(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (story) {
+                this.storyForm = {
+                    ...story,
+                    end_date: story.end_date || '',
+                    default_account_id: story.default_account_id || '',
+                    display_currency: story.display_currency || '',
+                    goal_type: story.goal_type || 'none',
+                    funding_amount: story.funding_amount || '0',
+                    goal_amount: story.goal_amount || '0',
+                    is_archived: story.is_archived
+                };
+                this.showStoryModal = true;
+            }
+        },
+
+        /**
+         * Save story (create or update)
+         */
+        async saveStory() {
+            // Validation
+            if (this.storyForm.end_date && this.storyForm.end_date < this.storyForm.start_date) {
+                this.showNotification('Invalid date range', 'error');
+                return;
+            }
+
+            if ((this.storyForm.funding_mode === 'fixed' || this.storyForm.funding_mode === 'projected_plus')
+                && !this.storyForm.funding_amount) {
+                this.showNotification('Funding required', 'error');
+                return;
+            }
+
+            if (this.storyForm.goal_type && this.storyForm.goal_type !== 'none' && !this.storyForm.goal_amount) {
+                this.showNotification('Goal amount required', 'error');
+                return;
+            }
+
+            if (this.storyForm.display_currency && !/^[A-Z]{3}$/.test(this.storyForm.display_currency.toUpperCase())) {
+                this.showNotification('Invalid currency', 'error');
                 return;
             }
 
             try {
-                const accountId = this.accountForm.id;
+                const isEdit = !!this.storyForm.id;
 
-                // Use storage adapter (handles all 3 modes)
-                await storage.deleteAccount(accountId);
+                const storyData = {
+                    name: this.storyForm.name,
+                    start_date: this.storyForm.start_date,
+                    end_date: this.storyForm.end_date || null,
+                    default_account_id: this.storyForm.default_account_id || null,
+                    display_currency: this.storyForm.display_currency ?
+                        this.storyForm.display_currency.toUpperCase() : null,
+                    funding_mode: this.storyForm.funding_mode,
+                    funding_amount: this.storyForm.funding_mode !== 'projected' ?
+                        String(parseFloat(this.storyForm.funding_amount || 0)) : null,
+                    goal_type: this.storyForm.goal_type,
+                    goal_amount: this.storyForm.goal_type !== 'none' ?
+                        String(parseFloat(this.storyForm.goal_amount || 0)) : null
+                };
 
-                // Update sync queue count for UI indicator
-                await this.updateSyncQueueCount();
+                if (isEdit) {
+                    await this.updateStory(this.storyForm.id, storyData);
+                } else {
+                    await this.createStory(storyData);
+                }
 
-                this.showAccountModal = false;
-
-                // Reload data
-                await this.loadData();
+                this.showStoryModal = false;
 
             } catch (error) {
-                console.error('Error deleting account:', error);
-                alert('Failed to delete account');
+                console.error('Error saving story:', error);
+                this.showNotification('Save failed', 'error');
             }
+        },
+
+        /**
+         * Delete story from modal
+         */
+        async deleteStoryFromModal() {
+            try {
+                await this.deleteStory(this.storyForm.id);
+                this.showStoryModal = false;
+            } catch (error) {
+                console.error('Error deleting story:', error);
+                this.showNotification('Delete failed', 'error');
+            }
+        },
+
+        /**
+         * Navigate to stories management screen
+         */
+        openStoriesManage() {
+            this.switchScreen('stories');
+            this.filterStories(); // Populate filtered list
+        },
+
+        /**
+         * Filter stories by search query
+         * Updates filteredStories based on storySearchFilter
+         */
+        filterStories() {
+            const query = this.storySearchFilter.toLowerCase();
+
+            if (!query) {
+                // No search query - show all non-archived stories
+                this.filteredStories = this.stories.filter(s => !s.is_archived);
+            } else {
+                // Filter by name (excluding archived)
+                this.filteredStories = this.stories.filter(s =>
+                    !s.is_archived &&
+                    s.name.toLowerCase().includes(query)
+                );
+            }
+        },
+
+        /**
+         * Archive or unarchive a story
+         * @param {string} storyId - Story UUID
+         */
+        async archiveStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) return;
+
+            const action = story.is_archived ? 'Unarchive' : 'Archive';
+            const confirmMessage = story.is_archived
+                ? `Unarchive "${story.name}"?\n\nIt will be visible again.`
+                : `Archive "${story.name}"?\n\nIt will be hidden but not deleted.`;
+
+            this.showConfirm(
+                `${action} Story`,
+                confirmMessage,
+                async () => {
+                    try {
+                        await this.updateStory(storyId, { is_archived: !story.is_archived });
+                        await this.loadData();
+                        this.filterStories(); // Refresh filtered list
+                    } catch (error) {
+                        console.error(`Error ${action.toLowerCase()}ing story:`, error);
+                        this.showNotification(`${action} failed`, 'error');
+                    }
+                },
+                action,
+                'danger'
+            );
+        },
+
+        /**
+         * Get account name by ID
+         * Helper for displaying account names in UI
+         * @param {string} accountId - Account UUID
+         * @returns {string} Account name or 'Unknown'
+         */
+        getAccountName(accountId) {
+            const account = this.accounts.find(a => a.id === accountId);
+            return account ? account.name : 'Unknown';
+        },
+
+        /**
+         * Get View All summary data for Dashboard
+         * Returns total projected balance across all stories + baseline
+         * @returns {object} { balance: number }
+         */
+        getViewAllSummary() {
+            // Use projectionToday which already includes all stories + baseline
+            return {
+                balance: this.projectionToday || 0
+            };
         },
 
         /**
@@ -723,7 +1058,7 @@ window.app = function() {
             // For now, return mock data
             // TODO PR2: Implement real per-account projection calculation
             return dates.map(date => ({
-                date: date.toISOString().split('T')[0],
+                date: toLocalISODate(date),
                 balance: account.current_balance // Mock: just use current balance
             }));
         },
@@ -745,9 +1080,9 @@ window.app = function() {
                 end_date: storyData.end_date,
                 display_currency: storyData.display_currency || this.settings.base_currency,
                 funding_mode: storyData.funding_mode || 'projected',
-                funding_amount: parseFloat(storyData.funding_amount || 0),
+                funding_amount: String(parseFloat(storyData.funding_amount || 0)),
                 goal_type: storyData.goal_type || null,
-                goal_amount: parseFloat(storyData.goal_amount || 0),
+                goal_amount: String(parseFloat(storyData.goal_amount || 0)),
                 default_account_id: storyData.default_account_id || null,
                 is_archived: false,
                 created_at: now,
@@ -760,29 +1095,10 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('story', localId, 'create', story);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest('/api/stories', {
-                        method: 'POST',
-                        body: JSON.stringify(story)
-                    });
+            console.log(`[CHAPTR] Created story with entity_id: ${localId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.stories.update(localId, {
-                            id: serverData.id,
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: localId }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // 3. Reload data
+            await this.loadData();
         },
 
         /**
@@ -791,6 +1107,13 @@ window.app = function() {
          * @param {object} updates - Story updates
          */
         async updateStory(storyId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
+            }
+            const baseUpdatedAt = currentStory.updated_at;
+
             const now = new Date().toISOString();
 
             const storyUpdates = {
@@ -801,31 +1124,13 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.stories.update(storyId, storyUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'update', storyUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('story', storyId, 'update', storyUpdates, baseUpdatedAt);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/stories/${storyId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify(storyUpdates)
-                    });
+            console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.stories.update(storyId, {
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: storyId, action: 'update' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // 3. Reload data
+            await this.loadData();
         },
 
         /**
@@ -839,21 +1144,36 @@ window.app = function() {
             // Check for associated events
             const associatedEvents = this.events.filter(e => e.story_id === storyId);
 
-            if (associatedEvents.length > 0) {
-                const confirmMsg = `Delete story "${story.name}"?\n\nThis will also delete ${associatedEvents.length} associated event(s).`;
-                if (!confirm(confirmMsg)) {
-                    return;
-                }
+            const confirmMsg = associatedEvents.length > 0
+                ? `Delete story "${story.name}"?\n\nThis will also delete ${associatedEvents.length} associated event(s).`
+                : `Delete story "${story.name}"?`;
 
-                // Delete associated events
-                for (const event of associatedEvents) {
-                    await this.deleteEvent(event.id);
-                }
-            } else {
-                if (!confirm(`Delete story "${story.name}"?`)) {
-                    return;
-                }
+            this.showConfirm(
+                'Delete Story',
+                confirmMsg,
+                async () => {
+                    // Delete associated events if any
+                    if (associatedEvents.length > 0) {
+                        for (const event of associatedEvents) {
+                            await this.deleteEvent(event.id);
+                        }
+                    }
+
+                    await this.performStoryDeletion(storyId, story);
+                },
+                'Delete',
+                'danger'
+            );
+        },
+
+        async performStoryDeletion(storyId, story) {
+
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentStory = await db.stories.get(storyId);
+            if (!currentStory) {
+                throw new Error(`Story ${storyId} not found`);
             }
+            const baseUpdatedAt = currentStory.updated_at;
 
             const now = new Date().toISOString();
 
@@ -863,26 +1183,13 @@ window.app = function() {
                 updated_at: now
             });
 
-            // 2. Queue for sync
-            await db.queueChange('story', storyId, 'delete', { is_archived: true });
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('story', storyId, 'delete', null, baseUpdatedAt);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/stories/${storyId}`, {
-                        method: 'DELETE'
-                    });
+            console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
-                    if (response.ok) {
-                        await db.sync_queue.where({ entity_id: storyId, action: 'delete' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // 3. Reload data
+            await this.loadData();
         },
 
         // ===== EVENTS =====
@@ -930,7 +1237,7 @@ window.app = function() {
             );
 
             if (!accountId) {
-                alert('No account available. Please create an account first.');
+                this.showNotification('Account required', 'error');
                 return;
             }
 
@@ -946,16 +1253,14 @@ window.app = function() {
             const event = {
                 id: localId,
                 description: eventData.description,
-                amount: parseFloat(eventData.amount),
-                date: eventData.date,
+                amount: String(parseFloat(eventData.amount)),
+                event_date: eventData.event_date,
                 account_id: accountId,
                 currency: currency,
                 rate_to_base: rate_to_base,
                 story_id: eventData.story_id || null,
                 is_baseline: eventData.is_baseline || false,
                 is_hypothetical: eventData.is_hypothetical || false,
-                event_type: eventData.event_type || 'OUTGOING',
-                notes: eventData.notes || '',
                 created_at: now,
                 updated_at: now
             };
@@ -966,29 +1271,10 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('event', localId, 'create', event);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest('/api/events', {
-                        method: 'POST',
-                        body: JSON.stringify(event)
-                    });
+            console.log(`[CHAPTR] Created event with entity_id: ${localId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.events.update(localId, {
-                            id: serverData.id,
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: localId }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // 3. Reload data
+            await this.loadData();
         },
 
         /**
@@ -997,6 +1283,13 @@ window.app = function() {
          * @param {object} updates - Event updates
          */
         async updateEvent(eventId, updates) {
+            // 0. Get current entity for conflict detection (capture base_updated_at)
+            const currentEvent = await db.events.get(eventId);
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
+            }
+            const baseUpdatedAt = currentEvent.updated_at;
+
             const now = new Date().toISOString();
 
             const eventUpdates = {
@@ -1016,31 +1309,13 @@ window.app = function() {
             // 1. Optimistic Dexie update
             await db.events.update(eventId, eventUpdates);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'update', eventUpdates);
+            // 2. Queue for sync (include base_updated_at for conflict detection)
+            await db.queueChange('event', eventId, 'update', eventUpdates, baseUpdatedAt);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/events/${eventId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify(eventUpdates)
-                    });
+            console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
 
-                    if (response.ok) {
-                        const serverData = await response.json();
-                        await db.events.update(eventId, {
-                            updated_at: serverData.updated_at
-                        });
-                        await db.sync_queue.where({ entity_id: eventId, action: 'update' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
-
-            // 4. Reload data
-            await this.loadFromDexie();
+            // 3. Reload data
+            await this.loadData();
         },
 
         /**
@@ -1051,35 +1326,23 @@ window.app = function() {
             const event = this.events.find(e => e.id === eventId);
             if (!event) return;
 
-            if (!confirm(`Delete event "${event.description}"?`)) {
-                return;
+            // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
+            const currentEvent = await db.events.get(eventId);
+            if (!currentEvent) {
+                throw new Error(`Event ${eventId} not found`);
             }
-
-            const now = new Date().toISOString();
+            const baseUpdatedAt = currentEvent.updated_at;
 
             // 1. Mark as deleted in Dexie (or actually delete)
             await db.events.delete(eventId);
 
-            // 2. Queue for sync
-            await db.queueChange('event', eventId, 'delete', { deleted_at: now });
+            // 2. Queue for sync (send null data per spec - delete should not send entity data)
+            await db.queueChange('event', eventId, 'delete', null, baseUpdatedAt);
 
-            // 3. API call (online mode only)
-            if (navigator.onLine) {
-                try {
-                    const response = await apiRequest(`/api/events/${eventId}`, {
-                        method: 'DELETE'
-                    });
-
-                    if (response.ok) {
-                        await db.sync_queue.where({ entity_id: eventId, action: 'delete' }).delete();
-                    }
-                } catch (apiError) {
-                    console.warn('API call failed, queued for sync:', apiError);
-                }
-            }
+            console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
 
             // 4. Reload data
-            await this.loadFromDexie();
+            await this.loadData();
         },
 
         // ===== SETTINGS =====
@@ -1114,17 +1377,24 @@ window.app = function() {
          */
         async updateSettings() {
             try {
-                // For PR2, this will integrate with Dexie + API
-                console.log('Update settings:', this.settingsForm);
+                // Convert Alpine Proxy to plain object (IndexedDB can't store Proxies)
+                const plainSettings = JSON.parse(JSON.stringify(this.settingsForm));
 
-                // TODO PR2: Implement settings update
-                // - Write to Dexie settings table
-                // - Call API endpoint
-                // - Reload data
+                // Save settings via storage adapter
+                const updated = await storage.updateSettings(plainSettings);
+
+                // Update local settings object
+                this.settings = updated;
+
+                // Update settings form to reflect saved state
+                this.settingsForm = {
+                    ...updated,
+                    rates: updated.rates || {}
+                };
 
             } catch (error) {
                 console.error('Error updating settings:', error);
-                alert('Failed to update settings');
+                this.showNotification('Update failed', 'error');
             }
         },
 
@@ -1132,30 +1402,41 @@ window.app = function() {
          * Add a new conversion rate
          */
         addConversionRate() {
-            const currency = prompt('Enter currency code (e.g., EUR, CAD):');
-            if (!currency) return;
+            this.showInput(
+                'Add Currency',
+                'Enter currency code (e.g., EUR, CAD):',
+                (currency) => {
+                    const upperCurrency = currency.toUpperCase();
 
-            const upperCurrency = currency.toUpperCase();
-            if (upperCurrency.length !== 3) {
-                alert('Currency code must be 3 letters');
-                return;
-            }
-
-            const rate = prompt(`Enter conversion rate for 1 ${upperCurrency} to ${this.settingsForm.base_currency}:`);
-            if (!rate) return;
-
-            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
-            this.updateSettings();
-        },
-
-        /**
-         * Update conversion rate
-         * @param {string} currency - Currency code
-         * @param {string} value - New rate value
-         */
-        updateRate(currency, value) {
-            this.settingsForm.rates[currency] = parseFloat(value);
-            this.updateSettings();
+                    // Continue with rate input
+                    this.showInput(
+                        'Conversion Rate',
+                        `Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`,
+                        (rate) => {
+                            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
+                            // Note: User must click "Save Rates" button to persist
+                        },
+                        '1.27',
+                        null,
+                        (value) => {
+                            const rateNum = parseFloat(value);
+                            if (isNaN(rateNum) || rateNum <= 0) {
+                                return 'Please enter a valid positive number';
+                            }
+                            return null; // Valid
+                        }
+                    );
+                },
+                'EUR',
+                null,
+                (value) => {
+                    const upper = value.toUpperCase();
+                    if (upper.length !== 3) {
+                        return 'Currency code must be 3 letters';
+                    }
+                    return null; // Valid
+                }
+            );
         },
 
         /**
@@ -1163,10 +1444,16 @@ window.app = function() {
          * @param {string} currency - Currency code
          */
         deleteRate(currency) {
-            if (!confirm(`Remove ${currency} conversion rate?`)) return;
-
-            delete this.settingsForm.rates[currency];
-            this.updateSettings();
+            this.showConfirm(
+                'Remove Currency',
+                `Remove ${currency} conversion rate?`,
+                () => {
+                    delete this.settingsForm.rates[currency];
+                    // Note: User must click "Save Rates" button to persist
+                },
+                'Remove',
+                'danger'
+            );
         },
 
         /**
@@ -1192,14 +1479,14 @@ window.app = function() {
                 const url = URL.createObjectURL(dataBlob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `chaptr-backup-${new Date().toISOString().split('T')[0]}.json`;
+                link.download = `chaptr-backup-${toLocalISODate(new Date())}.json`;
                 link.click();
                 URL.revokeObjectURL(url);
 
                 console.log('Backup downloaded');
             } catch (error) {
                 console.error('Error downloading backup:', error);
-                alert('Failed to download backup');
+                this.showNotification('Download failed', 'error');
             }
         },
 
@@ -1214,16 +1501,28 @@ window.app = function() {
             // Validate file size (max 10MB)
             const maxSizeMB = 10;
             if (file.size > maxSizeMB * 1024 * 1024) {
-                alert(`File too large. Maximum size is ${maxSizeMB}MB.`);
+                this.showNotification(`File too large (max ${maxSizeMB}MB)`, 'error');
                 event.target.value = '';
                 return;
             }
 
-            if (!confirm('⚠ This will OVERWRITE all existing data. Continue?')) {
-                event.target.value = '';
-                return;
-            }
+            this.showConfirm(
+                '⚠️ Restore Backup',
+                'This will OVERWRITE all existing data.\n\nAll current accounts, stories, and events will be replaced.\n\nContinue?',
+                async () => {
+                    try {
+                        await this.performBackupRestore(file, event);
+                    } catch (error) {
+                        console.error('Restore error:', error);
+                        this.showNotification(error.message || 'Restore failed', 'error');
+                    }
+                },
+                'Restore',
+                'danger'
+            );
+        },
 
+        async performBackupRestore(file, event) {
             try {
                 const text = await file.text();
                 const backup = JSON.parse(text);
@@ -1271,32 +1570,226 @@ window.app = function() {
                     await db.recurring_rules.bulkAdd(backup.recurring_rules || []);
                 });
 
-                alert('✓ Backup restored successfully');
-                await this.loadFromDexie();
+                this.showNotification('Backup restored', 'success');
+                await this.loadData();
             } catch (error) {
                 console.error('Error restoring backup:', error);
-                alert('Failed to restore backup: ' + error.message);
+                this.showNotification('Restore failed', 'error');
             }
 
             event.target.value = '';
         },
 
         /**
-         * Trigger manual sync
+         * Trigger manual sync with spinner and conflict detection
          */
         async triggerManualSync() {
             if (this.isSyncing) return;
 
+            this.isSyncing = true;
+            this.syncButtonSpinner = true; // Show spinner
+
             try {
-                this.isSyncing = true;
+                const queueCount = await this.updateSyncQueueCount();
+
+                if (queueCount === 0) {
+                    // No notification needed - silence is golden
+                    return;
+                }
+
+                // Perform sync
                 await this.fullSync();
-                alert('✓ Sync complete');
+
+                // Check for conflicts after sync
+                if (storage.mode === 'full') {
+                    const conflicts = await db.conflicts.count();
+                    if (conflicts > 0) {
+                        this.showNotification(
+                            `${conflicts} conflicts`,
+                            'warning'
+                        );
+                    } else {
+                        this.showNotification(`Synced ${queueCount}`, 'success');
+                    }
+                } else {
+                    this.showNotification('Sync complete', 'success');
+                }
+
             } catch (error) {
                 console.error('Sync error:', error);
-                alert('Sync failed');
+                this.showNotification('Sync failed', 'error');
             } finally {
                 this.isSyncing = false;
+                this.syncButtonSpinner = false; // Hide spinner
+                await this.updateSyncQueueCount(); // Refresh count
             }
+        },
+
+        /**
+         * Clear sync queue (Mode 1 only)
+         *
+         * Clears all pending sync queue items without syncing to server.
+         * Also deletes any entities that were created locally but never synced.
+         * Useful for development/testing to clear stale queue items.
+         */
+        async clearSyncQueue() {
+            this.showConfirm(
+                'Clear Sync Queue',
+                'Clear all pending sync items?\n\nThis will delete unsynced entities (events, accounts, etc.) and cannot be undone.',
+                async () => {
+                    try {
+                        const count = await storage.clearSyncQueue();
+                        await this.updateSyncQueueCount();
+
+                        // Recalculate projection to reflect deletion of unsynced entities
+                        // This ensures drift updates correctly
+                        if (this.currentScreen === 'dashboard') {
+                            await this.updateProjectionRows();
+                        }
+
+                        this.showNotification('Queue cleared', 'success');
+                    } catch (error) {
+                        console.error('Clear queue error:', error);
+                        this.showNotification('Clear failed', 'error');
+                    }
+                },
+                'Clear',
+                'danger'
+            );
+        },
+
+        /**
+         * Clear local database and force full resync
+         *
+         * Non-destructive escape hatch for when sync gets out of sync.
+         * Clears all local data and re-downloads everything from server.
+         * User login and settings are preserved.
+         */
+        async clearDatabaseAndResync() {
+            try {
+                this.isSyncing = true;
+
+                // Clear all local data (preserves users and settings)
+                await db.clearAllData();
+                console.log('[CHAPTR] Local database cleared');
+
+                // Clear reactive state immediately
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+                console.log('[CHAPTR] Reactive state cleared');
+
+                // Trigger full sync to re-download all data
+                await this.fullSync();
+
+                console.log('[CHAPTR] Database reset complete');
+            } catch (error) {
+                console.error('[CHAPTR] Clear database error:', error);
+                this.showNotification('Reset failed', 'error');
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Clear local database AND server change log, then resync
+         *
+         * User-specific reset that clears both local data and this user's
+         * change log entries on the server. Other users are unaffected.
+         */
+        async clearDatabaseAndChangeLog() {
+            try {
+                this.isSyncing = true;
+
+                // Clear all local data
+                await db.clearAllData();
+                this.accounts = [];
+                this.stories = [];
+                this.events = [];
+                this.projectionRows = [];
+
+                // Clear user's change log on server
+                const response = await apiRequest('/api/admin/clear-changelog', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to clear change log');
+                }
+
+                const data = await response.json();
+                console.log('[CHAPTR] Cleared change log:', data.deleted_count, 'entries');
+
+                // Trigger full sync
+                await this.fullSync();
+
+                console.log(`[CHAPTR] Reset complete - cleared ${data.deleted_count} change log entries`);
+            } catch (error) {
+                console.error('[CHAPTR] Clear database + changelog error:', error);
+                this.showNotification('Reset failed', 'error');
+            } finally {
+                this.isSyncing = false;
+                this.showDatabaseToolsModal = false;
+            }
+        },
+
+        /**
+         * Nuclear reset - wipes entire database (all users)
+         *
+         * 🔴 DESTRUCTIVE OPERATION 🔴
+         * Development only. Requires password confirmation.
+         */
+        async nuclearReset() {
+            this.showPassword(
+                '🔴 NUCLEAR RESET',
+                'This will permanently delete:\n' +
+                '• ALL accounts, stories, events (all users)\n' +
+                '• ALL change log history\n' +
+                '• ALL conflicts\n\n' +
+                'Only users and settings are preserved.\n\n' +
+                'Enter password to confirm:',
+                async (password) => {
+                    try {
+                        this.isSyncing = true;
+                        this.showNotification('Resetting...', 'info');
+
+                        // Call nuclear reset endpoint with password
+                        const response = await apiRequest('/api/admin/nuclear-reset', {
+                            method: 'POST',
+                            body: JSON.stringify({ password })
+                        });
+
+                        if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.detail || 'Nuclear reset failed');
+                        }
+
+                        const data = await response.json();
+                        console.log('[CHAPTR] Nuclear reset complete:', data);
+
+                        // Clear local database
+                        await db.clearAllData();
+                        this.accounts = [];
+                        this.stories = [];
+                        this.events = [];
+                        this.projectionRows = [];
+
+                        // Resync (will get empty state)
+                        await this.fullSync();
+
+                        console.log('[CHAPTR] Nuclear reset complete - all data wiped');
+                    } catch (error) {
+                        console.error('[CHAPTR] Nuclear reset error:', error);
+                        this.showNotification(error.message || 'Nuclear reset failed', 'error');
+                    } finally {
+                        this.isSyncing = false;
+                        this.showDatabaseToolsModal = false;
+                    }
+                },
+                'Enter admin password'
+            );
         },
 
         // ===== COMMAND BAR (Context-Sensitive) =====
@@ -1368,37 +1861,274 @@ window.app = function() {
         },
 
         /**
-         * Add event (dashboard context)
+         * Add event (dashboard context - auto-select story by date)
+         * Finds story covering today's date, prefers smallest range if multiple overlap
          */
         addEvent() {
-            // TODO PR2 Stage 4: Implement event creation
-            console.log('Add event - Dashboard context');
-            alert('Add Event - Coming in Stage 4 (CRUD)');
+            // Find story covering today's date
+            const today = toLocalISODate(new Date());
+            const coveringStories = this.stories.filter(s =>
+                !s.is_archived &&
+                s.start_date <= today &&
+                (!s.end_date || s.end_date >= today)
+            );
+
+            let selectedStory = null;
+
+            if (coveringStories.length === 1) {
+                // Only one story covers today - auto-select it
+                selectedStory = coveringStories[0];
+            } else if (coveringStories.length > 1) {
+                // Multiple stories cover today - prefer smallest date range
+                selectedStory = coveringStories.reduce((smallest, story) => {
+                    const storyRange = story.end_date
+                        ? new Date(story.end_date) - new Date(story.start_date)
+                        : Infinity;
+                    const smallestRange = smallest.end_date
+                        ? new Date(smallest.end_date) - new Date(smallest.start_date)
+                        : Infinity;
+
+                    return storyRange < smallestRange ? story : smallest;
+                });
+            }
+
+            // Open modal with auto-selected story (or baseline if none)
+            if (selectedStory) {
+                console.log(`[CHAPTR] Auto-selected story: ${selectedStory.name}`);
+                this.openEventModalForStory(selectedStory.id);
+            } else {
+                // No story covers today - create baseline event
+                console.log('[CHAPTR] No story covers today - creating baseline event');
+                this.openEventModal();
+            }
         },
 
         /**
          * Add event to current story (projection context)
          */
         addEventToStory() {
-            // TODO PR2 Stage 4: Implement add to story
-            console.log('Add to story - Projection context, view:', this.currentView);
-
             if (this.currentView === 'all' || this.currentView === 'baseline') {
-                alert('Please select a specific story first');
+                this.showNotification('Select story first', 'error');
                 return;
             }
-
-            const story = this.stories.find(s => s.id === this.currentView);
-            alert(`Add Event to Story: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+            this.openEventModalForStory(this.currentView);
         },
 
         /**
          * Update account balance (dashboard/accounts context)
+         * Opens the balance reconciliation modal
          */
         updateBalance() {
-            // TODO PR2 Stage 4: Implement balance update
-            console.log('Update balance - Current screen:', this.currentScreen);
-            alert('Update Balance - Coming in Stage 4 (CRUD)');
+            this.openBalanceModal();
+        },
+
+        /**
+         * Open balance reconciliation modal
+         * Triggered by $ button in command bar
+         */
+        openBalanceModal() {
+            // Pre-select first account if only one exists
+            const activeAccounts = this.accounts.filter(a => !a.is_archived);
+
+            this.balanceForm = {
+                account_id: activeAccounts.length === 1 ? activeAccounts[0].id : '',
+                projected_balance: 0,
+                actual_balance: 0,
+                drift: null,
+                currency: this.settings.base_currency || 'GBP'
+            };
+
+            if (this.balanceForm.account_id) {
+                this.calculateBalanceDrift();
+            }
+
+            this.showBalanceModal = true;
+        },
+
+        /**
+         * Calculate projected balance and drift
+         * Called when account selected or actual balance changed
+         */
+        calculateBalanceDrift() {
+            if (!this.balanceForm.account_id) {
+                this.balanceForm.drift = null;
+                return;
+            }
+
+            const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+            if (!account) return;
+
+            this.balanceForm.currency = account.currency;
+
+            // Calculate projected balance for this account at today's date
+            const today = toLocalISODate(new Date());
+            const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+            this.balanceForm.projected_balance = projectedBalance;
+
+            // Calculate drift if actual balance entered
+            if (this.balanceForm.actual_balance !== null && this.balanceForm.actual_balance !== '') {
+                this.balanceForm.drift = parseFloat(this.balanceForm.actual_balance) - projectedBalance;
+            } else {
+                this.balanceForm.drift = null;
+            }
+        },
+
+        /**
+         * Calculate account balance at specific date
+         * @param {string} accountId - Account UUID
+         * @param {string} date - Date in YYYY-MM-DD format
+         * @return {number} Projected balance
+         */
+        calculateAccountBalance(accountId, date) {
+            const account = this.accounts.find(a => a.id === accountId);
+            if (!account) return 0;
+
+            // If balance has been manually updated, start from that snapshot
+            // and only include events AFTER the update
+            if (account.balance_updated_at) {
+                const balanceDate = account.balance_updated_at.split('T')[0]; // YYYY-MM-DD
+
+                let balance = parseFloat(account.current_balance || 0);
+
+                // Add events that occurred AFTER the last balance update
+                const accountEvents = this.events.filter(e =>
+                    e.account_id === accountId &&
+                    e.event_date > balanceDate &&
+                    e.event_date <= date &&
+                    !e.is_opening_balance // Never include opening balance when starting from manual update
+                );
+
+                for (const event of accountEvents) {
+                    balance += event.amount;
+                }
+
+                return balance;
+            }
+
+            // No manual update yet - calculate from opening balance event
+            let balance = 0;
+
+            const accountEvents = this.events.filter(e =>
+                e.account_id === accountId &&
+                e.event_date <= date
+            );
+
+            for (const event of accountEvents) {
+                balance += event.amount;
+            }
+
+            return balance;
+        },
+
+        /**
+         * Calculate drift for accounts pending reconciliation
+         * Returns virtual drift rows for display in projection
+         *
+         * Per refactored spec: Frontend displays drift without persisting events.
+         * Server creates authoritative [auto] events on sync.
+         *
+         * @returns {Array} Array of virtual drift row objects
+         */
+        calculatePendingDrifts() {
+            const today = toLocalISODate(new Date());
+            const virtualRows = [];
+
+            // Find accounts with pending_reconciliation = true
+            const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
+
+            for (const account of pendingAccounts) {
+                // Calculate projected balance for this account at today
+                const projectedBalance = this.calculateAccountBalance(account.id, today);
+
+                // Compare to actual balance
+                const actualBalance = account.current_balance;
+                const drift = actualBalance - projectedBalance;
+
+                // Only create virtual row if drift is significant (> 0.01)
+                if (Math.abs(drift) > 0.01) {
+                    virtualRows.push({
+                        id: `virtual-drift-${account.id}`,
+                        date: today,
+                        description: `pending adjustment for ${account.name}`,
+                        amount: drift,
+                        balance: actualBalance, // Balance after drift adjustment
+                        account_id: account.id,
+                        currency: account.currency,
+                        source: '[pending sync]',
+                        isDrift: true,
+                        isVirtual: true,
+                        isGap: false,
+                        driftDetails: {
+                            accountName: account.name,
+                            projectedBalance,
+                            actualBalance,
+                            drift
+                        }
+                    });
+                }
+            }
+
+            return virtualRows;
+        },
+
+        /**
+         * Save balance update - creates changelog event for sync
+         */
+        async saveBalanceUpdate() {
+            if (this.balanceForm.drift === 0) {
+                this.showBalanceModal = false;
+                return;
+            }
+
+            try {
+                // Update local account current_balance and mark for reconciliation
+                const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
+                if (!account) {
+                    throw new Error('Account not found');
+                }
+
+                const updatedAccount = {
+                    ...account,
+                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
+                    pending_reconciliation: true, // Mark for reconciliation per spec
+                    updated_at: new Date().toISOString()
+                };
+
+                if (storage.mode === 'full') {
+                    // Get base_updated_at for conflict detection
+                    const baseUpdatedAt = account.updated_at;
+
+                    // Update account in Dexie
+                    await db.accounts.put(updatedAccount);
+
+                    // Queue account update for sync
+                    await db.queueChange(
+                        'account',
+                        account.id,
+                        'update',
+                        updatedAccount,
+                        baseUpdatedAt
+                    );
+                } else {
+                    // Mode 0: Direct update without sync
+                    Object.assign(account, updatedAccount);
+                }
+
+                // Trigger reconciliation to create [auto] adjustments immediately
+                // (This will reload data and update projection internally)
+                await this.triggerReconciliation();
+
+                this.showBalanceModal = false;
+
+                // Show notification
+                this.showNotification('Balance updated', 'success');
+
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                this.showNotification('Update failed', 'error');
+            }
         },
 
         /**
@@ -1409,12 +2139,273 @@ window.app = function() {
             console.log('Edit funding - Projection context, view:', this.currentView);
 
             if (this.currentView === 'all' || this.currentView === 'baseline') {
-                alert('Please select a specific story first');
+                this.showNotification('Select story first', 'error');
                 return;
             }
 
             const story = this.stories.find(s => s.id === this.currentView);
-            alert(`Edit Funding: ${story ? story.name : 'Unknown'} - Coming in Stage 4 (CRUD)`);
+            this.showNotification('Coming soon', 'info');
+        },
+
+
+        // ===== EVENT MODAL METHODS =====
+
+        /**
+         * Open event modal for adding new event (dashboard context - baseline auto-assign)
+         */
+        openEventModal() {
+            const today = toLocalISODate(new Date());
+
+            this.eventForm = {
+                date: today,
+                description: '',
+                amount: 0,
+                account_id: '', // Will resolve via hierarchy
+                currency: this.settings.base_currency || 'GBP',
+                story_id: '', // Empty = baseline
+                is_baseline: true,
+                is_hypothetical: false
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * Open event modal for adding event to current story (projection context)
+         * @param {string} storyId - Story UUID (from currentView)
+         */
+        openEventModalForStory(storyId) {
+            const story = this.stories.find(s => s.id === storyId);
+            if (!story) {
+                this.showNotification('Story not found', 'error');
+                return;
+            }
+
+            const today = toLocalISODate(new Date());
+
+            // Use story date range if today falls outside
+            let defaultDate = today;
+            if (today < story.start_date) {
+                defaultDate = story.start_date;
+            } else if (story.end_date && today > story.end_date) {
+                defaultDate = story.end_date;
+            }
+
+            // Get default account for currency fallback
+            const defaultAccount = story.default_account_id
+                ? this.accounts.find(a => a.id === story.default_account_id)
+                : null;
+
+            this.eventForm = {
+                date: defaultDate,
+                description: '',
+                amount: 0,
+                account_id: story.default_account_id || '',
+                currency: story.display_currency || (defaultAccount ? defaultAccount.currency : null) || this.settings.base_currency || 'GBP',
+                story_id: storyId,
+                is_baseline: false,
+                is_hypothetical: false
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * View event details for editing (opens edit modal)
+         * @param {string} eventId - Event UUID
+         */
+        viewEventDetails(eventId) {
+            if (!eventId) {
+                console.error('viewEventDetails called without eventId');
+                return;
+            }
+
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) {
+                console.error('Event not found:', eventId);
+                return;
+            }
+
+            this.eventForm = {
+                id: event.id,
+                event_date: event.event_date,
+                description: event.description,
+                amount: event.amount,
+                account_id: event.account_id,
+                currency: event.currency,
+                story_id: event.story_id || '',
+                is_baseline: event.is_baseline,
+                is_hypothetical: event.is_hypothetical,
+                updated_at: event.updated_at
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * Save event (create or update) with validation
+         */
+        async saveEvent() {
+            // Validation: Required fields
+            if (!this.eventForm.event_date) {
+                this.showNotification('Date required', 'error');
+                return;
+            }
+
+            if (!this.eventForm.description || this.eventForm.description.trim() === '') {
+                this.showNotification('Description required', 'error');
+                return;
+            }
+
+            if (this.eventForm.amount === null || this.eventForm.amount === undefined) {
+                this.showNotification('Amount required', 'error');
+                return;
+            }
+
+            // Validation: Currency format
+            if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
+                this.showNotification('Invalid currency', 'error');
+                return;
+            }
+
+            // Validation: Event date within story range
+            if (this.eventForm.story_id && this.eventForm.story_id !== 'auto') {
+                const story = this.stories.find(s => s.id === this.eventForm.story_id);
+                if (story) {
+                    const eventDate = this.eventForm.event_date;
+
+                    if (eventDate < story.start_date) {
+                        this.showNotification('Date outside story', 'error');
+                        return;
+                    }
+
+                    if (story.end_date && eventDate > story.end_date) {
+                        this.showNotification('Date outside story', 'error');
+                        return;
+                    }
+                }
+            }
+
+            // Validation: Baseline XOR Story
+            if (this.eventForm.is_baseline && this.eventForm.story_id) {
+                this.showNotification('Baseline/story conflict', 'error');
+                return;
+            }
+
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                this.eventForm.story_id || null
+            );
+
+            if (!resolvedAccountId) {
+                this.showNotification('Account required', 'error');
+                return;
+            }
+
+            try {
+                const isEdit = !!this.eventForm.id;
+
+                const eventData = {
+                    event_date: this.eventForm.event_date,
+                    description: this.eventForm.description.trim(),
+                    amount: parseFloat(this.eventForm.amount),
+                    account_id: resolvedAccountId,
+                    currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                    story_id: this.eventForm.story_id || null,
+                    is_baseline: !this.eventForm.story_id,
+                    is_hypothetical: this.eventForm.is_hypothetical || false
+                };
+
+                if (isEdit) {
+                    await this.updateEvent(this.eventForm.id, eventData);
+                } else {
+                    await this.createEvent(eventData);
+                }
+
+                this.showEventModal = false;
+
+            } catch (error) {
+                console.error('Error saving event:', error);
+                this.showNotification('Save failed', 'error');
+            }
+        },
+
+        /**
+         * Delete event from modal with confirmation
+         */
+        async deleteEventFromModal() {
+            this.showConfirm(
+                'Delete Event',
+                `Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`,
+                async () => {
+                    try {
+                        await this.deleteEvent(this.eventForm.id);
+                        this.showEventModal = false;
+                    } catch (error) {
+                        console.error('Error deleting event:', error);
+                        this.showNotification('Delete failed', 'error');
+                    }
+                },
+                'Delete',
+                'danger'
+            );
+        },
+
+        /**
+         * Get account hierarchy hint text for form
+         * Shows which account will be used based on current selections
+         */
+        getAccountHierarchyHint() {
+            if (this.eventForm.account_id) {
+                const account = this.accounts.find(a => a.id === this.eventForm.account_id);
+                return account ? `Will use: ${account.name}` : 'Selected account';
+            }
+
+            if (this.eventForm.story_id) {
+                const story = this.stories.find(s => s.id === this.eventForm.story_id);
+                if (story && story.default_account_id) {
+                    const account = this.accounts.find(a => a.id === story.default_account_id);
+                    if (account) {
+                        return `Will use story default: ${account.name}`;
+                    }
+                }
+            }
+
+            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
+            if (defaultAccount) {
+                return `Will use global default: ${defaultAccount.name}`;
+            }
+
+            return '⚠ No default account available - please select one';
+        },
+
+        /**
+         * Handle story selection change
+         * Auto-updates account and currency based on story defaults
+         */
+        handleStoryChange() {
+            const storyId = this.eventForm.story_id;
+
+            this.eventForm.is_baseline = !storyId;
+
+            if (storyId) {
+                const story = this.stories.find(s => s.id === storyId);
+                if (story) {
+                    if (!this.eventForm.account_id && story.default_account_id) {
+                        this.eventForm.account_id = story.default_account_id;
+
+                        const account = this.accounts.find(a => a.id === story.default_account_id);
+                        if (account) {
+                            this.eventForm.currency = account.currency;
+                        }
+                    }
+
+                    if (story.display_currency && !this.eventForm.currency) {
+                        this.eventForm.currency = story.display_currency;
+                    }
+                }
+            }
         },
 
         // ===== FORMATTING HELPERS =====
@@ -1445,6 +2436,135 @@ window.app = function() {
          */
         formatRelativeTime(date) {
             return formatRelativeTime(date);
+        },
+
+        /**
+         * Trigger reconciliation for all pending accounts
+         */
+        async triggerReconciliation() {
+            if (storage.mode !== 'full') {
+                return; // Only in full mode
+            }
+
+            try {
+                const response = await apiRequest('/api/reconciliation/trigger', {
+                    method: 'POST'
+                });
+
+                if (response.reconciled) {
+                    // Reload data to get new [auto] adjustment events
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+                }
+            } catch (error) {
+                console.error('Reconciliation trigger failed:', error);
+                // Silent fail - this is a background operation
+                // Reconciliation will happen on next sync anyway
+            }
+        },
+
+        /**
+         * Check for unresolved conflicts on app load (Task 110)
+         */
+        async checkForConflicts() {
+            this.conflicts = await db.getUnresolvedConflicts();
+
+            if (this.conflicts.length > 0) {
+                console.log(`Found ${this.conflicts.length} unresolved conflicts`);
+                this.currentConflictIndex = 0;
+                this.currentConflict = this.conflicts[0];
+                this.showConflictModal = true;
+            }
+        },
+
+        /**
+         * Resolve conflict by choosing version (Tasks 115-119)
+         */
+        async resolveConflict(choice) {
+            if (!this.currentConflict) return;
+
+            const conflict = this.currentConflict;
+
+            // Task 115: Determine selected version
+            let selectedVersion;
+            if (choice === 'keep_mine') {
+                selectedVersion = conflict.client_version;
+            } else {
+                selectedVersion = conflict.server_version;
+            }
+
+            try {
+                // Task 116: Update local Dexie with selected version
+                if (selectedVersion) {
+                    // Determine base_updated_at from the version we're accepting
+                    const baseUpdatedAt = choice === 'keep_mine'
+                        ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
+                        : conflict.server_version?.updated_at;
+
+                    // Update event in local database
+                    await db.events.put({
+                        ...selectedVersion,
+                        updated_at: new Date().toISOString() // Fresh timestamp
+                    });
+
+                    // Task 117: Queue resolution for sync
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'update',
+                        selectedVersion,
+                        baseUpdatedAt // Use original timestamp before conflict
+                    );
+                } else {
+                    // Selected version is null (delete case - keep_mine on delete/edit conflict)
+                    // Null guard: Use server version's timestamp if it exists
+                    const baseUpdatedAt = conflict.server_version?.updated_at || conflict.client_version?.updated_at;
+
+                    await db.events.delete(conflict.entity_id);
+                    await db.queueChange(
+                        'event',
+                        conflict.entity_id,
+                        'delete',
+                        null,
+                        baseUpdatedAt
+                    );
+                }
+
+                // Task 118: Mark conflict as resolved
+                await db.resolveConflict(conflict.id);
+
+                // Task 119: Process next conflict if multiple exist
+                this.currentConflictIndex++;
+                if (this.currentConflictIndex < this.conflicts.length) {
+                    this.currentConflict = this.conflicts[this.currentConflictIndex];
+                } else {
+                    // All conflicts resolved
+                    this.closeConflictModal();
+                    this.showNotification('All conflicts resolved', 'success');
+
+                    // Reload data to reflect changes
+                    await this.loadData();
+                    await this.updateDashboardProjection();
+
+                    // Trigger sync to send resolved changes
+                    if (storage.mode === 'full') {
+                        await storage.sync();
+                    }
+                }
+            } catch (error) {
+                console.error('Error resolving conflict:', error);
+                this.showNotification('Resolution failed', 'error');
+            }
+        },
+
+        /**
+         * Close conflict resolution modal
+         */
+        closeConflictModal() {
+            this.showConflictModal = false;
+            this.currentConflict = null;
+            this.conflicts = [];
+            this.currentConflictIndex = 0;
         },
 
         /**
@@ -1484,6 +2604,204 @@ window.app = function() {
             return sign + formatCurrency(drift, this.settings.base_currency);
         },
 
+        // ===== NOTIFICATION SYSTEM =====
+
+        /**
+         * Show inline notification in header
+         * @param {string} message - Short message (~3 words max)
+         * @param {string} type - Type: 'info' | 'success' | 'warning' | 'error'
+         * @param {number} duration - Duration in ms (default: 10000)
+         */
+        showNotification(message, type = 'info', duration = 10000) {
+            // Clear existing timeout
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+
+            // Set new notification (replaces previous)
+            this.currentNotification = { message, type };
+
+            // Auto-dismiss
+            this.notificationTimeout = setTimeout(() => {
+                this.currentNotification = null;
+                this.notificationTimeout = null;
+            }, duration);
+        },
+
+        /**
+         * Clear notification immediately
+         */
+        clearNotification() {
+            if (this.notificationTimeout) {
+                clearTimeout(this.notificationTimeout);
+                this.notificationTimeout = null;
+            }
+            this.currentNotification = null;
+        },
+
+        // ===== MODAL SYSTEM =====
+
+        /**
+         * Show confirmation modal
+         * @param {string} title - Modal title
+         * @param {string} message - Confirmation message (supports newlines)
+         * @param {function} onConfirm - Callback function when confirmed
+         * @param {string} confirmText - Text for confirm button (default: 'Confirm')
+         * @param {string} confirmStyle - Button style: 'primary' or 'danger' (default: 'primary')
+         */
+        showConfirm(title, message, onConfirm, confirmText = 'Confirm', confirmStyle = 'primary') {
+            this.confirmModalData = {
+                title,
+                message,
+                confirmText,
+                confirmStyle,
+                onConfirm
+            };
+            this.showConfirmModal = true;
+        },
+
+        /**
+         * Execute confirmation action and close modal
+         */
+        confirmAction() {
+            if (this.confirmModalData.onConfirm) {
+                this.confirmModalData.onConfirm();
+            }
+            this.closeConfirmModal();
+        },
+
+        /**
+         * Close confirmation modal and reset state
+         */
+        closeConfirmModal() {
+            this.showConfirmModal = false;
+            this.confirmModalData = {
+                title: '',
+                message: '',
+                confirmText: 'Confirm',
+                confirmStyle: 'primary',
+                onConfirm: null
+            };
+        },
+
+        /**
+         * Show input modal
+         * @param {string} title - Modal title
+         * @param {string} message - Instruction message
+         * @param {function} onSubmit - Callback function with input value
+         * @param {string} placeholder - Input placeholder text
+         * @param {string} pattern - Regex pattern for HTML validation
+         * @param {function} validator - Custom validation function (returns error message or null)
+         */
+        showInput(title, message, onSubmit, placeholder = '', pattern = null, validator = null) {
+            this.inputModalData = {
+                title,
+                message,
+                placeholder,
+                inputValue: '',
+                pattern,
+                onSubmit,
+                validator
+            };
+            this.showInputModal = true;
+        },
+
+        /**
+         * Submit input value with validation
+         */
+        submitInput() {
+            const value = this.inputModalData.inputValue.trim();
+
+            // Check for empty input
+            if (!value) {
+                this.showNotification('Input required', 'error');
+                return;
+            }
+
+            // Validate with custom validator if provided
+            if (this.inputModalData.validator) {
+                const validationError = this.inputModalData.validator(value);
+                if (validationError) {
+                    this.showNotification(validationError, 'error');
+                    return;
+                }
+            }
+
+            // Call callback with value
+            if (this.inputModalData.onSubmit) {
+                this.inputModalData.onSubmit(value);
+            }
+
+            this.closeInputModal();
+        },
+
+        /**
+         * Close input modal and reset state
+         */
+        closeInputModal() {
+            this.showInputModal = false;
+            this.inputModalData = {
+                title: '',
+                message: '',
+                placeholder: '',
+                inputValue: '',
+                pattern: null,
+                onSubmit: null,
+                validator: null
+            };
+        },
+
+        /**
+         * Show password modal
+         * @param {string} title - Modal title
+         * @param {string} message - Warning/instruction message
+         * @param {function} onSubmit - Callback function with password value
+         * @param {string} placeholder - Input placeholder text
+         */
+        showPassword(title, message, onSubmit, placeholder = '') {
+            this.passwordModalData = {
+                title,
+                message,
+                placeholder,
+                passwordValue: '',
+                onSubmit
+            };
+            this.showPasswordModal = true;
+        },
+
+        /**
+         * Submit password with validation
+         */
+        submitPassword() {
+            const password = this.passwordModalData.passwordValue;
+
+            if (!password) {
+                this.showNotification('Password required', 'error');
+                return;
+            }
+
+            if (this.passwordModalData.onSubmit) {
+                this.passwordModalData.onSubmit(password);
+            }
+
+            this.closePasswordModal();
+        },
+
+        /**
+         * Close password modal and reset state
+         */
+        closePasswordModal() {
+            this.showPasswordModal = false;
+            this.passwordModalData = {
+                title: '',
+                message: '',
+                placeholder: '',
+                passwordValue: '',
+                onSubmit: null
+            };
+        },
+
         // ===== MODE DISPLAY HELPERS =====
 
         /**
@@ -1496,7 +2814,7 @@ window.app = function() {
                 'sync-only': 'Sync-Only (Online required)',
                 'basic': 'Basic (Limited)'
             };
-            return modes[storage.mode] || 'Unknown';
+            return modes[this.storageMode] || 'Unknown';
         },
 
         /**
@@ -1504,8 +2822,8 @@ window.app = function() {
          * @returns {string} HTML string with checkmarks/crosses
          */
         getCapabilitiesDisplay() {
-            const offline = storage.mode === 'full';
-            const sync = storage.mode !== 'basic';
+            const offline = this.storageMode === 'full';
+            const sync = this.storageMode !== 'basic';
 
             const offlineIcon = offline ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
             const syncIcon = sync ? '<span class="checkmark">✓</span>' : '<span class="crossmark">✗</span>';
@@ -1523,7 +2841,7 @@ window.app = function() {
                 'sync-only': 'Memory (cleared on refresh)',
                 'basic': 'Memory (cleared on refresh)'
             };
-            return storageTypes[storage.mode] || 'Unknown';
+            return storageTypes[this.storageMode] || 'Unknown';
         },
 
         // ===== AUTH =====
@@ -1605,6 +2923,9 @@ window.app = function() {
                     // Initialize app components (without re-checking auth)
                     this.setDefaultProjectionDates();
                     await storage.init();
+
+                    // Sync storage mode to reactive property
+                    this.storageMode = storage.mode;
 
                     if (storage.mode === 'basic') {
                         document.body.classList.add('mode-3-active');

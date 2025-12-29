@@ -10,11 +10,13 @@ Phase 1.4 implements CRUD operations only - no event materialization yet.
 from uuid import UUID
 from typing import Optional
 from decimal import Decimal
+from datetime import date
 
 from api.repositories.base import BaseRepository
 from api.models import RecurringRule, RecurringRuleCreate, RecurringRuleUpdate
 from api.utils.db import generate_id, utc_now, to_str
 from api.utils.errors import ValidationError
+from api.utils.recurring import generate_recurring_events
 
 
 class RecurringRuleRepository(BaseRepository[RecurringRule]):
@@ -148,12 +150,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         - account_id must exist and not be archived if being updated
         - Modification affects future events only
         - Past generated events remain unchanged
+        - Future unedited instances deleted and regenerated with new values
         - Always update timestamp and updated_by (if user authenticated)
 
-        TODO: Spec compliance (lines 1319-1350) - Regenerate future events after rule update
-        Current behavior: Future events retain old rule values until next generation window
-        Spec requirement: "Modification: Future generated events updated"
-        Implementation needed: Delete future unedited instances and regenerate from updated rule
+        Spec compliance (line 1347): "Modification: Future generated events updated"
+        Implementation: Deletes future unedited instances ($expr updated_at == created_at),
+        logs deletions to change_log for sync, and regenerates them with updated rule values
 
         :param rule_id: Recurring rule UUID to update
         :type rule_id: UUID
@@ -216,6 +218,40 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             client_id
         )
 
+        # Spec compliance (line 1347): Regenerate future events with updated rule
+        # First, fetch future unedited instances to log deletions for sync protocol
+        today = date.today()
+        events_to_delete = await self.db["events"].find({
+            "recurring_rule_id": to_str(rule_id),
+            "event_date": {"$gt": today.isoformat()},
+            "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
+        }).to_list(length=None)
+
+        # Log each deletion to change_log for sync (critical for multi-client sync)
+        user_id = self._get_user_id(current_user)
+        for event_doc in events_to_delete:
+            await self.log_change(
+                "event",
+                UUID(event_doc["id"]),
+                "delete",
+                event_doc,
+                user_id,
+                client_id
+            )
+
+        # Delete future unedited instances
+        if events_to_delete:
+            await self.db["events"].delete_many({
+                "recurring_rule_id": to_str(rule_id),
+                "event_date": {"$gt": today.isoformat()},
+                "$expr": {"$eq": ["$updated_at", "$created_at"]}
+            })
+
+        # Regenerate events with updated rule values
+        # Note: Currently regenerates all user rules within ±1 month window
+        # Future optimization: Pass rule_id to generate only for this specific rule
+        await generate_recurring_events(self.db, user_id, client_id)
+
         # Return updated rule
         return updated_rule
 
@@ -250,8 +286,6 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         >>> await repo.delete(rule_id, current_user=user, client_id="client-a")
         True
         """
-        from datetime import date
-
         # Verify rule exists and get snapshot for change log (before deletion)
         rule = await self.get(rule_id)
 

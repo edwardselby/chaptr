@@ -374,7 +374,7 @@ class TestEventModel:
     def test_event_create_valid(self):
         """Test creating valid event."""
         event_data = {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "Christmas gift",
             "amount": Decimal("-50.00"),
             "currency": "GBP",
@@ -386,26 +386,10 @@ class TestEventModel:
         assert event.description == "Christmas gift"
         assert event.amount == Decimal("-50.00")
 
-    def test_event_date_alias(self):
-        """Test event date field uses alias for API compatibility."""
-        event_data = {
-            "date": date(2024, 12, 25),
-            "description": "Test",
-            "amount": Decimal("100.00"),
-            "currency": "GBP",
-            "rate_to_base": Decimal("1.0"),
-            "account_id": uuid4(),
-        }
-        event = EventCreate(**event_data)
-        # Internal field is event_date
-        assert event.event_date == date(2024, 12, 25)
-        # Serialization uses 'date'
-        assert "date" in event.model_dump(by_alias=True)
-
     def test_event_rate_to_base_positive(self):
         """Test rate_to_base must be positive."""
         event_data = {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "Test",
             "amount": Decimal("100.00"),
             "currency": "GBP",
@@ -419,7 +403,7 @@ class TestEventModel:
     def test_event_baseline_story_exclusivity(self):
         """Test baseline events cannot belong to a story."""
         event_data = {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "Test",
             "amount": Decimal("100.00"),
             "currency": "GBP",
@@ -435,7 +419,7 @@ class TestEventModel:
     def test_event_baseline_without_story(self):
         """Test baseline event without story_id is valid."""
         event_data = {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "Baseline event",
             "amount": Decimal("-100.00"),
             "currency": "GBP",
@@ -451,7 +435,7 @@ class TestEventModel:
         """Test story event without is_baseline is valid."""
         story_id = uuid4()
         event_data = {
-            "date": date(2024, 12, 25),
+            "event_date": date(2024, 12, 25),
             "description": "Story event",
             "amount": Decimal("-100.00"),
             "currency": "GBP",
@@ -467,7 +451,7 @@ class TestEventModel:
         """Test event amount and rate precision constraints."""
         # Valid: 4 decimal places for amount
         event = EventCreate(
-            date=date(2024, 12, 25),
+            event_date=date(2024, 12, 25),
             description="Test",
             amount=Decimal("123.4567"),
             currency="GBP",
@@ -490,7 +474,7 @@ class TestEdgeCases:
         # 19 digits total, 4 decimal places = max 15 integer digits
         max_amount = Decimal("999999999999999.9999")
         event = EventCreate(
-            date=date(2024, 12, 25),
+            event_date=date(2024, 12, 25),
             description="Max amount",
             amount=max_amount,
             currency="GBP",
@@ -504,7 +488,7 @@ class TestEdgeCases:
         # 19 digits total, 8 decimal places = max 11 integer digits
         max_rate = Decimal("99999999999.99999999")
         event = EventCreate(
-            date=date(2024, 12, 25),
+            event_date=date(2024, 12, 25),
             description="Test",
             amount=Decimal("100.00"),
             currency="GBP",
@@ -517,7 +501,7 @@ class TestEdgeCases:
         """Test empty descriptions are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             EventCreate(
-                date=date(2024, 12, 25),
+                event_date=date(2024, 12, 25),
                 description="",  # Invalid: empty
                 amount=Decimal("100.00"),
                 currency="GBP",
@@ -531,7 +515,7 @@ class TestEdgeCases:
         # Too short
         with pytest.raises(ValidationError):
             EventCreate(
-                date=date(2024, 12, 25),
+                event_date=date(2024, 12, 25),
                 description="Test",
                 amount=Decimal("100.00"),
                 currency="GB",  # Invalid: too short
@@ -542,7 +526,7 @@ class TestEdgeCases:
         # Too long
         with pytest.raises(ValidationError):
             EventCreate(
-                date=date(2024, 12, 25),
+                event_date=date(2024, 12, 25),
                 description="Test",
                 amount=Decimal("100.00"),
                 currency="GBPX",  # Invalid: too long

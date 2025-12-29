@@ -11,12 +11,28 @@ const db = new Dexie('CHAPTR');
  * Database Schema
  *
  * Version 1: Initial schema with all core tables
+ * Version 2: Migrated event date field from 'date' to 'event_date'
  */
 db.version(1).stores({
     // Core entities
     accounts: 'id, currency, is_default, is_archived',
     stories: 'id, start_date, end_date, is_archived',
     events: 'id, date, story_id, account_id, is_baseline, is_hypothetical',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Sync protocol
+    conflicts: 'id, entity_type, entity_id, resolved_at',
+    sync_queue: '++id, entity_type, entity_id, queued_at, action',
+    sync_meta: 'id'
+});
+
+db.version(2).stores({
+    // Core entities
+    accounts: 'id, currency, is_default, is_archived',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical',
     recurring_rules: 'id, story_id, frequency, next_occurrence',
     users: 'id, username, role',
     settings: 'id',
@@ -71,7 +87,7 @@ db.getActiveStories = async function() {
  */
 db.getEventsInRange = async function(startDate, endDate) {
     return await db.events
-        .where('date')
+        .where('event_date')
         .between(startDate, endDate, true, true)
         .toArray();
 };
@@ -101,13 +117,20 @@ db.getDefaultAccount = async function() {
 
 /**
  * Helper: Queue an entity change for sync
+ *
+ * @param {string} entityType - Type of entity (account, story, event, etc.)
+ * @param {string} entityId - UUID of the entity
+ * @param {string} action - Action type: 'create', 'update', or 'delete'
+ * @param {object} data - Entity data (null for deletes)
+ * @param {string} baseUpdatedAt - Last known updated_at timestamp (for conflict detection on updates/deletes)
  */
-db.queueChange = async function(entityType, entityId, action, data) {
+db.queueChange = async function(entityType, entityId, action, data, baseUpdatedAt = null) {
     await db.sync_queue.add({
         entity_type: entityType,
         entity_id: entityId,
         action: action, // 'create', 'update', 'delete'
         data: data,
+        base_updated_at: baseUpdatedAt, // For conflict detection (update/delete only)
         queued_at: new Date().toISOString()
     });
 };
@@ -140,6 +163,26 @@ db.resolveConflict = async function(conflictId) {
     await db.conflicts.update(conflictId, {
         resolved_at: new Date().toISOString()
     });
+};
+
+/**
+ * Helper: Clear all local data (admin only)
+ *
+ * Clears all tables in the database. This is a destructive operation
+ * that should only be performed by admin users. After clearing, the
+ * app should trigger a full sync to re-download all data from server.
+ *
+ * @returns {Promise<void>}
+ */
+db.clearAllData = async function() {
+    await db.accounts.clear();
+    await db.stories.clear();
+    await db.events.clear();
+    await db.recurring_rules.clear();
+    await db.conflicts.clear();
+    await db.sync_queue.clear();
+    await db.sync_meta.clear();
+    // Note: users and settings are preserved to maintain login and preferences
 };
 
 // Export database instance

@@ -5,7 +5,7 @@
  */
 
 import { db } from './db.js';
-import { parseISODate, daysBetween } from './utils.js';
+import { parseISODate, daysBetween, toLocalISODate } from './utils.js';
 
 /**
  * Convert amount to base currency
@@ -31,7 +31,9 @@ function convertFromBaseCurrency(baseAmount, displayCurrency, baseCurrency, rate
     }
 
     const displayRate = rates[displayCurrency] || 1.0;
-    return Math.round(baseAmount * displayRate * 100) / 100;
+    const result = Math.round(baseAmount * displayRate * 100) / 100;
+
+    return result;
 }
 
 /**
@@ -56,7 +58,9 @@ export async function calculateProjection(
     endDate,
     view = 'all',
     storyId = null,
-    displayCurrency = null
+    displayCurrency = null,
+    virtualDrifts = [],
+    settings = null  // ← Accept settings as parameter!
 ) {
     try {
         // Validate dates
@@ -65,32 +69,79 @@ export async function calculateProjection(
             return [];
         }
 
-        // Get settings for currency conversion
-        const settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        // Use passed settings or fall back to loading from Dexie
+        if (!settings) {
+            settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
+        }
 
-        // Step 1: Sum all account current_balance as starting point
-        const allAccounts = await db.accounts.toArray();
-        const accounts = allAccounts.filter(a => !a.is_archived);
+        // Step 1: Calculate starting balance from ALL historical events
+        // This includes:
+        // - Opening balance events (is_opening_balance=true) - ALWAYS included regardless of date
+        // - All other events before startDate
         let startingBalance = 0;
 
-        for (const account of accounts) {
-            const balance = parseFloat(account.current_balance || 0);
-            const rateToBase = parseFloat(account.rate_to_base || 1.0);
-            const baseBalance = convertToBaseCurrency(balance, rateToBase);
-            startingBalance += baseBalance;
+        // Get ALL events (we'll filter below)
+        const allEvents = await db.events.toArray();
+
+        // Separate opening balance events from regular historical events
+        const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true);
+        const regularHistoricalEvents = allEvents.filter(e =>
+            e.is_opening_balance !== true && e.event_date < startDate
+        );
+
+        // Process opening balance events (ALWAYS included for starting balance)
+        for (const event of openingBalanceEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
+        }
+
+        // Process regular historical events (before projection start)
+        for (const event of regularHistoricalEvents) {
+            // Filter based on view
+            let includeEvent = false;
+            if (view === 'baseline') {
+                includeEvent = event.is_baseline;
+            } else if (view !== 'all' && storyId) {
+                includeEvent = event.story_id === storyId || event.is_baseline;
+            } else {
+                includeEvent = !event.is_hypothetical;
+            }
+
+            if (includeEvent) {
+                const amount = parseFloat(event.amount || 0);
+                const rateToBase = parseFloat(event.rate_to_base || 1.0);
+                const baseAmount = convertToBaseCurrency(amount, rateToBase);
+                startingBalance += baseAmount;
+            }
         }
 
         // Step 2: Fetch events in date range
         let events = await db.events
-            .where('date')
+            .where('event_date')
             .between(startDate, endDate, true, true)
             .toArray();
 
         // Filter by view
         if (view === 'baseline') {
-            events = events.filter(e => e.is_baseline);
+            // Baseline view: only baseline events, exclude auto-adjustments (shown only in ALL view)
+            events = events.filter(e => e.is_baseline && !e.is_auto_adjustment);
         } else if (view !== 'all' && storyId) {
-            events = events.filter(e => e.story_id === storyId || e.is_baseline);
+            // Show story events + baseline, but exclude auto-adjustments (only shown in ALL view)
+            events = events.filter(e => (e.story_id === storyId || e.is_baseline) && !e.is_auto_adjustment);
         }
 
         // Exclude hypothetical for 'all' view
@@ -112,8 +163,8 @@ export async function calculateProjection(
 
         // Sort by: date ASC, amount DESC (income first), created_at ASC
         eventsWithBase.sort((a, b) => {
-            if (a.date !== b.date) {
-                return a.date < b.date ? -1 : 1;
+            if (a.event_date !== b.event_date) {
+                return a.event_date < b.event_date ? -1 : 1;
             }
             // Sort by base_amount DESC (income first)
             if (a.base_amount !== b.base_amount) {
@@ -142,12 +193,13 @@ export async function calculateProjection(
             // Create result row
             const row = {
                 id: event.id,
-                date: event.date,
+                event_date: event.event_date,
                 description: event.description,
                 amount: event.base_amount,
                 balance: runningBalance,
                 source: source,
-                isGap: false
+                isGap: false,
+                is_auto_adjustment: event.is_auto_adjustment || false
             };
 
             // Convert to display currency if requested
@@ -169,8 +221,8 @@ export async function calculateProjection(
             results.push(row);
         }
 
-        // Step 5: Insert gap indicators (threshold: 7 days)
-        const rowsWithGaps = insertGapIndicators(results, 7);
+        // Step 5: Insert gap indicators and virtual drift rows (threshold: 7 days)
+        const rowsWithGaps = insertGapIndicators(results, 7, virtualDrifts);
 
         return rowsWithGaps;
 
@@ -187,20 +239,27 @@ export async function calculateProjection(
  * @param {number} thresholdDays - Minimum gap in days to show indicator
  * @returns {Array} Rows with gap indicators inserted
  */
-function insertGapIndicators(rows, thresholdDays = 7) {
+function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     if (rows.length === 0) return rows;
 
     const withGaps = [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalISODate(new Date());
     let todayDividerInserted = false;
 
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
 
         // Insert TODAY divider before first future event
-        if (!todayDividerInserted && row.date >= today) {
+        if (!todayDividerInserted && row.event_date >= today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
+
+            // Inject virtual drift rows after TODAY divider, before future events
+            if (virtualDrifts && virtualDrifts.length > 0) {
+                for (const driftRow of virtualDrifts) {
+                    withGaps.push(driftRow);
+                }
+            }
         }
 
         withGaps.push(row);
@@ -208,15 +267,15 @@ function insertGapIndicators(rows, thresholdDays = 7) {
         // Check gap to next event
         if (i < rows.length - 1) {
             const nextRow = rows[i + 1];
-            const gapDays = daysBetween(row.date, nextRow.date);
+            const gapDays = daysBetween(row.event_date, nextRow.event_date);
 
             if (gapDays > thresholdDays) {
                 withGaps.push({
                     id: `gap-${i}`,
                     isGap: true,
                     gapDays: gapDays,
-                    startDate: row.date,
-                    endDate: nextRow.date
+                    startDate: row.event_date,
+                    endDate: nextRow.event_date
                 });
             }
         }

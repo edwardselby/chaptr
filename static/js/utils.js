@@ -29,12 +29,26 @@ export function formatCurrency(amount, currency = 'GBP') {
 }
 
 /**
+ * Get local date as YYYY-MM-DD string (no timezone conversion)
+ * @param {Date} date - Date object
+ * @returns {string} ISO date string in local timezone (e.g., "2025-12-26")
+ */
+export function toLocalISODate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+/**
  * Format date for display
  * @param {string|Date} dateStr - ISO date string or Date object
  * @returns {string} Formatted date (e.g., "Dec 18")
  */
 export function formatDate(dateStr) {
+    if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    if (!date || isNaN(date.getTime())) return '';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getDate()}`;
@@ -75,7 +89,9 @@ export function formatRelativeTime(dateStr) {
  * @returns {Date} Date object
  */
 export function parseISODate(dateStr) {
-    return new Date(dateStr + 'T00:00:00');
+    // Parse as local date at midnight, not UTC
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
 }
 
 /**
@@ -84,9 +100,11 @@ export function parseISODate(dateStr) {
  * @returns {boolean} True if date is today
  */
 export function isToday(dateStr) {
-    const date = parseISODate(dateStr);
     const today = new Date();
-    return date.toDateString() === today.toDateString();
+    const checkDate = parseISODate(dateStr);
+    return checkDate.getFullYear() === today.getFullYear() &&
+           checkDate.getMonth() === today.getMonth() &&
+           checkDate.getDate() === today.getDate();
 }
 
 /**
@@ -212,11 +230,23 @@ export function isAuthenticated() {
 /**
  * Show toast notification
  *
+ * Delegates to new notification system if available (window.showNotification),
+ * falls back to legacy popup toast for backward compatibility.
+ *
  * @param {string} message - Message to display
  * @param {string} type - Toast type: 'success' | 'error' | 'warning' | 'info'
  * @param {number} duration - Duration in ms (default: 3000)
  */
 export function showToast(message, type = 'info', duration = 3000) {
+    // Use new notification system if available
+    if (typeof window.showNotification === 'function') {
+        // Shorten message for inline notifications (max ~3 words)
+        const shortMessage = message.split(' ').slice(0, 3).join(' ');
+        window.showNotification(shortMessage, type, duration);
+        return;
+    }
+
+    // Fallback to legacy popup toast
     // Create toast container if it doesn't exist
     let container = document.getElementById('toast-container');
     if (!container) {

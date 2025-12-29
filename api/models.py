@@ -271,7 +271,7 @@ class EventBase(BaseModel):
     """
     model_config = ConfigDict(populate_by_name=True)
 
-    event_date: date = Field(..., alias='date', serialization_alias='date', description="When this event occurs")
+    event_date: date = Field(..., description="When this event occurs")
     description: str = Field(..., min_length=1, description="Event description (e.g., Car rental, Hotel deposit)")
     amount: Decimal = Field(..., max_digits=19, decimal_places=4, description="Amount (positive=income, negative=expense)")
     currency: str = Field(..., min_length=3, max_length=3, description="Native currency code (GBP, CAD, USD)")
@@ -281,6 +281,7 @@ class EventBase(BaseModel):
     is_baseline: bool = Field(default=False, description="Is this a baseline event?")
     is_hypothetical: bool = Field(default=False, description="Is this planned/hypothetical funding?")
     is_auto_adjustment: bool = Field(default=False, description="Created by reconciliation system?")
+    is_opening_balance: bool = Field(default=False, description="System-created opening balance event?")
 
     @field_validator('currency')
     @classmethod
@@ -338,7 +339,7 @@ class EventUpdate(BaseModel):
     """
     model_config = ConfigDict(populate_by_name=True)
 
-    event_date: Optional[date] = Field(default=None, alias='date', serialization_alias='date')
+    event_date: Optional[date] = Field(default=None)
     description: Optional[str] = Field(default=None, min_length=1)
     amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
@@ -348,6 +349,7 @@ class EventUpdate(BaseModel):
     is_baseline: Optional[bool] = Field(default=None)
     is_hypothetical: Optional[bool] = Field(default=None)
     is_auto_adjustment: Optional[bool] = Field(default=None)
+    is_opening_balance: Optional[bool] = Field(default=None)
 
     @field_validator('currency')
     @classmethod

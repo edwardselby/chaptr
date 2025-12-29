@@ -531,3 +531,400 @@ async def test_recurring_event_generation_on_sync(
     recurring_events = [c for c in event_changes
                        if c.get("data") and c["data"].get("recurring_rule_id") == str(sample_recurring_rule_with_user.id)]
     assert len(recurring_events) > 0, "Client B should receive generated recurring events"
+
+
+# ============================================================================
+# Reconciliation Integration Tests - Display-only drift architecture
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_triggers_reconciliation_creates_auto_events(
+    async_client_real,
+    auth_headers_real,
+    account_repo_real,
+    event_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that sync endpoint triggers reconciliation and creates [auto] events.
+
+    Scenario:
+    1. Client A updates account balance (sets pending_reconciliation=True)
+    2. Client A syncs
+    3. Server creates [auto] adjustment event
+    4. Client A receives [auto] event in server_changes
+
+    Validates:
+    - Sync triggers reconciliation phase
+    - [auto] event created with correct drift
+    - [auto] event included in server_changes
+    - pending_reconciliation flag cleared
+    """
+    from api.models import AccountCreate, EventCreate
+
+    # Create account with current_balance=1000
+    account_data = AccountCreate(
+        name="Monzo",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=True
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create event that makes projected balance = 500
+    event = EventCreate(
+        date="2025-01-10",
+        description="Salary",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True
+    )
+    await event_repo_real.create(
+        event,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Client A: Update account balance to 1000 with pending_reconciliation=True
+    sync_a1 = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(account.id),
+            "action": "update",
+            "data": {
+                "name": "Monzo",
+                "currency": "GBP",
+                "current_balance": "1000.00",
+                "is_default": True,
+                "pending_reconciliation": True,  # Mark for reconciliation
+                "updated_at": datetime.utcnow().isoformat()
+            },
+            "base_updated_at": account.updated_at.isoformat()
+        }]
+    }
+
+    response_a1 = await async_client_real.post("/api/sync", json=sync_a1, headers=auth_headers_real)
+    assert response_a1.status_code == 200
+    data_a1 = response_a1.json()
+
+    # Verify reconciliation triggered and [auto] event created
+    auto_events = await event_repo_real.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(auto_events) == 1, "Should create 1 [auto] adjustment event"
+
+    auto_event = auto_events[0]
+    # Drift = actual (1000) - projected (500) = 500
+    assert Decimal(str(auto_event["amount"])) == Decimal("500.00"), "Should have correct drift amount"
+    assert auto_event["description"] == "balance adjustment"
+    assert auto_event["is_auto_adjustment"] is True
+
+    # Verify [auto] event included in server_changes
+    auto_changes = [c for c in data_a1["server_changes"]
+                   if c["entity_type"] == "event" and
+                   c.get("data", {}).get("is_auto_adjustment") is True]
+
+    assert len(auto_changes) == 1, "[auto] event should be in server_changes"
+    assert auto_changes[0]["action"] == "create"
+
+    # Verify pending_reconciliation flag cleared
+    account_doc = await account_repo_real.collection.find_one({"id": str(account.id)})
+    assert account_doc["pending_reconciliation"] is False, "Should clear pending flag after reconciliation"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_reconciliation_multi_client_propagation(
+    async_client_real,
+    auth_headers_real,
+    account_repo_real,
+    event_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that [auto] events propagate to other clients via sync.
+
+    Scenario:
+    1. Client A updates account balance (pending_reconciliation=True)
+    2. Client A syncs (triggers reconciliation, creates [auto] event)
+    3. Client B syncs
+    4. Client B receives [auto] event in server_changes
+
+    Validates:
+    - [auto] events propagate like normal events
+    - Other clients receive reconciliation adjustments
+    - Change log includes [auto] event creation
+    """
+    from api.models import AccountCreate, EventCreate
+
+    # Create account
+    account_data = AccountCreate(
+        name="HSBC",
+        currency="GBP",
+        current_balance=Decimal("2000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create event (projected balance = 1000)
+    event = EventCreate(
+        date="2025-01-10",
+        description="Initial",
+        amount=Decimal("1000.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True
+    )
+    await event_repo_real.create(
+        event,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Client A: Update balance with pending_reconciliation
+    sync_a1 = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(account.id),
+            "action": "update",
+            "data": {
+                "name": "HSBC",
+                "currency": "GBP",
+                "current_balance": "2000.00",
+                "is_default": False,
+                "pending_reconciliation": True,
+                "updated_at": datetime.utcnow().isoformat()
+            },
+            "base_updated_at": account.updated_at.isoformat()
+        }]
+    }
+
+    response_a1 = await async_client_real.post("/api/sync", json=sync_a1, headers=auth_headers_real)
+    assert response_a1.status_code == 200
+    data_a1 = response_a1.json()
+
+    sync_ts_a1 = data_a1["sync_timestamp"]
+
+    # Client B: Sync to receive [auto] event
+    sync_b1 = {
+        "client_id": "client-b",
+        "last_sync_at": None,  # First sync
+        "changes": []
+    }
+
+    response_b1 = await async_client_real.post("/api/sync", json=sync_b1, headers=auth_headers_real)
+    assert response_b1.status_code == 200
+    data_b1 = response_b1.json()
+
+    # Verify Client B receives [auto] event in server_changes
+    auto_changes = [c for c in data_b1["server_changes"]
+                   if c["entity_type"] == "event" and
+                   c.get("data", {}).get("is_auto_adjustment") is True]
+
+    assert len(auto_changes) == 1, "Client B should receive [auto] event"
+    assert auto_changes[0]["action"] == "create"
+    # Drift = 2000 - 1000 = 1000
+    assert Decimal(auto_changes[0]["data"]["amount"]) == Decimal("1000.00")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_reconciliation_removes_old_auto_adjustments(
+    async_client_real,
+    auth_headers_real,
+    account_repo_real,
+    event_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that sync reconciliation removes old [auto] adjustments before creating new ones.
+
+    Scenario:
+    1. Account has old [auto] adjustment
+    2. Client updates balance (different drift)
+    3. Client syncs
+    4. Old [auto] removed, new one created
+
+    Validates:
+    - Old [auto] adjustments deleted
+    - New [auto] adjustment created with updated drift
+    - No accumulation of stale adjustments
+    """
+    from api.models import AccountCreate, EventCreate
+
+    # Create account
+    account_data = AccountCreate(
+        name="Revolut",
+        currency="GBP",
+        current_balance=Decimal("1500.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create baseline event (projected = 500)
+    event = EventCreate(
+        date="2025-01-10",
+        description="Starting",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True
+    )
+    await event_repo_real.create(
+        event,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create OLD [auto] adjustment (drift=500, stale)
+    old_auto = EventCreate(
+        date="2025-01-15",
+        description="balance adjustment",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_auto_adjustment=True
+    )
+    await event_repo_real.create(
+        old_auto,
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Client: Update balance to 1500 (new drift = 1000)
+    sync_1 = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(account.id),
+            "action": "update",
+            "data": {
+                "name": "Revolut",
+                "currency": "GBP",
+                "current_balance": "1500.00",
+                "is_default": False,
+                "pending_reconciliation": True,
+                "updated_at": datetime.utcnow().isoformat()
+            },
+            "base_updated_at": account.updated_at.isoformat()
+        }]
+    }
+
+    response_1 = await async_client_real.post("/api/sync", json=sync_1, headers=auth_headers_real)
+    if response_1.status_code != 200:
+        print(f"Sync failed with status {response_1.status_code}: {response_1.json()}")
+    assert response_1.status_code == 200
+
+    # Verify old [auto] removed and new one created
+    auto_events = await event_repo_real.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(auto_events) == 1, "Should have exactly 1 [auto] adjustment (old removed, new created)"
+
+    # Verify new adjustment has updated drift (1500 - 500 = 1000)
+    new_auto = auto_events[0]
+    assert Decimal(str(new_auto["amount"])) == Decimal("1000.00"), "Should have updated drift"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_reconciliation_trigger_endpoint(
+    async_client_real,
+    auth_headers_real,
+    sample_user_real,
+    account_repo_real,
+    event_repo_real
+):
+    """
+    Test POST /api/reconciliation/trigger endpoint (Task 120).
+
+    Verifies:
+    - Endpoint requires authentication
+    - Triggers reconciliation for all pending accounts
+    - Returns proper response format
+    - Creates auto-adjustment events when needed
+    """
+    # Create account with drift (needs reconciliation)
+    account = await account_repo_real.create(
+        {
+            "name": "Test Account",
+            "currency": "GBP",
+            "current_balance": Decimal("1000.00"),
+            "is_default": True,
+            "pending_reconciliation": True
+        },
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Create baseline event (projected balance = 500)
+    await event_repo_real.create(
+        {
+            "date": "2025-01-10",
+            "description": "salary",
+            "amount": Decimal("500.00"),
+            "account_id": account.id,
+            "currency": "GBP",
+            "rate_to_base": Decimal("1.0"),
+            "is_baseline": True
+        },
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Trigger reconciliation via endpoint
+    response = await async_client_real.post(
+        "/api/reconciliation/trigger",
+        headers=auth_headers_real
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify response format
+    assert "reconciled" in data
+    assert "message" in data
+    assert data["reconciled"] is True
+    assert "complete" in data["message"].lower()
+
+    # Verify auto-adjustment event was created
+    auto_events = await event_repo_real.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(auto_events) == 1, "Should create auto-adjustment event"
+    assert Decimal(str(auto_events[0]["amount"])) == Decimal("500.00"), "Drift should be 1000 - 500 = 500"
