@@ -146,6 +146,13 @@ async def generate_recurring_events(
             # If currency not in rates, default to 1.0
             rate_to_base = settings.rates.get(rule.currency, Decimal("1.0"))
 
+            # Look up account to determine baseline status
+            account_doc = await db["accounts"].find_one({"id": str(rule.account_id)})
+            is_baseline = False
+            if account_doc:
+                # Recurring events inherit baseline status from account
+                is_baseline = account_doc.get("is_default", False)
+
             # Create new event instance
             now = utc_now()  # Single timestamp for both created_at and updated_at
             event = Event(
@@ -157,7 +164,7 @@ async def generate_recurring_events(
                 rate_to_base=rate_to_base,
                 account_id=rule.account_id,
                 story_id=None,  # Recurring events not tied to stories by default
-                is_baseline=False,  # Recurring events are not baseline
+                is_baseline=is_baseline,  # Inherit from account's is_default
                 recurring_rule_id=rule.id,  # Link to parent rule
                 created_at=now,
                 created_by=user_id,

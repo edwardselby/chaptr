@@ -1468,6 +1468,20 @@ body::before {
     background: rgba(244, 67, 54, 0.1);
 }
 
+/* Recurring Tag Styles */
+.recurring-tag {
+    color: var(--blue);
+    border: 1px solid var(--blue);
+    background: rgba(0, 123, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recurring-tag:hover {
+    background: rgba(0, 123, 255, 0.2);
+    transform: scale(1.05);
+}
+
 /* Balance Modal Styles */
 .balance-display {
     background: var(--bg-secondary);
