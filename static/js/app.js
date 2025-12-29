@@ -769,6 +769,80 @@ window.app = function() {
         },
 
         /**
+         * Create opening balance event for new account (mirrors backend logic)
+         *
+         * @param {Object} account - Account object with id, currency, current_balance
+         * @returns {Object} Event object ready for Dexie insertion
+         */
+        async _createOpeningBalanceEvent(account) {
+            const eventId = generateUUID();
+
+            // Use account's created_at date for event_date (not today)
+            // This matches backend behavior: opening balance is dated when account was created
+            const accountCreatedDate = account.created_at
+                ? toLocalISODate(new Date(account.created_at))
+                : toLocalISODate(new Date());
+
+            // Get rate_to_base from settings (same logic as backend)
+            let rate_to_base = 1.0;
+            if (account.currency !== this.settings.base_currency) {
+                rate_to_base = this.settings.rates?.[account.currency] || 1.0;
+            }
+
+            return {
+                id: eventId,
+                event_date: accountCreatedDate,         // Use account creation date
+                description: 'opening balance',         // Match backend description
+                amount: String(parseFloat(account.current_balance)),
+                currency: account.currency,
+                rate_to_base: rate_to_base,
+                account_id: account.id,
+                story_id: null,                         // Baseline (not part of story)
+                is_baseline: true,
+                is_hypothetical: false,
+                is_auto_adjustment: false,
+                is_opening_balance: true,               // ← Special flag
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+        },
+
+        /**
+         * Create balance adjustment event (mirrors reconciliation logic)
+         *
+         * @param {Object} account - Account object
+         * @param {number} drift - Amount to adjust (actual - projected)
+         * @returns {Object} Event object ready for Dexie insertion
+         */
+        async _createAdjustmentEvent(account, drift) {
+            const eventId = generateUUID();
+            const today = toLocalISODate(new Date());
+
+            // Get rate_to_base from settings
+            let rate_to_base = 1.0;
+            if (account.currency !== this.settings.base_currency) {
+                rate_to_base = this.settings.rates?.[account.currency] || 1.0;
+            }
+
+            return {
+                id: eventId,
+                event_date: today,                      // Today (when adjustment made)
+                description: 'balance adjustment',      // Match backend description
+                amount: String(parseFloat(drift)),      // Drift amount
+                currency: account.currency,
+                rate_to_base: rate_to_base,
+                account_id: account.id,
+                story_id: null,                         // Baseline (not story-specific)
+                is_baseline: true,
+                is_hypothetical: false,
+                is_auto_adjustment: true,               // ← Mark as [auto]
+                is_opening_balance: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+        },
+
+        /**
          * Create new account (via storage adapter)
          */
         async createAccount() {
@@ -780,7 +854,28 @@ window.app = function() {
             };
 
             // Use storage adapter (handles all 3 modes)
-            await storage.createAccount(accountData);
+            const createdAccount = await storage.createAccount(accountData);
+
+            // In full offline mode, create opening balance event locally
+            // (mirrors backend behavior in api/repositories/accounts.py:128)
+            if (storage.mode === 'full' && parseFloat(accountData.current_balance) !== 0) {
+                // Check for existing opening balance event to prevent duplicates
+                const existingOpeningBalance = await db.events
+                    .where({ account_id: createdAccount.id, is_opening_balance: true })
+                    .count();
+
+                if (existingOpeningBalance === 0) {
+                    // Pass full createdAccount object (includes created_at field)
+                    const openingEvent = await this._createOpeningBalanceEvent(createdAccount);
+
+                    await db.events.add(openingEvent);
+                    await db.queueChange('event', openingEvent.id, 'create', openingEvent);
+
+                    console.log(`[CHAPTR] Created opening balance event ${openingEvent.id} for account ${createdAccount.id}`);
+                } else {
+                    console.log(`[CHAPTR] Skipped duplicate opening balance event for account ${createdAccount.id}`);
+                }
+            }
 
             // Update sync queue count for UI indicator
             await this.updateSyncQueueCount();
@@ -2082,45 +2177,44 @@ window.app = function() {
             }
 
             try {
-                // Update local account current_balance and mark for reconciliation
+                // Get account and calculate drift
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
                 if (!account) {
                     throw new Error('Account not found');
                 }
 
-                const updatedAccount = {
-                    ...account,
-                    current_balance: parseFloat(this.balanceForm.actual_balance),
-                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
-                    pending_reconciliation: true, // Mark for reconciliation per spec
-                    updated_at: new Date().toISOString()
-                };
+                const drift = this.balanceForm.drift;
 
                 if (storage.mode === 'full') {
-                    // Get base_updated_at for conflict detection
-                    const baseUpdatedAt = account.updated_at;
+                    // Create adjustment event instead of updating account
+                    // (mirrors backend reconciliation behavior)
+                    const adjustmentEvent = await this._createAdjustmentEvent(account, drift);
 
-                    // Update account in Dexie
-                    await db.accounts.put(updatedAccount);
+                    await db.events.add(adjustmentEvent);
+                    await db.queueChange('event', adjustmentEvent.id, 'create', adjustmentEvent);
 
-                    // Queue account update for sync
-                    await db.queueChange(
-                        'account',
-                        account.id,
-                        'update',
-                        updatedAccount,
-                        baseUpdatedAt
-                    );
+                    console.log(`[CHAPTR] Created adjustment event ${adjustmentEvent.id} with drift ${drift}`);
+
+                    // Update account metadata only (no balance field update needed)
+                    await db.accounts.update(account.id, {
+                        balance_updated_at: new Date().toISOString(),
+                        pending_reconciliation: false,  // We just created the adjustment
+                        updated_at: new Date().toISOString()
+                    });
                 } else {
-                    // Mode 0: Direct update without sync
-                    Object.assign(account, updatedAccount);
+                    // Mode 2/3: Update account directly (no events)
+                    Object.assign(account, {
+                        current_balance: parseFloat(this.balanceForm.actual_balance),
+                        balance_updated_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
                 }
 
-                // Trigger reconciliation to create [auto] adjustments immediately
-                // (This will reload data and update projection internally)
-                await this.triggerReconciliation();
-
                 this.showBalanceModal = false;
+
+                // Reload data to show new adjustment event in projection
+                await this.loadData();
+                await this.updateProjectionRows();
 
                 // Show notification
                 this.showNotification('Balance updated', 'success');
