@@ -776,7 +776,12 @@ window.app = function() {
          */
         async _createOpeningBalanceEvent(account) {
             const eventId = generateUUID();
-            const today = toLocalISODate(new Date());
+
+            // Use account's created_at date for event_date (not today)
+            // This matches backend behavior: opening balance is dated when account was created
+            const accountCreatedDate = account.created_at
+                ? toLocalISODate(new Date(account.created_at))
+                : toLocalISODate(new Date());
 
             // Get rate_to_base from settings (same logic as backend)
             let rate_to_base = 1.0;
@@ -786,7 +791,7 @@ window.app = function() {
 
             return {
                 id: eventId,
-                event_date: today,                      // Account creation date
+                event_date: accountCreatedDate,         // Use account creation date
                 description: 'opening balance',         // Match backend description
                 amount: String(parseFloat(account.current_balance)),
                 currency: account.currency,
@@ -854,16 +859,22 @@ window.app = function() {
             // In full offline mode, create opening balance event locally
             // (mirrors backend behavior in api/repositories/accounts.py:128)
             if (storage.mode === 'full' && parseFloat(accountData.current_balance) !== 0) {
-                const openingEvent = await this._createOpeningBalanceEvent({
-                    id: createdAccount.id,
-                    currency: accountData.currency,
-                    current_balance: accountData.current_balance
-                });
+                // Check for existing opening balance event to prevent duplicates
+                const existingOpeningBalance = await db.events
+                    .where({ account_id: createdAccount.id, is_opening_balance: true })
+                    .count();
 
-                await db.events.add(openingEvent);
-                await db.queueChange('event', openingEvent.id, 'create', openingEvent);
+                if (existingOpeningBalance === 0) {
+                    // Pass full createdAccount object (includes created_at field)
+                    const openingEvent = await this._createOpeningBalanceEvent(createdAccount);
 
-                console.log(`[CHAPTR] Created opening balance event ${openingEvent.id} for account ${createdAccount.id}`);
+                    await db.events.add(openingEvent);
+                    await db.queueChange('event', openingEvent.id, 'create', openingEvent);
+
+                    console.log(`[CHAPTR] Created opening balance event ${openingEvent.id} for account ${createdAccount.id}`);
+                } else {
+                    console.log(`[CHAPTR] Skipped duplicate opening balance event for account ${createdAccount.id}`);
+                }
             }
 
             // Update sync queue count for UI indicator
