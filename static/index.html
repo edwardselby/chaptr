@@ -230,6 +230,18 @@
                 <div class="timeline">
                     <template x-for="row in projectionRows" :key="row.id || row.event_date + row.description">
                         <div>
+                            <!-- Hidden Events Gap Indicator BEFORE event (story views only) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'before'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
                             <!-- Regular Event Row -->
                             <div
                                 class="timeline-row"
@@ -253,7 +265,19 @@
                                 <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
                             </div>
 
-                            <!-- Gap Indicator Row -->
+                            <!-- Hidden Events Gap Indicator AFTER event (trailing gaps) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'after'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
+                            <!-- Gap Indicator Row (time-based gaps) -->
                             <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
                                 <div class="gap-line"></div>
                                 <div class="gap-content">

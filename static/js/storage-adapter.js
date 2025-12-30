@@ -957,13 +957,27 @@ class StorageAdapter {
             console.log(`[CHAPTR] Syncing ${pending.length} pending changes...`);
 
             // 2. Format changes for sync protocol
-            const changes = pending.map(c => ({
-                entity_type: c.entity_type,
-                entity_id: c.entity_id,
-                action: c.action,
-                data: c.data,
-                base_updated_at: c.base_updated_at || null
-            }));
+            const changes = pending.map(c => {
+                const change = {
+                    entity_type: c.entity_type,
+                    entity_id: c.entity_id,
+                    action: c.action,
+                    data: c.data,
+                    base_updated_at: c.base_updated_at || null
+                };
+
+                // Include metadata for derived event detection
+                // Server uses this to skip client-created derived events
+                if (c.dependencies || c._derived_from || c._optimistic !== undefined) {
+                    change.metadata = {
+                        dependencies: c.dependencies || [],
+                        _derived_from: c._derived_from || null,
+                        _optimistic: c._optimistic || false
+                    };
+                }
+
+                return change;
+            });
 
             // 3. POST /api/sync
             const response = await apiRequest('/api/sync', {

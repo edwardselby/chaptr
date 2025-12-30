@@ -787,6 +787,32 @@ body::before {
     color: var(--green-bright);
 }
 
+/* Hidden Events Gap Indicator (story views) */
+.hidden-events-gap {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.gap-count {
+    font-style: italic;
+}
+
+.gap-delta {
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.gap-delta.positive {
+    color: var(--green-bright);
+}
+
+.gap-delta.negative {
+    color: var(--red);
+}
+
 /* Revealed Gap Rows */
 .timeline-row.revealed {
     background: var(--bg-tertiary);

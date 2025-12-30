@@ -393,7 +393,7 @@ window.app = function() {
                 // Reload data into Alpine state
                 await this.loadData();
 
-                // Set flag to refresh projection (sync may have cleared pending_reconciliation flags)
+                // Set flag to refresh projection
                 this.needsProjectionRefresh = true;
 
                 console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
@@ -455,12 +455,7 @@ window.app = function() {
 
             // Update projection when viewing projection screen
             if (screen === 'projection') {
-                // Trigger reconciliation if there are pending accounts
-                if (this.accounts.some(a => a.pending_reconciliation)) {
-                    await this.triggerReconciliation();
-                }
-
-                // Refresh projection if reconciliation occurred while on another screen
+                // Refresh projection if sync occurred while on another screen
                 if (this.needsProjectionRefresh) {
                     this.needsProjectionRefresh = false;
                 }
@@ -526,11 +521,6 @@ window.app = function() {
 
             // Clear expanded gaps to prevent memory leak across view changes
             this.expandedGaps.clear();
-
-            // Trigger reconciliation if viewing projection with pending accounts
-            if (this.accounts.some(a => a.pending_reconciliation)) {
-                await this.triggerReconciliation();
-            }
 
             // Reset display currency when switching views
             if (view !== 'all') {
@@ -832,13 +822,23 @@ window.app = function() {
          */
         async updateAccount() {
             const accountId = this.accountForm.id;
+            const newBalance = parseFloat(this.accountForm.current_balance || 0);
+
+            // Check if balance changed to trigger reconciliation
+            const currentAccount = this.accounts.find(a => a.id === accountId);
+            const balanceChanged = currentAccount && parseFloat(currentAccount.current_balance) !== newBalance;
 
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
+                current_balance: String(newBalance),
                 is_default: this.accountForm.is_default || false
             };
+
+            // If balance changed, set flag to trigger server-side adjustment
+            if (balanceChanged) {
+                updates.pending_reconciliation = true;
+            }
 
             // Use storage adapter (handles all 3 modes)
             await storage.updateAccount(accountId, updates);
@@ -2056,66 +2056,24 @@ window.app = function() {
         },
 
         /**
-         * Calculate drift for accounts pending reconciliation
-         * Returns virtual drift rows for display in projection
+         * Calculate pending drifts (REMOVED - queue-as-state architecture)
          *
-         * Per refactored spec: Frontend displays drift without persisting events.
-         * Server creates authoritative [auto] events on sync.
+         * Old architecture: Virtual drift rows based on pending_reconciliation flag
+         * New architecture: Real optimistic adjustment events created immediately
          *
-         * @returns {Array} Array of virtual drift row objects
+         * With queue-as-state, adjustment events are REAL events in Dexie with
+         * _optimistic: true flag. No virtual rows or pending_reconciliation needed.
+         *
+         * Keeping stub for backward compatibility with existing callers.
+         * @returns {Array} Empty array (no virtual drifts)
          */
         calculatePendingDrifts() {
-            const today = toLocalISODate(new Date());
-            const virtualRows = [];
-
-            // Find accounts with pending_reconciliation = true
-            const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
-
-            for (const account of pendingAccounts) {
-                // Calculate projected balance from opening balance + all events (ignore balance_updated_at)
-                // This shows the true drift between projected and actual
-                let projectedBalance = 0;
-                const accountEvents = this.events.filter(e =>
-                    e.account_id === account.id &&
-                    e.event_date <= today
-                );
-                for (const event of accountEvents) {
-                    projectedBalance += event.amount;
-                }
-
-                // Compare to actual balance
-                const actualBalance = parseFloat(account.current_balance || 0);
-                const drift = actualBalance - projectedBalance;
-
-                // Only create virtual row if drift is significant (> 0.01)
-                if (Math.abs(drift) > 0.01) {
-                    virtualRows.push({
-                        id: `virtual-drift-${account.id}`,
-                        date: today,
-                        description: `pending adjustment for ${account.name}`,
-                        amount: drift,
-                        balance: actualBalance, // Balance after drift adjustment
-                        account_id: account.id,
-                        currency: account.currency,
-                        source: '[pending sync]',
-                        isDrift: true,
-                        isVirtual: true,
-                        isGap: false,
-                        driftDetails: {
-                            accountName: account.name,
-                            projectedBalance,
-                            actualBalance,
-                            drift
-                        }
-                    });
-                }
-            }
-
-            return virtualRows;
+            return []; // Queue-as-state: Real events, not virtual rows
         },
 
         /**
-         * Save balance update - creates real adjustment event (queue-as-state)
+         * Save balance update - creates optimistic adjustment event (queue-as-state)
+         * Server may override with authoritative version via conflict resolution
          */
         async saveBalanceUpdate() {
             if (this.balanceForm.drift === 0) {
@@ -2124,7 +2082,6 @@ window.app = function() {
             }
 
             try {
-                // Get account
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
                 if (!account) {
                     throw new Error('Account not found');
@@ -2134,8 +2091,8 @@ window.app = function() {
                 const now = new Date().toISOString();
                 const today = toLocalISODate(new Date());
 
-                // Queue-as-state: Create REAL adjustment event (not virtual)
-                // Mark as optimistic - server may override with authoritative version
+                // Queue-as-state: Create REAL adjustment event marked as optimistic
+                // Server will reconcile and may override with authoritative version
                 const adjustmentEvent = {
                     id: generateUUID(),
                     event_date: today,
@@ -2155,7 +2112,7 @@ window.app = function() {
                     updated_at: now
                 };
 
-                // Apply as derived change (server may override)
+                // Apply as derived change with optimistic flag
                 await applyDerivedChange(
                     {
                         entity_type: 'event',
@@ -2167,15 +2124,17 @@ window.app = function() {
                     {
                         _derived_from: 'balance_reconciliation',
                         dependencies: [account.id],
-                        _optimistic: true  // Server may correct this
+                        _optimistic: true  // Server may override with authoritative version
                     }
                 );
 
-                // Update account balance
+                // Update account balance and set pending_reconciliation flag
+                // Server will see this flag during reconciliation phase and create authoritative adjustment
                 const updates = {
                     current_balance: parseFloat(this.balanceForm.actual_balance),
                     balance_updated_at: now,
-                    updated_at: now
+                    updated_at: now,
+                    pending_reconciliation: true  // Trigger server-side adjustment creation
                 };
 
                 await storage.updateAccount(account.id, updates);
@@ -2184,11 +2143,10 @@ window.app = function() {
 
                 this.showBalanceModal = false;
 
-                // Reload data to show updated account and adjustment event
+                // Reload to show adjustment event in projection
                 await this.loadData();
                 await this.updateDashboardProjection();
 
-                // Show notification
                 this.showNotification('Balance updated', 'success');
 
             } catch (error) {
@@ -2889,29 +2847,18 @@ window.app = function() {
         /**
          * Trigger reconciliation for all pending accounts
          */
+        /**
+         * Trigger reconciliation (DEPRECATED - queue-as-state architecture)
+         *
+         * Old architecture: Frontend set pending_reconciliation flag, triggered server reconciliation
+         * New architecture: Frontend creates optimistic adjustment events, server processes during sync
+         *
+         * Keeping stub for backward compatibility. Can be removed entirely.
+         */
         async triggerReconciliation() {
-            if (storage.mode !== 'full') {
-                return; // Only in full mode
-            }
-
-            try {
-                const response = await apiRequest('/api/reconciliation/trigger', {
-                    method: 'POST'
-                });
-
-                if (response.reconciled) {
-                    // Reload data to get new [auto] adjustment events
-                    await this.loadData();
-                    await this.updateDashboardProjection();
-
-                    // Set flag to refresh projection when user navigates to it
-                    this.needsProjectionRefresh = true;
-                }
-            } catch (error) {
-                console.error('Reconciliation trigger failed:', error);
-                // Silent fail - this is a background operation
-                // Reconciliation will happen on next sync anyway
-            }
+            // DEPRECATED: Queue-as-state handles this via optimistic events
+            console.log('[CHAPTR] triggerReconciliation() called but deprecated - using queue-as-state');
+            return;
         },
 
         /**
@@ -2952,18 +2899,34 @@ window.app = function() {
                         ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
                         : conflict.server_version?.updated_at;
 
-                    // Update event in local database
-                    await db.events.put({
+                    // Ensure object has 'id' field (Dexie primary key)
+                    // Backend conflicts use MongoDB _id, need to convert
+                    // Also serialize MongoDB types (Decimal128, ObjectId) to plain JS values
+                    const eventData = {
                         ...selectedVersion,
-                        updated_at: new Date().toISOString() // Fresh timestamp
-                    });
+                        id: selectedVersion.id || conflict.entity_id,  // Use entity_id as fallback
+                        updated_at: new Date().toISOString(), // Fresh timestamp
+                        // Convert MongoDB Decimal128 to number
+                        amount: parseFloat(selectedVersion.amount),
+                        rate_to_base: parseFloat(selectedVersion.rate_to_base || 1.0),
+                        // Ensure IDs are strings (convert MongoDB ObjectId if needed)
+                        account_id: selectedVersion.account_id ? String(selectedVersion.account_id) : null,
+                        story_id: selectedVersion.story_id ? String(selectedVersion.story_id) : null,
+                        recurring_rule_id: selectedVersion.recurring_rule_id ? String(selectedVersion.recurring_rule_id) : null
+                    };
 
-                    // Task 117: Queue resolution for sync
+                    // Remove MongoDB _id field if present (not needed in Dexie)
+                    delete eventData._id;
+
+                    // Update event in local database
+                    await db.events.put(eventData);
+
+                    // Task 117: Queue resolution for sync (use serialized data)
                     await db.queueChange(
                         'event',
                         conflict.entity_id,
                         'update',
-                        selectedVersion,
+                        eventData,  // Use serialized version, not original
                         baseUpdatedAt // Use original timestamp before conflict
                     );
                 } else {
@@ -2998,7 +2961,7 @@ window.app = function() {
                     await this.updateDashboardProjection();
 
                     // Trigger sync to send resolved changes
-                    await storage.sync();
+                    await this.manualSync();
                 }
             } catch (error) {
                 console.error('Error resolving conflict:', error);

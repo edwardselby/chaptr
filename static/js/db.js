@@ -216,7 +216,9 @@ db.clearSyncQueue = async function() {
  * Helper: Get unresolved conflicts
  */
 db.getUnresolvedConflicts = async function() {
-    return await db.conflicts.where('resolved_at').equals(null).toArray();
+    // Dexie doesn't support .equals(null) - filter after fetch instead
+    const allConflicts = await db.conflicts.toArray();
+    return allConflicts.filter(c => c.resolved_at === null || c.resolved_at === undefined);
 };
 
 /**
