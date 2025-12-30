@@ -50,7 +50,7 @@ db.version(3).stores({
     // Core entities (unchanged)
     accounts: 'id, currency, is_default, is_archived',
     stories: 'id, start_date, end_date, is_archived',
-    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical, is_opening_balance, is_auto_adjustment',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical, is_opening_balance, is_auto_adjustment, recurring_rule_id',
     recurring_rules: 'id, story_id, frequency, next_occurrence',
     users: 'id, username, role',
     settings: 'id',

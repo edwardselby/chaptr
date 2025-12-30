@@ -1644,12 +1644,9 @@ window.app = function() {
                     this.showNotification(
                         `${conflicts} conflicts`,
                         'warning'
-                        );
-                    } else {
-                        this.showNotification(`Synced ${queueCount}`, 'success');
-                    }
+                    );
                 } else {
-                    this.showNotification('Sync complete', 'success');
+                    this.showNotification(`Synced ${queueCount}`, 'success');
                 }
 
             } catch (error) {
