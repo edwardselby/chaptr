@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)
+- REFACTOR: Metadata-based derived event skipping in sync protocol - server skips client-created derived events before database insertion
+- REFACTOR: Same-batch update conflict skipping - updates to entities created in same sync session apply without conflict detection
+- REFACTOR: derived_event_overridden conflict type for silent client-side resolution of optimistic derived events
 - CPTR-44a44752, acc5a57a, 0debfa03, c81cdb3f, 8b3ea066: Recurring events feature with toggle in event modal to switch between simple and recurring modes
 - CPTR-44a44752: Recurring event fields (frequency, day, start_date, end_date) with conditional validation based on frequency type
 - CPTR-c81cdb3f: [recurring] tag in timeline for generated events with click handler to edit parent rule
@@ -17,10 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-8b3ea066: Phantom-to-real event conversion when user edits recurring event instance
 
 ### Changed
+- REFACTOR: Sync queue includes metadata when building sync requests for server-side derived event detection
+- REFACTOR: Balance reconciliation modal sets pending_reconciliation flag to trigger server-side adjustment creation
+- REFACTOR: Direct account edits detect balance changes and set pending_reconciliation flag for server reconciliation
+- REFACTOR: Same-day event ordering in projection prioritizes opening balance → auto-adjustments → regular events → by amount
 - CPTR-44a44752: Event modal now supports two modes (simple/recurring) controlled by toggle switch
 - CPTR-acc5a57a: updateRecurringRule() deduplicates sync queue by removing old entries before adding updated rule
 - CPTR-0debfa03: deleteRecurringRuleFromModal() preserves past events and manually edited instances, only removes future unedited events
 - CPTR-8b3ea066: Projection calculation merges phantom events with real events when offline or in full mode
+
+### Fixed
+- REFACTOR: Gap indicator positioning - gaps now appear BEFORE events instead of after (same-day ordering fix)
+- REFACTOR: Duplicate opening balance events eliminated via metadata-based skipping (no database mutations)
+- REFACTOR: Adjustment events persist after sync via pending_reconciliation flag and same-batch update logic
+- REFACTOR: CREATE→UPDATE sequences in offline sessions work correctly (account creation + balance update)
 
 ## [0.2.0] - 2025-12-28
 
