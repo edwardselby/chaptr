@@ -2072,11 +2072,19 @@ window.app = function() {
             const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
 
             for (const account of pendingAccounts) {
-                // Calculate projected balance for this account at today
-                const projectedBalance = this.calculateAccountBalance(account.id, today);
+                // Calculate projected balance from opening balance + all events (ignore balance_updated_at)
+                // This shows the true drift between projected and actual
+                let projectedBalance = 0;
+                const accountEvents = this.events.filter(e =>
+                    e.account_id === account.id &&
+                    e.event_date <= today
+                );
+                for (const event of accountEvents) {
+                    projectedBalance += event.amount;
+                }
 
                 // Compare to actual balance
-                const actualBalance = account.current_balance;
+                const actualBalance = parseFloat(account.current_balance || 0);
                 const drift = actualBalance - projectedBalance;
 
                 // Only create virtual row if drift is significant (> 0.01)
@@ -2107,7 +2115,7 @@ window.app = function() {
         },
 
         /**
-         * Save balance update - sets pending_reconciliation flag for server to handle
+         * Save balance update - creates real adjustment event (queue-as-state)
          */
         async saveBalanceUpdate() {
             if (this.balanceForm.drift === 0) {
@@ -2122,28 +2130,66 @@ window.app = function() {
                     throw new Error('Account not found');
                 }
 
-                // Queue-as-state: Set pending_reconciliation flag only
-                // Server will create authoritative adjustment event during sync
-                const updates = {
-                    current_balance: parseFloat(this.balanceForm.actual_balance),
-                    balance_updated_at: new Date().toISOString(),
-                    pending_reconciliation: true,  // Trigger server reconciliation
-                    updated_at: new Date().toISOString()
+                const drift = this.balanceForm.drift;
+                const now = new Date().toISOString();
+                const today = toLocalISODate(new Date());
+
+                // Queue-as-state: Create REAL adjustment event (not virtual)
+                // Mark as optimistic - server may override with authoritative version
+                const adjustmentEvent = {
+                    id: generateUUID(),
+                    event_date: today,
+                    description: 'balance adjustment',
+                    amount: drift,
+                    currency: account.currency,
+                    rate_to_base: this.settings.rates?.[account.currency] || 1.0,
+                    account_id: account.id,
+                    story_id: null,
+                    is_baseline: true,
+                    is_hypothetical: false,
+                    is_opening_balance: false,
+                    is_auto_adjustment: true,
+                    is_transfer: false,
+                    recurring_rule_id: null,
+                    created_at: now,
+                    updated_at: now
                 };
 
-                // Use storage adapter (handles all 3 modes)
+                // Apply as derived change (server may override)
+                await applyDerivedChange(
+                    {
+                        entity_type: 'event',
+                        entity_id: adjustmentEvent.id,
+                        action: 'create',
+                        data: adjustmentEvent,
+                        base_updated_at: null
+                    },
+                    {
+                        _derived_from: 'balance_reconciliation',
+                        dependencies: [account.id],
+                        _optimistic: true  // Server may correct this
+                    }
+                );
+
+                // Update account balance
+                const updates = {
+                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    balance_updated_at: now,
+                    updated_at: now
+                };
+
                 await storage.updateAccount(account.id, updates);
 
-                console.log(`[CHAPTR] Set pending_reconciliation=true for account ${account.id} (drift: ${this.balanceForm.drift})`);
+                console.log(`[CHAPTR] Created optimistic adjustment event ${adjustmentEvent.id} for account ${account.id} (drift: ${drift})`);
 
                 this.showBalanceModal = false;
 
-                // Reload data to show updated account and drift indicator
+                // Reload data to show updated account and adjustment event
                 await this.loadData();
-                await this.updateProjectionRows();
+                await this.updateDashboardProjection();
 
                 // Show notification
-                this.showNotification('Balance updated - will reconcile on sync', 'success');
+                this.showNotification('Balance updated', 'success');
 
             } catch (error) {
                 console.error('Error updating balance:', error);
@@ -2502,6 +2548,9 @@ window.app = function() {
                 }
 
                 this.showEventModal = false;
+
+                // Refresh projection to show new/updated event
+                await this.updateDashboardProjection();
 
             } catch (error) {
                 console.error('Error saving event:', error);

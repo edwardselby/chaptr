@@ -84,12 +84,14 @@ export async function calculateProjection(
         const allEvents = await db.events.toArray();
 
         // Separate opening balance events from regular historical events
-        const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true);
+        // FIX: Opening balance events should only be in starting balance if dated BEFORE startDate
+        // Otherwise they appear as projection rows (causing double counting)
+        const openingBalanceEvents = allEvents.filter(e => e.is_opening_balance === true && e.event_date < startDate);
         const regularHistoricalEvents = allEvents.filter(e =>
             e.is_opening_balance !== true && e.event_date < startDate
         );
 
-        // Process opening balance events (ALWAYS included for starting balance)
+        // Process opening balance events (only those before projection start)
         for (const event of openingBalanceEvents) {
             // Filter based on view
             let includeEvent = false;
@@ -255,16 +257,17 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         if (!todayDividerInserted && row.event_date >= today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
-
-            // Inject virtual drift rows after TODAY divider, before future events
-            if (virtualDrifts && virtualDrifts.length > 0) {
-                for (const driftRow of virtualDrifts) {
-                    withGaps.push(driftRow);
-                }
-            }
         }
 
+        // Push the current row first
         withGaps.push(row);
+
+        // Then inject virtual drift rows AFTER the row with today divider
+        if (row.showTodayDivider && virtualDrifts && virtualDrifts.length > 0) {
+            for (const driftRow of virtualDrifts) {
+                withGaps.push(driftRow);
+            }
+        }
 
         // Check gap to next event
         if (i < rows.length - 1) {
