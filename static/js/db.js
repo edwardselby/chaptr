@@ -12,6 +12,9 @@ const db = new Dexie('CHAPTR');
  *
  * Version 1: Initial schema with all core tables
  * Version 2: Migrated event date field from 'date' to 'event_date'
+ * Version 3: Enhanced sync_queue for queue-as-state architecture
+ *            - Added _derived_from index for derived event tracking
+ *            - Queue fields: dependencies, _derived_from, _optimistic (non-indexed)
  */
 db.version(1).stores({
     // Core entities
@@ -41,6 +44,39 @@ db.version(2).stores({
     conflicts: 'id, entity_type, entity_id, resolved_at',
     sync_queue: '++id, entity_type, entity_id, queued_at, action',
     sync_meta: 'id'
+});
+
+db.version(3).stores({
+    // Core entities (unchanged)
+    accounts: 'id, currency, is_default, is_archived',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical, is_opening_balance, is_auto_adjustment',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Sync protocol - ENHANCED queue schema for queue-as-state architecture
+    conflicts: 'id, entity_type, entity_id, resolved_at',
+    sync_queue: '++id, entity_type, entity_id, queued_at, action, _derived_from',
+    sync_meta: 'id'
+}).upgrade(async trans => {
+    // Migrate existing queue entries to v3 schema with metadata fields
+    console.log('[CHAPTR] Upgrading to schema v3 - adding queue metadata fields');
+
+    await trans.sync_queue.toCollection().modify(entry => {
+        // Add missing metadata fields with safe defaults
+        if (entry.dependencies === undefined) {
+            entry.dependencies = [];
+        }
+        if (entry._derived_from === undefined) {
+            entry._derived_from = null;
+        }
+        if (entry._optimistic === undefined) {
+            entry._optimistic = false;
+        }
+    });
+
+    console.log('[CHAPTR] Schema v3 upgrade complete');
 });
 
 /**
@@ -118,20 +154,47 @@ db.getDefaultAccount = async function() {
 /**
  * Helper: Queue an entity change for sync
  *
+ * Queue-as-state architecture: Queue represents "what server will look like soon"
+ *
  * @param {string} entityType - Type of entity (account, story, event, etc.)
  * @param {string} entityId - UUID of the entity
  * @param {string} action - Action type: 'create', 'update', or 'delete'
  * @param {object} data - Entity data (null for deletes)
  * @param {string} baseUpdatedAt - Last known updated_at timestamp (for conflict detection on updates/deletes)
+ * @param {object} metadata - Optional metadata for queue-as-state
+ * @param {array} metadata.dependencies - Array of entity IDs this change depends on
+ * @param {string} metadata._derived_from - Mark derived operations ('account_creation', 'recurring_rule_creation')
+ * @param {boolean} metadata._optimistic - Is this a frontend guess? (server may correct)
  */
-db.queueChange = async function(entityType, entityId, action, data, baseUpdatedAt = null) {
+db.queueChange = async function(entityType, entityId, action, data, baseUpdatedAt = null, metadata = {}) {
     await db.sync_queue.add({
         entity_type: entityType,
         entity_id: entityId,
         action: action, // 'create', 'update', 'delete'
         data: data,
         base_updated_at: baseUpdatedAt, // For conflict detection (update/delete only)
-        queued_at: new Date().toISOString()
+        queued_at: new Date().toISOString(),
+
+        // Queue-as-state enhancements (v3)
+        dependencies: metadata.dependencies || [],
+        _derived_from: metadata._derived_from || null,
+        _optimistic: metadata._optimistic || false
+    });
+};
+
+/**
+ * Helper: Mark an entity as having a queued operation
+ *
+ * Sets the _queued_op flag on an entity to indicate it has pending changes.
+ * This flag helps identify which entities are part of queue-as-state.
+ *
+ * @param {string} tableName - Name of the Dexie table (e.g., 'accounts', 'events')
+ * @param {string} entityId - UUID of the entity
+ * @param {string} action - Action type: 'create', 'update', or 'delete'
+ */
+db.markAsQueued = async function(tableName, entityId, action) {
+    await db[tableName].update(entityId, {
+        _queued_op: action
     });
 };
 

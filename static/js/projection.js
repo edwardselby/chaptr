@@ -6,7 +6,6 @@
 
 import { db } from './db.js';
 import { parseISODate, daysBetween, toLocalISODate } from './utils.js';
-import { generateRecurringEventsClientSide } from './recurring.js';
 
 /**
  * Convert amount to base currency
@@ -131,34 +130,11 @@ export async function calculateProjection(
         }
 
         // Step 2: Fetch events in date range
+        // Queue-as-state: All recurring instances are real events in Dexie (no phantom generation needed)
         let events = await db.events
             .where('event_date')
             .between(startDate, endDate, true, true)
             .toArray();
-
-        // Step 2b: Generate phantom recurring events if offline or in full mode
-        const isOffline = !navigator.onLine || (window.storage && window.storage.mode === 'full');
-
-        if (isOffline) {
-            try {
-                // Get all recurring rules
-                const rules = await db.recurring_rules.toArray();
-
-                if (rules && rules.length > 0) {
-                    // Generate phantom events within projection window
-                    const windowStart = parseISODate(startDate);
-                    const windowEnd = parseISODate(endDate);
-
-                    const phantomEvents = await generateRecurringEventsClientSide(rules, windowStart, windowEnd, settings);
-
-                    // Merge phantom events with real events
-                    events = [...events, ...phantomEvents];
-                }
-            } catch (error) {
-                console.error('Error generating phantom recurring events:', error);
-                // Continue with real events only if phantom generation fails
-            }
-        }
 
         // Filter by view
         if (view === 'baseline') {
