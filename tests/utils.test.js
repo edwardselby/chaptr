@@ -14,6 +14,9 @@ import {
   colorForAmount,
   generateUUID,
   parseISODate,
+  isToday,
+  isPast,
+  getModeAwareErrorMessage,
 } from '../static/js/utils.js';
 
 describe('formatCurrency', () => {
@@ -203,5 +206,125 @@ describe('parseISODate', () => {
     expect(date.getHours()).toBe(0);
     expect(date.getMinutes()).toBe(0);
     expect(date.getSeconds()).toBe(0);
+  });
+});
+
+describe('isToday', () => {
+  it('returns true for today\'s date', () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayISO = `${year}-${month}-${day}`;
+
+    expect(isToday(todayISO)).toBe(true);
+  });
+
+  it('returns false for yesterday', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const year = yesterday.getFullYear();
+    const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const day = String(yesterday.getDate()).padStart(2, '0');
+    const yesterdayISO = `${year}-${month}-${day}`;
+
+    expect(isToday(yesterdayISO)).toBe(false);
+  });
+
+  it('returns false for tomorrow', () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+    const tomorrowISO = `${year}-${month}-${day}`;
+
+    expect(isToday(tomorrowISO)).toBe(false);
+  });
+
+  it('returns false for dates far in the past', () => {
+    expect(isToday('2020-01-01')).toBe(false);
+    expect(isToday('1990-12-31')).toBe(false);
+  });
+
+  it('returns false for dates far in the future', () => {
+    expect(isToday('2030-12-31')).toBe(false);
+    expect(isToday('2100-01-01')).toBe(false);
+  });
+});
+
+describe('isPast', () => {
+  it('returns true for yesterday', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const year = yesterday.getFullYear();
+    const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const day = String(yesterday.getDate()).padStart(2, '0');
+    const yesterdayISO = `${year}-${month}-${day}`;
+
+    expect(isPast(yesterdayISO)).toBe(true);
+  });
+
+  it('returns false for today (boundary case)', () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayISO = `${year}-${month}-${day}`;
+
+    expect(isPast(todayISO)).toBe(false);
+  });
+
+  it('returns false for tomorrow', () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+    const tomorrowISO = `${year}-${month}-${day}`;
+
+    expect(isPast(tomorrowISO)).toBe(false);
+  });
+
+  it('returns true for dates last year', () => {
+    expect(isPast('2020-01-01')).toBe(true);
+    expect(isPast('2024-01-01')).toBe(true);
+  });
+
+  it('returns false for dates next year', () => {
+    expect(isPast('2030-12-31')).toBe(false);
+    expect(isPast('2100-01-01')).toBe(false);
+  });
+});
+
+describe('getModeAwareErrorMessage', () => {
+  it('returns correct message for "full" mode', () => {
+    const msg = getModeAwareErrorMessage('full', 'save account');
+    expect(msg).toBe('Failed to save account. Changes queued for sync.');
+  });
+
+  it('returns correct message for "sync-only" mode', () => {
+    const msg = getModeAwareErrorMessage('sync-only', 'delete event');
+    expect(msg).toBe('Failed to delete event. Please check connection and try again.');
+  });
+
+  it('returns correct message for "basic" mode', () => {
+    const msg = getModeAwareErrorMessage('basic', 'update story');
+    expect(msg).toBe('Failed to update story. Refresh and retry.');
+  });
+
+  it('returns generic message for unknown mode', () => {
+    const msg = getModeAwareErrorMessage('invalid-mode', 'do something');
+    expect(msg).toBe('Failed to do something.');
+  });
+
+  it('handles null mode gracefully', () => {
+    const msg = getModeAwareErrorMessage(null, 'save data');
+    expect(msg).toBe('Failed to save data.');
+  });
+
+  it('handles undefined mode gracefully', () => {
+    const msg = getModeAwareErrorMessage(undefined, 'load data');
+    expect(msg).toBe('Failed to load data.');
   });
 });
