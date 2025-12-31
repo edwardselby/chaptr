@@ -1,0 +1,177 @@
+/**
+ * Unit tests for CHAPTR utility functions
+ *
+ * Tests pure utility functions from static/js/utils.js
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  formatCurrency,
+  toLocalISODate,
+  formatDate,
+  formatDateRange,
+  daysBetween,
+  colorForAmount,
+  generateUUID,
+  parseISODate,
+} from '../static/js/utils.js';
+
+describe('formatCurrency', () => {
+  it('formats positive GBP amounts correctly', () => {
+    expect(formatCurrency(1000, 'GBP')).toBe('£1,000');
+    expect(formatCurrency(250, 'GBP')).toBe('£250');
+    expect(formatCurrency(0, 'GBP')).toBe('£0');
+  });
+
+  it('formats negative amounts with sign', () => {
+    expect(formatCurrency(-500, 'GBP')).toBe('-£500');
+    expect(formatCurrency(-1250, 'USD')).toBe('-$1,250');
+  });
+
+  it('uses correct currency symbols', () => {
+    expect(formatCurrency(100, 'GBP')).toBe('£100');
+    expect(formatCurrency(100, 'USD')).toBe('$100');
+    expect(formatCurrency(100, 'EUR')).toBe('€100');
+    expect(formatCurrency(100, 'CAD')).toBe('$100');
+  });
+
+  it('falls back to currency code for unknown currencies', () => {
+    expect(formatCurrency(100, 'JPY')).toBe('JPY100');
+  });
+
+  it('uses GBP as default currency', () => {
+    expect(formatCurrency(500)).toBe('£500');
+  });
+
+  it('rounds to nearest whole number', () => {
+    expect(formatCurrency(1234.56, 'GBP')).toBe('£1,235');
+    expect(formatCurrency(999.99, 'USD')).toBe('$1,000');
+  });
+});
+
+describe('toLocalISODate', () => {
+  it('formats dates as YYYY-MM-DD', () => {
+    const date = new Date(2025, 11, 31); // Dec 31, 2025 (month is 0-indexed)
+    expect(toLocalISODate(date)).toBe('2025-12-31');
+  });
+
+  it('pads single-digit months and days with zeros', () => {
+    const date = new Date(2025, 0, 5); // Jan 5, 2025
+    expect(toLocalISODate(date)).toBe('2025-01-05');
+  });
+
+  it('handles leap years correctly', () => {
+    const date = new Date(2024, 1, 29); // Feb 29, 2024
+    expect(toLocalISODate(date)).toBe('2024-02-29');
+  });
+});
+
+describe('formatDate', () => {
+  it('formats dates as "Mon DD"', () => {
+    expect(formatDate('2025-12-31')).toBe('Dec 31');
+    expect(formatDate('2025-01-15')).toBe('Jan 15');
+  });
+
+  it('handles Date objects', () => {
+    const date = new Date(2025, 11, 25); // Dec 25, 2025
+    expect(formatDate(date)).toBe('Dec 25');
+  });
+
+  it('returns empty string for null/undefined', () => {
+    expect(formatDate(null)).toBe('');
+    expect(formatDate(undefined)).toBe('');
+    expect(formatDate('')).toBe('');
+  });
+
+  it('handles invalid dates', () => {
+    expect(formatDate('invalid-date')).toBe('');
+  });
+});
+
+describe('formatDateRange', () => {
+  it('formats date ranges with arrow', () => {
+    expect(formatDateRange('2025-12-18', '2026-01-18')).toBe('Dec 18 → Jan 18');
+  });
+
+  it('returns empty string for missing dates', () => {
+    expect(formatDateRange('', '2025-12-31')).toBe('');
+    expect(formatDateRange('2025-12-31', '')).toBe('');
+    expect(formatDateRange('', '')).toBe('');
+  });
+});
+
+describe('daysBetween', () => {
+  it('calculates days between two dates', () => {
+    expect(daysBetween('2025-01-01', '2025-01-10')).toBe(9);
+    expect(daysBetween('2025-01-15', '2025-01-20')).toBe(5);
+  });
+
+  it('returns 0 for same date', () => {
+    expect(daysBetween('2025-12-31', '2025-12-31')).toBe(0);
+  });
+
+  it('handles negative ranges (end before start)', () => {
+    expect(daysBetween('2025-01-10', '2025-01-01')).toBe(-9);
+  });
+
+  it('handles month boundaries', () => {
+    expect(daysBetween('2025-01-31', '2025-02-01')).toBe(1);
+  });
+
+  it('handles year boundaries', () => {
+    expect(daysBetween('2024-12-31', '2025-01-01')).toBe(1);
+  });
+});
+
+describe('colorForAmount', () => {
+  it('returns "positive" for positive amounts', () => {
+    expect(colorForAmount(100)).toBe('positive');
+    expect(colorForAmount(0.01)).toBe('positive');
+  });
+
+  it('returns "positive" for zero', () => {
+    expect(colorForAmount(0)).toBe('positive');
+  });
+
+  it('returns "negative" for negative amounts', () => {
+    expect(colorForAmount(-100)).toBe('negative');
+    expect(colorForAmount(-0.01)).toBe('negative');
+  });
+});
+
+describe('generateUUID', () => {
+  it('generates valid UUID v4 format', () => {
+    const uuid = generateUUID();
+    // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    expect(uuid).toMatch(uuidRegex);
+  });
+
+  it('generates unique UUIDs', () => {
+    const uuid1 = generateUUID();
+    const uuid2 = generateUUID();
+    expect(uuid1).not.toBe(uuid2);
+  });
+
+  it('has correct length', () => {
+    const uuid = generateUUID();
+    expect(uuid.length).toBe(36); // 32 hex chars + 4 hyphens
+  });
+});
+
+describe('parseISODate', () => {
+  it('parses ISO date strings to Date objects', () => {
+    const date = parseISODate('2025-12-31');
+    expect(date).toBeInstanceOf(Date);
+    expect(date.getFullYear()).toBe(2025);
+    expect(date.getMonth()).toBe(11); // December (0-indexed)
+    expect(date.getDate()).toBe(31);
+  });
+
+  it('parses dates at local midnight', () => {
+    const date = parseISODate('2025-06-15');
+    expect(date.getHours()).toBe(0);
+    expect(date.getMinutes()).toBe(0);
+    expect(date.getSeconds()).toBe(0);
+  });
+});
