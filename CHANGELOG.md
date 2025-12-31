@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - REFACTOR: CREATE→UPDATE sequences in offline sessions work correctly (account creation + balance update)
 - POLISH: Stories Management screen Add Story button removed - now uses bottom navbar "+ Add Story" for consistency
 - POLISH: Event modal recurring toggle - replaced radio buttons with styled button toggle, fixed reactivity issues by using type="button" elements with @click handlers
+- POLISH: Bottom navbar Sync button - fixed "Synced undefined" message, now calls incremental sync (manualSync) instead of full sync, shows correct count of synced items
 
 ## [0.2.0] - 2025-12-28
 

@@ -1628,15 +1628,15 @@ window.app = function() {
             this.syncButtonSpinner = true; // Show spinner
 
             try {
-                const queueCount = await this.updateSyncQueueCount();
+                await this.updateSyncQueueCount();
 
-                if (queueCount === 0) {
-                    // No notification needed - silence is golden
+                if (this.syncQueueCount === 0) {
+                    this.showNotification('Nothing to sync', 'info');
                     return;
                 }
 
-                // Perform sync
-                await this.fullSync();
+                // Perform incremental sync
+                const result = await storage.manualSync();
 
                 // Check for conflicts after sync
                 const conflicts = await db.conflicts.count();
@@ -1645,9 +1645,14 @@ window.app = function() {
                         `${conflicts} conflicts`,
                         'warning'
                     );
+                } else if (result.applied && result.applied > 0) {
+                    this.showNotification(`Synced ${result.applied}`, 'success');
                 } else {
-                    this.showNotification(`Synced ${queueCount}`, 'success');
+                    this.showNotification('Sync complete', 'success');
                 }
+
+                // Reload data to reflect server changes
+                await this.loadData();
 
             } catch (error) {
                 console.error('Sync error:', error);
