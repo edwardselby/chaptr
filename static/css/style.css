@@ -1618,7 +1618,7 @@ body::before {
     border-top: none;
     max-height: 250px;
     overflow-y: auto;
-    z-index: 1000;
+    z-index: 5000;
     margin: 0;
     padding: 0;
     list-style: none;

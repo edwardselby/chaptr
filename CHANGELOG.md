@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - POLISH: Event modal recurring toggle - replaced radio buttons with styled button toggle, fixed reactivity issues by using type="button" elements with @click handlers
 - POLISH: Bottom navbar Sync button - fixed "Synced undefined" message, now calls incremental sync (manualSync) instead of full sync, shows correct count of synced items
 - POLISH: Conflict notifications - suppressed "X conflicts" message for auto-resolved conflicts (derived_event_overridden), only shows notification for conflicts requiring manual resolution
+- POLISH: Dropdown z-index increased to 5000 - ensures dropdown options always appear above all modal content and UI elements
 
 ## [0.2.0] - 2025-12-28
 
