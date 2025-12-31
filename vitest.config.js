@@ -20,6 +20,9 @@ export default defineConfig({
       headless: true,
     },
 
+    // Setup file to configure browser environment
+    setupFiles: ['./tests/setup.js'],
+
     // Global test APIs (describe, it, expect) without imports
     globals: true,
 
