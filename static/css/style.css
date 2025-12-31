@@ -787,6 +787,32 @@ body::before {
     color: var(--green-bright);
 }
 
+/* Hidden Events Gap Indicator (story views) */
+.hidden-events-gap {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.gap-count {
+    font-style: italic;
+}
+
+.gap-delta {
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.gap-delta.positive {
+    color: var(--green-bright);
+}
+
+.gap-delta.negative {
+    color: var(--red);
+}
+
 /* Revealed Gap Rows */
 .timeline-row.revealed {
     background: var(--bg-tertiary);
@@ -1397,6 +1423,35 @@ body::before {
     color: var(--text-dim);
 }
 
+/* Date Quick Buttons */
+.date-quick-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.btn-quick-date {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    background-color: transparent;
+    color: var(--green-bright);
+    border: 1px solid var(--green-bright);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-quick-date:hover {
+    background-color: var(--green-bright);
+    color: var(--bg-primary);
+}
+
+.btn-quick-date:active {
+    transform: scale(0.98);
+}
+
 .form-checkbox {
     display: flex;
     align-items: center;
@@ -1466,6 +1521,20 @@ body::before {
 
 .btn-danger:hover {
     background: rgba(244, 67, 54, 0.1);
+}
+
+/* Recurring Tag Styles */
+.recurring-tag {
+    color: var(--blue);
+    border: 1px solid var(--blue);
+    background: rgba(0, 123, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recurring-tag:hover {
+    background: rgba(0, 123, 255, 0.2);
+    transform: scale(1.05);
 }
 
 /* Balance Modal Styles */

@@ -11,7 +11,7 @@
  */
 
 import { db } from './db.js';
-import { apiRequest, generateClientId, showToast, getModeAwareErrorMessage, generateUUID } from './utils.js';
+import { apiRequest, generateClientId, getModeAwareErrorMessage, generateUUID } from './utils.js';
 
 class StorageAdapter {
     constructor() {
@@ -631,6 +631,21 @@ class StorageAdapter {
         }
         const baseUpdatedAt = currentAccount.updated_at;
 
+        // CRITICAL FIX: Cascade delete orphaned queue entries for events belonging to this account
+        // This prevents orphaned queue references that would cause sync failures
+        const queuedEventChanges = await db.sync_queue
+            .where('entity_type').equals('event')
+            .filter(q => {
+                const data = q.data || {};
+                return data.account_id === accountId;
+            })
+            .toArray();
+
+        if (queuedEventChanges.length > 0) {
+            await db.sync_queue.bulkDelete(queuedEventChanges.map(q => q.id));
+            console.log(`[CHAPTR] Cascade deleted ${queuedEventChanges.length} orphaned queue entries for account ${accountId}`);
+        }
+
         // 1. Soft delete in Dexie (mark as archived)
         await db.accounts.update(accountId, {
             is_archived: true,
@@ -682,6 +697,192 @@ class StorageAdapter {
         }
     }
 
+    // ==================== Recurring Rules ====================
+
+    /**
+     * Create recurring rule (mode-aware)
+     */
+    async createRecurringRule(ruleData) {
+        try {
+            await this.checkQueueLimit();
+
+            if (this.mode === 'full') {
+                return await this.createRecurringRule_Full(ruleData, new Date());
+            } else if (this.mode === 'sync-only') {
+                return await this.createRecurringRule_SyncOnly(ruleData);
+            } else {
+                return await this.createRecurringRule_Basic(ruleData);
+            }
+        } catch (error) {
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'create recurring rule'), 'error');
+            throw error;
+        }
+    }
+
+    async createRecurringRule_Full(ruleData, now) {
+        const ruleId = generateUUID();
+        const rule = {
+            ...ruleData,
+            id: ruleId,
+            created_at: now.toISOString(),
+            updated_at: now.toISOString()
+        };
+
+        await db.recurring_rules.put(rule);
+        await db.queueChange('recurring_rule', ruleId, 'create', rule);
+
+        return rule;
+    }
+
+    async createRecurringRule_SyncOnly(ruleData) {
+        const response = await apiRequest('/api/recurring-rules', {
+            method: 'POST',
+            body: JSON.stringify(ruleData)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create recurring rule');
+        }
+
+        const rule = await response.json();
+        await db.recurring_rules.put(rule);
+
+        return rule;
+    }
+
+    async createRecurringRule_Basic(ruleData) {
+        const response = await apiRequest('/api/recurring-rules', {
+            method: 'POST',
+            body: JSON.stringify(ruleData)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create recurring rule');
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Update recurring rule (mode-aware)
+     */
+    async updateRecurringRule(ruleId, ruleData) {
+        try {
+            await this.checkQueueLimit();
+
+            if (this.mode === 'full') {
+                return await this.updateRecurringRule_Full(ruleId, ruleData);
+            } else if (this.mode === 'sync-only') {
+                return await this.updateRecurringRule_SyncOnly(ruleId, ruleData);
+            } else {
+                return await this.updateRecurringRule_Basic(ruleId, ruleData);
+            }
+        } catch (error) {
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'update recurring rule'), 'error');
+            throw error;
+        }
+    }
+
+    async updateRecurringRule_Full(ruleId, updateData) {
+        const existing = await db.recurring_rules.get(ruleId);
+        if (!existing) {
+            throw new Error('Recurring rule not found');
+        }
+
+        await db.sync_queue.where({ entity_type: 'recurring_rule', entity_id: ruleId }).delete();
+
+        const updated = {
+            ...existing,
+            ...updateData,
+            id: ruleId,
+            updated_at: new Date().toISOString()
+        };
+
+        await db.recurring_rules.put(updated);
+        await db.queueChange('recurring_rule', ruleId, 'update', updated, existing.updated_at);
+
+        return updated;
+    }
+
+    async updateRecurringRule_SyncOnly(ruleId, updateData) {
+        const response = await apiRequest(`/api/recurring-rules/${ruleId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to update recurring rule');
+        }
+
+        const updated = await response.json();
+        await db.recurring_rules.put(updated);
+
+        return updated;
+    }
+
+    async updateRecurringRule_Basic(ruleId, updateData) {
+        const response = await apiRequest(`/api/recurring-rules/${ruleId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to update recurring rule');
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Delete recurring rule (mode-aware)
+     */
+    async deleteRecurringRule(ruleId) {
+        try {
+            if (this.mode === 'full') {
+                return await this.deleteRecurringRule_Full(ruleId, new Date());
+            } else if (this.mode === 'sync-only') {
+                return await this.deleteRecurringRule_SyncOnly(ruleId);
+            } else {
+                return await this.deleteRecurringRule_Basic(ruleId);
+            }
+        } catch (error) {
+            window.showNotification(getModeAwareErrorMessage(this.mode, 'delete recurring rule'), 'error');
+            throw error;
+        }
+    }
+
+    async deleteRecurringRule_Full(ruleId, now) {
+        const existing = await db.recurring_rules.get(ruleId);
+        if (!existing) {
+            throw new Error('Recurring rule not found');
+        }
+
+        await db.recurring_rules.delete(ruleId);
+        await db.queueChange('recurring_rule', ruleId, 'delete', null, existing.updated_at);
+    }
+
+    async deleteRecurringRule_SyncOnly(ruleId) {
+        const response = await apiRequest(`/api/recurring-rules/${ruleId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete recurring rule');
+        }
+
+        await db.recurring_rules.delete(ruleId);
+    }
+
+    async deleteRecurringRule_Basic(ruleId) {
+        const response = await apiRequest(`/api/recurring-rules/${ruleId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete recurring rule');
+        }
+    }
+
     // ==================== Queue Management ====================
 
     /**
@@ -699,7 +900,7 @@ class StorageAdapter {
         const count = await db.sync_queue.count();
 
         if (count === 400) {
-            showToast('400+ pending', 'warning', 5000);
+            window.showNotification('400+ pending changes', 'warning', 10000);
         } else if (count >= 500) {
             // Hard block at 500 changes - modal UI deferred to Phase 7
             // TODO Phase 7: Implement modal with "Sync Now" / "Cancel" buttons
@@ -731,7 +932,12 @@ class StorageAdapter {
     async manualSync() {
         if (this.mode !== 'full') {
             console.log('[CHAPTR] Manual sync not needed - Mode 2/3 syncs immediately');
-            return { success: true, message: 'No sync needed' };
+            return {
+                success: true,
+                message: 'No sync needed',
+                applied: 0,      // ← Add missing field
+                conflicts: 0     // ← Add missing field
+            };
         }
 
         console.log('[CHAPTR] Starting manual sync...');
@@ -751,13 +957,27 @@ class StorageAdapter {
             console.log(`[CHAPTR] Syncing ${pending.length} pending changes...`);
 
             // 2. Format changes for sync protocol
-            const changes = pending.map(c => ({
-                entity_type: c.entity_type,
-                entity_id: c.entity_id,
-                action: c.action,
-                data: c.data,
-                base_updated_at: c.base_updated_at || null
-            }));
+            const changes = pending.map(c => {
+                const change = {
+                    entity_type: c.entity_type,
+                    entity_id: c.entity_id,
+                    action: c.action,
+                    data: c.data,
+                    base_updated_at: c.base_updated_at || null
+                };
+
+                // Include metadata for derived event detection
+                // Server uses this to skip client-created derived events
+                if (c.dependencies || c._derived_from || c._optimistic !== undefined) {
+                    change.metadata = {
+                        dependencies: c.dependencies || [],
+                        _derived_from: c._derived_from || null,
+                        _optimistic: c._optimistic || false
+                    };
+                }
+
+                return change;
+            });
 
             // 3. POST /api/sync
             const response = await apiRequest('/api/sync', {
@@ -856,6 +1076,27 @@ class StorageAdapter {
             });
         }
 
+        // Handle derived event conflicts (silent resolution)
+        // When server overrides a client-generated derived event (opening balance, recurring instance),
+        // silently delete the client version and use server's authoritative version
+        for (const conflict of syncData.conflicts) {
+            if (conflict.conflict_type === 'derived_event_overridden' && conflict.entity_type === 'event') {
+                // Delete client's optimistic version
+                await db.events.delete(conflict.entity_id);
+
+                // Remove from queue (no longer needs to be synced)
+                await db.sync_queue.where({ entity_id: conflict.entity_id }).delete();
+
+                // Mark conflict as auto-resolved
+                await db.conflicts
+                    .where({ entity_id: conflict.entity_id, conflict_type: 'derived_event_overridden' })
+                    .modify({ resolved_at: new Date().toISOString() });
+
+                console.log(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id}`);
+                // Server version will be applied via server_changes (next section)
+            }
+        }
+
         // Clear successfully applied changes from queue
         for (const appliedId of syncData.applied) {
             await db.sync_queue.where({ entity_id: appliedId }).delete();
@@ -901,7 +1142,7 @@ class StorageAdapter {
     async handleFullSyncRequired() {
         console.warn('[CHAPTR] Full sync required - client is stale');
 
-        showToast('Syncing...', 'info', 2000);
+        window.showNotification('Full sync in progress...', 'info', 5000);
 
         // Clear Dexie and re-download
         await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_queue], async () => {
@@ -916,7 +1157,7 @@ class StorageAdapter {
         // Re-fetch from server
         await this.fetchAndPopulateDexie();
 
-        showToast('Updated', 'success');
+        window.showNotification('Full sync complete', 'success');
     }
 
     /**

@@ -22,6 +22,8 @@ import {
 import { db } from './db.js';
 import { storage } from './storage-adapter.js';
 import { calculateProjection } from './projection.js';
+import { createOpeningBalanceEventData, generateRecurringInstances } from './event-helpers.js';
+import { applyDerivedChange, applyDerivedChangesBatch } from './queue-helpers.js';
 
 /**
  * Main Alpine.js app component
@@ -65,6 +67,9 @@ window.app = function() {
         // Notification State
         currentNotification: null,      // { message: string, type: string }
         notificationTimeout: null,       // Timeout ID for auto-dismiss
+
+        // Reconciliation State
+        needsProjectionRefresh: false,  // Flag to refresh projection after reconciliation
 
         showAccountModal: false,
         showStoryModal: false,
@@ -174,10 +179,8 @@ window.app = function() {
             // Load data from storage adapter
             await this.loadData();
 
-            // Check for unresolved conflicts (Task 110)
-            if (storage.mode === 'full') {
-                await this.checkForConflicts();
-            }
+            // Check for unresolved conflicts
+            await this.checkForConflicts();
 
             // Setup network reconnection handler - auto-retry sync when online
             window.addEventListener('online', async () => {
@@ -390,6 +393,9 @@ window.app = function() {
                 // Reload data into Alpine state
                 await this.loadData();
 
+                // Set flag to refresh projection
+                this.needsProjectionRefresh = true;
+
                 console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
                 console.error('[CHAPTR] Full sync error:', error);
@@ -449,10 +455,11 @@ window.app = function() {
 
             // Update projection when viewing projection screen
             if (screen === 'projection') {
-                // Trigger reconciliation if there are pending accounts
-                if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
-                    await this.triggerReconciliation();
+                // Refresh projection if sync occurred while on another screen
+                if (this.needsProjectionRefresh) {
+                    this.needsProjectionRefresh = false;
                 }
+
                 await this.updateProjectionRows();
             }
         },
@@ -514,11 +521,6 @@ window.app = function() {
 
             // Clear expanded gaps to prevent memory leak across view changes
             this.expandedGaps.clear();
-
-            // Trigger reconciliation if viewing projection with pending accounts
-            if (storage.mode === 'full' && this.accounts.some(a => a.pending_reconciliation)) {
-                await this.triggerReconciliation();
-            }
 
             // Reset display currency when switching views
             if (view !== 'all') {
@@ -780,7 +782,33 @@ window.app = function() {
             };
 
             // Use storage adapter (handles all 3 modes)
-            await storage.createAccount(accountData);
+            const createdAccount = await storage.createAccount(accountData);
+
+            // Queue-as-state: Create opening balance event if non-zero balance
+            // No mode check needed - queue-helpers handles this uniformly
+            if (parseFloat(accountData.current_balance) !== 0) {
+                // Use pure function to create event data
+                const openingEventData = createOpeningBalanceEventData(createdAccount, this.settings);
+
+                if (openingEventData) {
+                    // Apply as derived change (marked _derived_from: 'account_creation')
+                    await applyDerivedChange(
+                        {
+                            entity_type: 'event',
+                            entity_id: openingEventData.id,
+                            action: 'create',
+                            data: openingEventData,
+                            base_updated_at: null
+                        },
+                        {
+                            _derived_from: 'account_creation',
+                            dependencies: [createdAccount.id]
+                        }
+                    );
+
+                    console.log(`[CHAPTR] Queued opening balance event ${openingEventData.id} for account ${createdAccount.id}`);
+                }
+            }
 
             // Update sync queue count for UI indicator
             await this.updateSyncQueueCount();
@@ -794,13 +822,23 @@ window.app = function() {
          */
         async updateAccount() {
             const accountId = this.accountForm.id;
+            const newBalance = parseFloat(this.accountForm.current_balance || 0);
+
+            // Check if balance changed to trigger reconciliation
+            const currentAccount = this.accounts.find(a => a.id === accountId);
+            const balanceChanged = currentAccount && parseFloat(currentAccount.current_balance) !== newBalance;
 
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
+                current_balance: String(newBalance),
                 is_default: this.accountForm.is_default || false
             };
+
+            // If balance changed, set flag to trigger server-side adjustment
+            if (balanceChanged) {
+                updates.pending_reconciliation = true;
+            }
 
             // Use storage adapter (handles all 3 modes)
             await storage.updateAccount(accountId, updates);
@@ -1601,18 +1639,14 @@ window.app = function() {
                 await this.fullSync();
 
                 // Check for conflicts after sync
-                if (storage.mode === 'full') {
-                    const conflicts = await db.conflicts.count();
-                    if (conflicts > 0) {
-                        this.showNotification(
-                            `${conflicts} conflicts`,
-                            'warning'
-                        );
-                    } else {
-                        this.showNotification(`Synced ${queueCount}`, 'success');
-                    }
+                const conflicts = await db.conflicts.count();
+                if (conflicts > 0) {
+                    this.showNotification(
+                        `${conflicts} conflicts`,
+                        'warning'
+                    );
                 } else {
-                    this.showNotification('Sync complete', 'success');
+                    this.showNotification(`Synced ${queueCount}`, 'success');
                 }
 
             } catch (error) {
@@ -2022,58 +2056,24 @@ window.app = function() {
         },
 
         /**
-         * Calculate drift for accounts pending reconciliation
-         * Returns virtual drift rows for display in projection
+         * Calculate pending drifts (REMOVED - queue-as-state architecture)
          *
-         * Per refactored spec: Frontend displays drift without persisting events.
-         * Server creates authoritative [auto] events on sync.
+         * Old architecture: Virtual drift rows based on pending_reconciliation flag
+         * New architecture: Real optimistic adjustment events created immediately
          *
-         * @returns {Array} Array of virtual drift row objects
+         * With queue-as-state, adjustment events are REAL events in Dexie with
+         * _optimistic: true flag. No virtual rows or pending_reconciliation needed.
+         *
+         * Keeping stub for backward compatibility with existing callers.
+         * @returns {Array} Empty array (no virtual drifts)
          */
         calculatePendingDrifts() {
-            const today = toLocalISODate(new Date());
-            const virtualRows = [];
-
-            // Find accounts with pending_reconciliation = true
-            const pendingAccounts = this.accounts.filter(a => a.pending_reconciliation === true);
-
-            for (const account of pendingAccounts) {
-                // Calculate projected balance for this account at today
-                const projectedBalance = this.calculateAccountBalance(account.id, today);
-
-                // Compare to actual balance
-                const actualBalance = account.current_balance;
-                const drift = actualBalance - projectedBalance;
-
-                // Only create virtual row if drift is significant (> 0.01)
-                if (Math.abs(drift) > 0.01) {
-                    virtualRows.push({
-                        id: `virtual-drift-${account.id}`,
-                        date: today,
-                        description: `pending adjustment for ${account.name}`,
-                        amount: drift,
-                        balance: actualBalance, // Balance after drift adjustment
-                        account_id: account.id,
-                        currency: account.currency,
-                        source: '[pending sync]',
-                        isDrift: true,
-                        isVirtual: true,
-                        isGap: false,
-                        driftDetails: {
-                            accountName: account.name,
-                            projectedBalance,
-                            actualBalance,
-                            drift
-                        }
-                    });
-                }
-            }
-
-            return virtualRows;
+            return []; // Queue-as-state: Real events, not virtual rows
         },
 
         /**
-         * Save balance update - creates changelog event for sync
+         * Save balance update - creates optimistic adjustment event (queue-as-state)
+         * Server may override with authoritative version via conflict resolution
          */
         async saveBalanceUpdate() {
             if (this.balanceForm.drift === 0) {
@@ -2082,47 +2082,71 @@ window.app = function() {
             }
 
             try {
-                // Update local account current_balance and mark for reconciliation
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
                 if (!account) {
                     throw new Error('Account not found');
                 }
 
-                const updatedAccount = {
-                    ...account,
-                    current_balance: parseFloat(this.balanceForm.actual_balance),
-                    balance_updated_at: new Date().toISOString(), // Mark when balance was manually updated
-                    pending_reconciliation: true, // Mark for reconciliation per spec
-                    updated_at: new Date().toISOString()
+                const drift = this.balanceForm.drift;
+                const now = new Date().toISOString();
+                const today = toLocalISODate(new Date());
+
+                // Queue-as-state: Create REAL adjustment event marked as optimistic
+                // Server will reconcile and may override with authoritative version
+                const adjustmentEvent = {
+                    id: generateUUID(),
+                    event_date: today,
+                    description: 'balance adjustment',
+                    amount: drift,
+                    currency: account.currency,
+                    rate_to_base: this.settings.rates?.[account.currency] || 1.0,
+                    account_id: account.id,
+                    story_id: null,
+                    is_baseline: true,
+                    is_hypothetical: false,
+                    is_opening_balance: false,
+                    is_auto_adjustment: true,
+                    is_transfer: false,
+                    recurring_rule_id: null,
+                    created_at: now,
+                    updated_at: now
                 };
 
-                if (storage.mode === 'full') {
-                    // Get base_updated_at for conflict detection
-                    const baseUpdatedAt = account.updated_at;
+                // Apply as derived change with optimistic flag
+                await applyDerivedChange(
+                    {
+                        entity_type: 'event',
+                        entity_id: adjustmentEvent.id,
+                        action: 'create',
+                        data: adjustmentEvent,
+                        base_updated_at: null
+                    },
+                    {
+                        _derived_from: 'balance_reconciliation',
+                        dependencies: [account.id],
+                        _optimistic: true  // Server may override with authoritative version
+                    }
+                );
 
-                    // Update account in Dexie
-                    await db.accounts.put(updatedAccount);
+                // Update account balance and set pending_reconciliation flag
+                // Server will see this flag during reconciliation phase and create authoritative adjustment
+                const updates = {
+                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    balance_updated_at: now,
+                    updated_at: now,
+                    pending_reconciliation: true  // Trigger server-side adjustment creation
+                };
 
-                    // Queue account update for sync
-                    await db.queueChange(
-                        'account',
-                        account.id,
-                        'update',
-                        updatedAccount,
-                        baseUpdatedAt
-                    );
-                } else {
-                    // Mode 0: Direct update without sync
-                    Object.assign(account, updatedAccount);
-                }
+                await storage.updateAccount(account.id, updates);
 
-                // Trigger reconciliation to create [auto] adjustments immediately
-                // (This will reload data and update projection internally)
-                await this.triggerReconciliation();
+                console.log(`[CHAPTR] Created optimistic adjustment event ${adjustmentEvent.id} for account ${account.id} (drift: ${drift})`);
 
                 this.showBalanceModal = false;
 
-                // Show notification
+                // Reload to show adjustment event in projection
+                await this.loadData();
+                await this.updateDashboardProjection();
+
                 this.showNotification('Balance updated', 'success');
 
             } catch (error) {
@@ -2148,6 +2172,39 @@ window.app = function() {
         },
 
 
+        // ===== DATE HELPER FUNCTIONS =====
+
+        /**
+         * Set date field to yesterday
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToYesterday(formField) {
+            const date = new Date();
+            date.setDate(date.getDate() - 1);
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(date);
+        },
+
+        /**
+         * Set date field to today
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToToday(formField) {
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(new Date());
+        },
+
+        /**
+         * Set date field to tomorrow
+         * @param {string} formField - Form field path (e.g., 'eventForm.event_date')
+         */
+        setDateToTomorrow(formField) {
+            const date = new Date();
+            date.setDate(date.getDate() + 1);
+            const [form, field] = formField.split('.');
+            this[form][field] = toLocalISODate(date);
+        },
+
         // ===== EVENT MODAL METHODS =====
 
         /**
@@ -2157,14 +2214,22 @@ window.app = function() {
             const today = toLocalISODate(new Date());
 
             this.eventForm = {
-                date: today,
+                id: null,
+                event_date: today,
                 description: '',
                 amount: 0,
                 account_id: '', // Will resolve via hierarchy
                 currency: this.settings.base_currency || 'GBP',
                 story_id: '', // Empty = baseline
                 is_baseline: true,
-                is_hypothetical: false
+                is_hypothetical: false,
+
+                // Recurring fields
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: today,
+                end_date: ''
             };
 
             this.showEventModal = true;
@@ -2197,14 +2262,22 @@ window.app = function() {
                 : null;
 
             this.eventForm = {
-                date: defaultDate,
+                id: null,
+                event_date: defaultDate,
                 description: '',
                 amount: 0,
                 account_id: story.default_account_id || '',
                 currency: story.display_currency || (defaultAccount ? defaultAccount.currency : null) || this.settings.base_currency || 'GBP',
                 story_id: storyId,
                 is_baseline: false,
-                is_hypothetical: false
+                is_hypothetical: false,
+
+                // Recurring fields
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: defaultDate,
+                end_date: ''
             };
 
             this.showEventModal = true;
@@ -2214,7 +2287,7 @@ window.app = function() {
          * View event details for editing (opens edit modal)
          * @param {string} eventId - Event UUID
          */
-        viewEventDetails(eventId) {
+        async viewEventDetails(eventId) {
             if (!eventId) {
                 console.error('viewEventDetails called without eventId');
                 return;
@@ -2226,6 +2299,8 @@ window.app = function() {
                 return;
             }
 
+            // Queue-as-state: All recurring instances are real events (no phantom conversion needed)
+            // Normal event editing
             this.eventForm = {
                 id: event.id,
                 event_date: event.event_date,
@@ -2236,7 +2311,62 @@ window.app = function() {
                 story_id: event.story_id || '',
                 is_baseline: event.is_baseline,
                 is_hypothetical: event.is_hypothetical,
-                updated_at: event.updated_at
+                updated_at: event.updated_at,
+
+                // Recurring fields (always false for event editing)
+                is_recurring: false,
+                frequency: '',
+                day: null,
+                start_date: event.event_date,
+                end_date: ''
+            };
+
+            this.showEventModal = true;
+        },
+
+        /**
+         * View recurring rule details (opens for editing)
+         * @param {string} recurringRuleId - Recurring rule UUID
+         */
+        async viewRecurringRule(recurringRuleId) {
+            if (!recurringRuleId) {
+                console.error('viewRecurringRule called without recurringRuleId');
+                return;
+            }
+
+            const rule = await db.recurring_rules.get(recurringRuleId);
+
+            if (rule) {
+                await this.editRecurringRule(rule);
+            } else {
+                this.showNotification('Recurring rule not found', 'error');
+            }
+        },
+
+        /**
+         * Edit recurring rule (opens modal with rule data)
+         * @param {Object} rule - Recurring rule object
+         */
+        async editRecurringRule(rule) {
+            // Populate form with existing rule data
+            this.eventForm = {
+                id: rule.id,
+                event_date: '',  // Not used for recurring
+                description: rule.description,
+                amount: rule.amount,
+                account_id: rule.account_id,
+                currency: rule.currency,
+                story_id: '',  // Recurring rules don't have stories
+                is_baseline: false,  // Not used for recurring
+                is_hypothetical: false,  // Not used for recurring
+                updated_at: rule.updated_at,
+
+                // Set recurring mode
+                is_recurring: true,
+                frequency: rule.frequency,
+                day: rule.day,
+                start_date: rule.start_date,
+                end_date: rule.end_date || ''
             };
 
             this.showEventModal = true;
@@ -2246,12 +2376,7 @@ window.app = function() {
          * Save event (create or update) with validation
          */
         async saveEvent() {
-            // Validation: Required fields
-            if (!this.eventForm.event_date) {
-                this.showNotification('Date required', 'error');
-                return;
-            }
-
+            // Description and Amount are required for both simple and recurring
             if (!this.eventForm.description || this.eventForm.description.trim() === '') {
                 this.showNotification('Description required', 'error');
                 return;
@@ -2265,6 +2390,63 @@ window.app = function() {
             // Validation: Currency format
             if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
                 this.showNotification('Invalid currency', 'error');
+                return;
+            }
+
+            // Validation for Simple Events
+            if (!this.eventForm.is_recurring) {
+                if (!this.eventForm.event_date) {
+                    this.showNotification('Date required', 'error');
+                    return;
+                }
+            }
+
+            // Validation for Recurring Events
+            if (this.eventForm.is_recurring) {
+                if (!this.eventForm.frequency) {
+                    this.showNotification('Frequency required for recurring events', 'error');
+                    return;
+                }
+
+                if (!this.eventForm.day) {
+                    this.showNotification('Day required for recurring events', 'error');
+                    return;
+                }
+
+                if (!this.eventForm.start_date) {
+                    this.showNotification('Start date required for recurring events', 'error');
+                    return;
+                }
+
+                // Validate day range based on frequency
+                if (this.eventForm.frequency === 'weekly' && (this.eventForm.day < 1 || this.eventForm.day > 7)) {
+                    this.showNotification('Day must be 1-7 for weekly events', 'error');
+                    return;
+                }
+
+                if (this.eventForm.frequency === 'monthly' && (this.eventForm.day < 1 || this.eventForm.day > 31)) {
+                    this.showNotification('Day must be 1-31 for monthly events', 'error');
+                    return;
+                }
+
+                if (this.eventForm.frequency === 'annual' && (this.eventForm.day < 1 || this.eventForm.day > 31)) {
+                    this.showNotification('Day must be 1-31 for annual events', 'error');
+                    return;
+                }
+
+                // Route to recurring rule creation or update
+                const isEdit = !!this.eventForm.id;
+                try {
+                    if (isEdit) {
+                        await this.updateRecurringRule();
+                    } else {
+                        await this.createRecurringRule();
+                    }
+                    this.showEventModal = false;
+                } catch (error) {
+                    console.error('Error saving recurring rule:', error);
+                    this.showNotification('Save failed', 'error');
+                }
                 return;
             }
 
@@ -2325,6 +2507,9 @@ window.app = function() {
 
                 this.showEventModal = false;
 
+                // Refresh projection to show new/updated event
+                await this.updateDashboardProjection();
+
             } catch (error) {
                 console.error('Error saving event:', error);
                 this.showNotification('Save failed', 'error');
@@ -2350,6 +2535,227 @@ window.app = function() {
                 'Delete',
                 'danger'
             );
+        },
+
+        /**
+         * Create recurring rule from eventForm
+         */
+        async createRecurringRule() {
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                null  // Recurring rules don't have stories
+            );
+
+            if (!resolvedAccountId) {
+                this.showNotification('Account required', 'error');
+                throw new Error('No account resolved');
+            }
+
+            const ruleData = {
+                description: this.eventForm.description.trim(),
+                amount: parseFloat(this.eventForm.amount),
+                currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                account_id: resolvedAccountId,
+                frequency: this.eventForm.frequency,
+                day: parseInt(this.eventForm.day),
+                start_date: this.eventForm.start_date,
+                end_date: this.eventForm.end_date || null
+            };
+
+            // Use storage adapter (handles all 3 modes)
+            const createdRule = await storage.createRecurringRule(ruleData);
+
+            // Queue-as-state: Generate recurring instances for ±30 days
+            // Lookup account to determine baseline status
+            const account = await db.accounts.get(resolvedAccountId);
+            const isBaseline = account ? (account.is_default || false) : false;
+
+            // Generate instances
+            const instances = generateRecurringInstances(createdRule, this.settings, isBaseline, 30);
+
+            if (instances.length > 0) {
+                // Convert to change objects for batch application
+                const changes = instances.map(instanceData => ({
+                    entity_type: 'event',
+                    entity_id: instanceData.id,
+                    action: 'create',
+                    data: instanceData,
+                    base_updated_at: null
+                }));
+
+                // Apply all instances as derived changes
+                await applyDerivedChangesBatch(changes, {
+                    _derived_from: 'recurring_rule_creation',
+                    dependencies: [createdRule.id]
+                });
+
+                console.log(`[CHAPTR] Generated ${instances.length} recurring instances for rule ${createdRule.id}`);
+            }
+
+            this.showNotification('Recurring rule created', 'success');
+
+            // Reload data to show new rule and generated events
+            await this.loadData();
+            await this.updateDashboardProjection();
+        },
+
+        /**
+         * Update recurring rule with instance regeneration
+         */
+        async updateRecurringRule() {
+            // Validation: Account resolution
+            const resolvedAccountId = this.resolveAccountId(
+                this.eventForm.account_id || null,
+                null  // Recurring rules don't have stories
+            );
+
+            if (!resolvedAccountId) {
+                this.showNotification('Account required', 'error');
+                throw new Error('No account resolved');
+            }
+
+            const ruleData = {
+                description: this.eventForm.description.trim(),
+                amount: parseFloat(this.eventForm.amount),
+                currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
+                account_id: resolvedAccountId,
+                frequency: this.eventForm.frequency,
+                day: parseInt(this.eventForm.day),
+                start_date: this.eventForm.start_date,
+                end_date: this.eventForm.end_date || null
+            };
+
+            // Use storage adapter (handles all 3 modes)
+            const updatedRule = await storage.updateRecurringRule(this.eventForm.id, ruleData);
+
+            // CRITICAL FIX: Check if rule still exists (could be deleted server-side during conflict)
+            if (!updatedRule) {
+                this.showNotification('Recurring rule was deleted', 'error');
+                this.showEventModal = false;
+                await this.loadData();
+                return;
+            }
+
+            // Queue-as-state: Delete future unedited instances and regenerate
+            const today = toLocalISODate(new Date());
+
+            // Find future unedited instances for this rule
+            const futureInstances = await db.events
+                .where('recurring_rule_id').equals(this.eventForm.id)
+                .and(e => e.event_date >= today)
+                .and(e => e.created_at === e.updated_at)  // Unedited only
+                .toArray();
+
+            // Delete future unedited instances
+            for (const instance of futureInstances) {
+                await db.events.delete(instance.id);
+                await db.sync_queue.where({ entity_id: instance.id }).delete();
+            }
+
+            console.log(`[CHAPTR] Deleted ${futureInstances.length} future unedited instances for rule ${this.eventForm.id}`);
+
+            // Regenerate instances for ±30 days
+            const account = await db.accounts.get(resolvedAccountId);
+            const isBaseline = account ? (account.is_default || false) : false;
+
+            const instances = generateRecurringInstances(updatedRule, this.settings, isBaseline, 30);
+
+            if (instances.length > 0) {
+                // Convert to change objects for batch application
+                const changes = instances.map(instanceData => ({
+                    entity_type: 'event',
+                    entity_id: instanceData.id,
+                    action: 'create',
+                    data: instanceData,
+                    base_updated_at: null
+                }));
+
+                // Apply all instances as derived changes
+                await applyDerivedChangesBatch(changes, {
+                    _derived_from: 'recurring_rule_creation',
+                    dependencies: [updatedRule.id]
+                });
+
+                console.log(`[CHAPTR] Regenerated ${instances.length} recurring instances for rule ${updatedRule.id}`);
+            }
+
+            this.showNotification('Recurring rule updated', 'success');
+
+            // Reload data to show updated rule and regenerated events
+            await this.loadData();
+            await this.updateDashboardProjection();
+        },
+
+        /**
+         * Delete recurring rule from modal with confirmation
+         */
+        async deleteRecurringRuleFromModal() {
+            if (!this.eventForm.id) return;
+
+            try {
+                // Calculate how many future events will be deleted
+                const today = toLocalISODate(new Date());
+                const futureCount = await db.events.where('recurring_rule_id')
+                    .equals(this.eventForm.id)
+                    .and(e => e.event_date >= today)
+                    .and(e => e.created_at === e.updated_at)  // Unedited only
+                    .count();
+
+                const message = futureCount > 0
+                    ? `Delete this recurring rule and ${futureCount} future unedited event(s)? Past events and manually edited events will be preserved.`
+                    : `Delete this recurring rule? (No future events to remove)`;
+
+                this.showConfirm(
+                    'Delete Recurring Rule',
+                    message,
+                    async () => {
+                        try {
+                            // Use storage adapter (handles all 3 modes)
+                            await storage.deleteRecurringRule(this.eventForm.id);
+
+                            // Queue-as-state: Delete future unedited instances locally
+                            // (preserves past instances and manually edited future instances)
+                            await this.deleteFutureRecurringEvents(this.eventForm.id);
+
+                            this.showNotification('Recurring rule deleted', 'success');
+                            this.showEventModal = false;
+                            await this.loadData();
+                            await this.updateDashboardProjection();
+                        } catch (error) {
+                            console.error('Error deleting recurring rule:', error);
+                            this.showNotification('Delete failed', 'error');
+                        }
+                    },
+                    'Delete',
+                    'danger'
+                );
+            } catch (error) {
+                console.error('Error calculating future events:', error);
+                this.showNotification('Error preparing delete', 'error');
+            }
+        },
+
+        /**
+         * Delete future unedited recurring events for a rule
+         * @param {string} recurringRuleId - Recurring rule UUID
+         */
+        async deleteFutureRecurringEvents(recurringRuleId) {
+            const today = toLocalISODate(new Date());
+
+            // Get future unedited events
+            const futureEvents = await db.events.where('recurring_rule_id')
+                .equals(recurringRuleId)
+                .and(e => e.event_date >= today)
+                .and(e => e.created_at === e.updated_at)
+                .toArray();
+
+            // Delete each one
+            for (const event of futureEvents) {
+                await db.events.delete(event.id);
+                // Queue deletion for sync
+                await db.queueChange('event', event.id, 'delete', null, event.updated_at);
+            }
         },
 
         /**
@@ -2441,26 +2847,18 @@ window.app = function() {
         /**
          * Trigger reconciliation for all pending accounts
          */
+        /**
+         * Trigger reconciliation (DEPRECATED - queue-as-state architecture)
+         *
+         * Old architecture: Frontend set pending_reconciliation flag, triggered server reconciliation
+         * New architecture: Frontend creates optimistic adjustment events, server processes during sync
+         *
+         * Keeping stub for backward compatibility. Can be removed entirely.
+         */
         async triggerReconciliation() {
-            if (storage.mode !== 'full') {
-                return; // Only in full mode
-            }
-
-            try {
-                const response = await apiRequest('/api/reconciliation/trigger', {
-                    method: 'POST'
-                });
-
-                if (response.reconciled) {
-                    // Reload data to get new [auto] adjustment events
-                    await this.loadData();
-                    await this.updateDashboardProjection();
-                }
-            } catch (error) {
-                console.error('Reconciliation trigger failed:', error);
-                // Silent fail - this is a background operation
-                // Reconciliation will happen on next sync anyway
-            }
+            // DEPRECATED: Queue-as-state handles this via optimistic events
+            console.log('[CHAPTR] triggerReconciliation() called but deprecated - using queue-as-state');
+            return;
         },
 
         /**
@@ -2501,18 +2899,34 @@ window.app = function() {
                         ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
                         : conflict.server_version?.updated_at;
 
-                    // Update event in local database
-                    await db.events.put({
+                    // Ensure object has 'id' field (Dexie primary key)
+                    // Backend conflicts use MongoDB _id, need to convert
+                    // Also serialize MongoDB types (Decimal128, ObjectId) to plain JS values
+                    const eventData = {
                         ...selectedVersion,
-                        updated_at: new Date().toISOString() // Fresh timestamp
-                    });
+                        id: selectedVersion.id || conflict.entity_id,  // Use entity_id as fallback
+                        updated_at: new Date().toISOString(), // Fresh timestamp
+                        // Convert MongoDB Decimal128 to number
+                        amount: parseFloat(selectedVersion.amount),
+                        rate_to_base: parseFloat(selectedVersion.rate_to_base || 1.0),
+                        // Ensure IDs are strings (convert MongoDB ObjectId if needed)
+                        account_id: selectedVersion.account_id ? String(selectedVersion.account_id) : null,
+                        story_id: selectedVersion.story_id ? String(selectedVersion.story_id) : null,
+                        recurring_rule_id: selectedVersion.recurring_rule_id ? String(selectedVersion.recurring_rule_id) : null
+                    };
 
-                    // Task 117: Queue resolution for sync
+                    // Remove MongoDB _id field if present (not needed in Dexie)
+                    delete eventData._id;
+
+                    // Update event in local database
+                    await db.events.put(eventData);
+
+                    // Task 117: Queue resolution for sync (use serialized data)
                     await db.queueChange(
                         'event',
                         conflict.entity_id,
                         'update',
-                        selectedVersion,
+                        eventData,  // Use serialized version, not original
                         baseUpdatedAt // Use original timestamp before conflict
                     );
                 } else {
@@ -2547,9 +2961,7 @@ window.app = function() {
                     await this.updateDashboardProjection();
 
                     // Trigger sync to send resolved changes
-                    if (storage.mode === 'full') {
-                        await storage.sync();
-                    }
+                    await this.manualSync();
                 }
             } catch (error) {
                 console.error('Error resolving conflict:', error);

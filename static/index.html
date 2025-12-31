@@ -230,6 +230,18 @@
                 <div class="timeline">
                     <template x-for="row in projectionRows" :key="row.id || row.event_date + row.description">
                         <div>
+                            <!-- Hidden Events Gap Indicator BEFORE event (story views only) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'before'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
                             <!-- Regular Event Row -->
                             <div
                                 class="timeline-row"
@@ -241,7 +253,8 @@
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
                                     <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
-                                    <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
+                                    <span class="tag recurring-tag" x-show="row.recurring_rule_id" @click.stop="viewRecurringRule(row.recurring_rule_id)">[recurring]</span>
+                                    <span class="tag" x-show="row.source && row.source !== 'baseline' && currentView === 'all'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
@@ -252,7 +265,19 @@
                                 <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
                             </div>
 
-                            <!-- Gap Indicator Row -->
+                            <!-- Hidden Events Gap Indicator AFTER event (trailing gaps) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'after'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
+                            <!-- Gap Indicator Row (time-based gaps) -->
                             <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
                                 <div class="gap-line"></div>
                                 <div class="gap-content">
@@ -653,7 +678,7 @@
     </main>
 
     <!-- Account Modal -->
-    <div class="modal-overlay" x-show="showAccountModal" @click="showAccountModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showAccountModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
@@ -716,7 +741,7 @@
     </div>
 
     <!-- Story Modal -->
-    <div class="modal-overlay" x-show="showStoryModal" @click="showStoryModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showStoryModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
@@ -737,6 +762,11 @@
                     <label for="story-start-date">Start Date</label>
                     <input id="story-start-date" type="date" x-model="storyForm.start_date"
                         required class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.start_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.start_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.start_date')">Tomorrow</button>
+                    </div>
                 </div>
 
                 <!-- End Date (Optional) -->
@@ -744,6 +774,11 @@
                     <label for="story-end-date">End Date</label>
                     <input id="story-end-date" type="date" x-model="storyForm.end_date"
                         class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.end_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.end_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.end_date')">Tomorrow</button>
+                    </div>
                     <span class="form-hint">Leave blank for ongoing stories</span>
                 </div>
 
@@ -824,7 +859,7 @@
     </div>
 
     <!-- Balance Reconciliation Modal -->
-    <div class="modal-overlay" x-show="showBalanceModal" @click="showBalanceModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showBalanceModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2>Update Account Balance</h2>
@@ -904,7 +939,7 @@
     </div>
 
     <!-- Event Modal -->
-    <div class="modal-overlay" x-show="showEventModal" @click="showEventModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showEventModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
@@ -912,15 +947,37 @@
             </div>
             <form @submit.prevent="saveEvent" class="modal-body">
 
-                <!-- Event Date (Required) -->
+                <!-- Event Type Toggle -->
                 <div class="form-group">
-                    <label for="event-date">Event Date</label>
-                    <input
-                        id="event-date"
-                        type="date"
-                        x-model="eventForm.event_date"
-                        required
-                        class="form-input">
+                    <div class="toggle-switch">
+                        <label class="toggle-option" :class="{ active: !eventForm.is_recurring }">
+                            <input type="radio" name="event-type" :value="false" x-model="eventForm.is_recurring">
+                            <span>Simple Event</span>
+                        </label>
+                        <label class="toggle-option" :class="{ active: eventForm.is_recurring }">
+                            <input type="radio" name="event-type" :value="true" x-model="eventForm.is_recurring">
+                            <span>Recurring Event</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Simple Event Fields -->
+                <div x-show="!eventForm.is_recurring">
+                    <!-- Event Date (Required) -->
+                    <div class="form-group">
+                        <label for="event-date">Event Date</label>
+                        <input
+                            id="event-date"
+                            type="date"
+                            x-model="eventForm.event_date"
+                            :required="!eventForm.is_recurring"
+                            class="form-input">
+                        <div class="date-quick-buttons">
+                            <button type="button" class="btn-quick-date" @click="setDateToYesterday('eventForm.event_date')">Yesterday</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToToday('eventForm.event_date')">Today</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToTomorrow('eventForm.event_date')">Tomorrow</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Description (Required) -->
@@ -980,29 +1037,103 @@
                     <span class="form-hint">Auto-set from account or enter manually</span>
                 </div>
 
-                <!-- Story Assignment (Baseline vs Story) -->
-                <div class="form-group">
-                    <label for="event-story">Story</label>
-                    <select
-                        id="event-story"
-                        x-model="eventForm.story_id"
-                        @change="handleStoryChange()"
-                        class="form-input">
-                        <option value="">-- Baseline (no story) --</option>
-                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
-                            <option :value="story.id" x-text="story.name"></option>
-                        </template>
-                    </select>
-                    <span class="form-hint">Leave as baseline or assign to a story</span>
+                <!-- Simple Event Only Fields -->
+                <div x-show="!eventForm.is_recurring">
+                    <!-- Story Assignment (Baseline vs Story) -->
+                    <div class="form-group">
+                        <label for="event-story">Story</label>
+                        <select
+                            id="event-story"
+                            x-model="eventForm.story_id"
+                            @change="handleStoryChange()"
+                            class="form-input">
+                            <option value="">-- Baseline (no story) --</option>
+                            <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
+                                <option :value="story.id" x-text="story.name"></option>
+                            </template>
+                        </select>
+                        <span class="form-hint">Leave as baseline or assign to a story</span>
+                    </div>
+
+                    <!-- Hypothetical Toggle -->
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" x-model="eventForm.is_hypothetical">
+                            <span>Hypothetical (planned/future)</span>
+                        </label>
+                        <span class="form-hint">Check if this is planned/not yet confirmed</span>
+                    </div>
                 </div>
 
-                <!-- Hypothetical Toggle -->
-                <div class="form-group">
-                    <label class="form-checkbox">
-                        <input type="checkbox" x-model="eventForm.is_hypothetical">
-                        <span>Hypothetical (planned/future)</span>
-                    </label>
-                    <span class="form-hint">Check if this is planned/not yet confirmed</span>
+                <!-- Recurring Event Fields -->
+                <div x-show="eventForm.is_recurring">
+                    <!-- Frequency dropdown -->
+                    <div class="form-group">
+                        <label for="event-frequency">Frequency</label>
+                        <select id="event-frequency" x-model="eventForm.frequency" :required="eventForm.is_recurring" class="form-input">
+                            <option value="">-- Select frequency --</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="annual">Annual</option>
+                        </select>
+                    </div>
+
+                    <!-- Day field (conditional label based on frequency) -->
+                    <div class="form-group">
+                        <label for="event-day">
+                            <span x-show="eventForm.frequency === 'weekly'">Day of Week</span>
+                            <span x-show="eventForm.frequency === 'monthly'">Day of Month</span>
+                            <span x-show="eventForm.frequency === 'annual'">Day of Year</span>
+                            <span x-show="!eventForm.frequency">Day</span>
+                        </label>
+                        <select id="event-day" x-model.number="eventForm.day" :required="eventForm.is_recurring" class="form-input">
+                            <option value="">-- Select day --</option>
+                            <!-- Weekly: 1-7 -->
+                            <template x-if="eventForm.frequency === 'weekly'">
+                                <template x-for="i in 7" :key="i">
+                                    <option :value="i" x-text="['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i-1]"></option>
+                                </template>
+                            </template>
+                            <!-- Monthly: 1-31 -->
+                            <template x-if="eventForm.frequency === 'monthly'">
+                                <template x-for="i in 31" :key="i">
+                                    <option :value="i" x-text="i"></option>
+                                </template>
+                            </template>
+                            <!-- Annual: 1-31 (day of start month) -->
+                            <template x-if="eventForm.frequency === 'annual'">
+                                <template x-for="i in 31" :key="i">
+                                    <option :value="i" x-text="i"></option>
+                                </template>
+                            </template>
+                        </select>
+                        <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">Which day of the month (uses start month)</span>
+                    </div>
+
+                    <!-- Start Date -->
+                    <div class="form-group">
+                        <label for="event-start-date">Start Date</label>
+                        <input
+                            id="event-start-date"
+                            type="date"
+                            x-model="eventForm.start_date"
+                            :required="eventForm.is_recurring"
+                            class="form-input">
+                        <span class="form-hint">When this recurring event starts</span>
+                    </div>
+
+                    <!-- End Date (optional) -->
+                    <div class="form-group">
+                        <label for="event-end-date">End Date (Optional)</label>
+                        <input
+                            id="event-end-date"
+                            type="date"
+                            x-model="eventForm.end_date"
+                            class="form-input">
+                        <span class="form-hint">Leave blank for ongoing recurrence</span>
+                    </div>
                 </div>
 
                 <!-- Modal Actions -->
@@ -1013,7 +1144,8 @@
                         type="button"
                         class="btn-danger"
                         x-show="eventForm.id"
-                        @click="deleteEventFromModal()">Delete</button>
+                        @click="eventForm.is_recurring ? deleteRecurringRuleFromModal() : deleteEventFromModal()"
+                        x-text="eventForm.is_recurring ? 'Delete Rule' : 'Delete'"></button>
                 </div>
             </form>
         </div>
@@ -1048,7 +1180,7 @@
 
 
     <!-- Help Modal -->
-    <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showHelpModal" x-cloak>
         <div class="modal help-modal" @click.stop>
             <div class="modal-header">
                 <h2>Help & Tips</h2>
@@ -1083,7 +1215,7 @@
     </div>
 
     <!-- Database Tools Modal -->
-    <div class="modal-overlay" x-show="showDatabaseToolsModal" @click="showDatabaseToolsModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showDatabaseToolsModal" x-cloak>
         <div class="modal database-tools-modal" @click.stop>
             <div class="modal-header">
                 <h2>🛠 Database Management Tools</h2>
@@ -1183,7 +1315,7 @@
     </div>
 
     <!-- Confirmation Modal -->
-    <div class="modal-overlay" x-show="showConfirmModal" @click="closeConfirmModal()" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showConfirmModal" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="confirmModalData.title" id="confirm-modal-title"></h2>
@@ -1205,7 +1337,7 @@
     </div>
 
     <!-- Input Modal -->
-    <div class="modal-overlay" x-show="showInputModal" @click="closeInputModal()" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showInputModal" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="inputModalData.title" id="input-modal-title"></h2>
@@ -1232,7 +1364,7 @@
     </div>
 
     <!-- Password Modal -->
-    <div class="modal-overlay" x-show="showPasswordModal" @click="closePasswordModal()" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showPasswordModal" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header" style="border-bottom-color: var(--red);">
                 <h2 x-text="passwordModalData.title" style="color: var(--red);" id="password-modal-title"></h2>

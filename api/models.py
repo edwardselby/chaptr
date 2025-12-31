@@ -789,6 +789,10 @@ class SyncChange(BaseModel):
         default=None,
         description="Client's last known updated_at for conflict detection (updates/deletes only)"
     )
+    metadata: Optional[dict] = Field(
+        default=None,
+        description="Queue metadata: _derived_from, _optimistic, dependencies (for derived event detection)"
+    )
 
     @model_validator(mode='after')
     def validate_base_updated_at_for_updates_deletes(self):
@@ -854,18 +858,20 @@ class SyncConflict(BaseModel):
     """
     Conflict detected during push phase.
 
-    Three conflict types:
+    Four conflict types:
     - edit_edit: Client and server both modified entity
     - delete_edit: Client deleted, server modified (or vice versa)
     - business_rule: Change violates business logic (e.g., delete account with events)
+    - derived_event_overridden: Client's optimistic derived event replaced by server's authoritative version
 
     Both versions included for client-side resolution UI.
+    For derived_event_overridden, frontend auto-resolves by deleting client version.
     """
     entity_type: EntityType = Field(..., description="Type of conflicting entity")
     entity_id: UUID = Field(..., description="ID of conflicting entity")
     conflict_type: str = Field(
         ...,
-        description="Conflict category: edit_edit, delete_edit, business_rule"
+        description="Conflict category: edit_edit, delete_edit, business_rule, derived_event_overridden"
     )
     client_version: Optional[dict] = Field(
         default=None,
