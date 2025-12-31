@@ -1564,61 +1564,118 @@ body::before {
     cursor: pointer;
 }
 
-/* Select Dropdowns - Custom Terminal Styling */
-select.form-input {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%234af626" stroke-width="2" stroke-linecap="square"><polyline points="6 9 12 15 18 9"></polyline></svg>');
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 16px;
-    background-color: var(--bg-primary);
-    padding-right: 40px;
+/* Custom Dropdown Component - Terminal Styling */
+.custom-select {
+    position: relative;
+    width: 100%;
+}
+
+.select-trigger {
+    width: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    text-align: left;
     cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     transition: all 0.2s ease;
 }
 
-select.form-input:hover {
+.select-trigger:hover {
     border-color: var(--green-dim);
     background-color: rgba(74, 246, 38, 0.02);
 }
 
-select.form-input:focus {
+.select-trigger:focus {
     outline: none;
     border-color: var(--green-bright);
     box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.15);
-    background-color: var(--bg-primary);
 }
 
-select.form-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.select-trigger .chevron {
+    color: var(--green-bright);
+    font-size: 12px;
+    transition: transform 0.2s ease;
+    margin-left: 8px;
 }
 
-/* Select Options - Terminal Styling */
-select.form-input option {
+.select-trigger .chevron.open {
+    transform: rotate(180deg);
+}
+
+.select-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
     background: var(--bg-secondary);
+    border: 1px solid var(--green-dim);
+    border-top: none;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-shadow: 0 4px 12px rgba(74, 246, 38, 0.15);
+}
+
+.select-dropdown li {
+    padding: 10px 12px;
+    cursor: pointer;
     color: var(--text-bright);
-    padding: 10px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 14px;
+    transition: all 0.15s ease;
+    border-bottom: 1px solid var(--border);
 }
 
-select.form-input option:hover {
+.select-dropdown li:last-child {
+    border-bottom: none;
+}
+
+.select-dropdown li:hover {
     background: var(--green-dim);
     color: var(--text-bright);
 }
 
-select.form-input option:checked {
-    background: var(--green-dim);
+.select-dropdown li.selected {
+    background: rgba(74, 246, 38, 0.1);
     color: var(--green-bright);
     font-weight: 600;
 }
 
-select.form-input option[value=""] {
+.select-dropdown li.selected:hover {
+    background: var(--green-dim);
+}
+
+/* Placeholder/empty option styling */
+.select-dropdown li.placeholder {
     color: var(--text-dim);
     font-style: italic;
+}
+
+/* Scrollbar styling for dropdown */
+.select-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+
+.select-dropdown::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+.select-dropdown::-webkit-scrollbar-thumb {
+    background: var(--green-dim);
+    border-radius: 4px;
+}
+
+.select-dropdown::-webkit-scrollbar-thumb:hover {
+    background: var(--green-bright);
 }
 
 .modal-actions {

@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body x-data="app()">
 
@@ -939,12 +939,14 @@
 
     <!-- Event Modal -->
     <div class="modal-overlay" x-show="showEventModal" x-cloak>
-        <div class="modal" @click.stop>
+        <div class="modal" @click.stop
+            x-data="{ eventAccountDropdownOpen: false }">
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
                 <button class="modal-close" @click="showEventModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveEvent" class="modal-body">
+            <form @submit.prevent="saveEvent" class="modal-body"
+                @click="eventAccountDropdownOpen = false">
 
                 <!-- Event Type Toggle -->
                 <div class="form-group">
@@ -1018,15 +1020,45 @@
                 <!-- Account Selection (Resolved via hierarchy) -->
                 <div class="form-group">
                     <label for="event-account">Account</label>
-                    <select
-                        id="event-account"
-                        x-model="eventForm.account_id"
-                        class="form-input">
-                        <option value="">-- Auto (use hierarchy) --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown Component -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return eventForm.account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- Auto (use hierarchy) --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? `${account.name} (${account.currency})` : '-- Auto (use hierarchy) --';
+                            },
+                            selectOption(value) {
+                                eventForm.account_id = value;
+                                eventAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="eventAccountDropdownOpen = false">
+
+                        <!-- Trigger Button -->
+                        <button type="button" class="select-trigger" @click="eventAccountDropdownOpen = !eventAccountDropdownOpen">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': eventAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <!-- Dropdown List -->
+                        <ul class="select-dropdown" x-show="eventAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- Auto (use hierarchy) --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="`${account.name} (${account.currency})`">
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint" x-text="getAccountHierarchyHint()"></span>
                 </div>
 
