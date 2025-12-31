@@ -820,12 +820,18 @@
 
     <!-- Story Modal -->
     <div class="modal-overlay" x-show="showStoryModal" x-cloak>
-        <div class="modal" @click.stop>
+        <div class="modal" @click.stop
+            x-data="{
+                storyDefaultAccountDropdownOpen: false,
+                storyFundingModeDropdownOpen: false,
+                storyGoalTypeDropdownOpen: false
+            }">
             <div class="modal-header">
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
                 <button class="modal-close" @click="showStoryModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveStory" class="modal-body">
+            <form @submit.prevent="saveStory" class="modal-body"
+                @click="storyDefaultAccountDropdownOpen = false; storyFundingModeDropdownOpen = false; storyGoalTypeDropdownOpen = false">
 
                 <!-- Story Name (Required) -->
                 <div class="form-group">
@@ -863,13 +869,42 @@
                 <!-- Default Account (Optional) -->
                 <div class="form-group">
                     <label for="story-default-account">Default Account</label>
-                    <select id="story-default-account" x-model="storyForm.default_account_id"
-                        class="form-input">
-                        <option value="">-- None (use global default) --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return storyForm.default_account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- None (use global default) --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? `${account.name} (${account.currency})` : '-- None (use global default) --';
+                            },
+                            selectOption(value) {
+                                storyForm.default_account_id = value;
+                                storyDefaultAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="storyDefaultAccountDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="storyDefaultAccountDropdownOpen = !storyDefaultAccountDropdownOpen">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyDefaultAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyDefaultAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- None (use global default) --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="`${account.name} (${account.currency})`"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">Events in this story will use this account by default</span>
                 </div>
 
@@ -885,11 +920,41 @@
                 <!-- Funding Mode (Required) -->
                 <div class="form-group">
                     <label for="story-funding-mode">Funding Mode</label>
-                    <select id="story-funding-mode" x-model="storyForm.funding_mode" class="form-input">
-                        <option value="projected">Projected (use calculated balance)</option>
-                        <option value="fixed">Fixed (specific amount)</option>
-                        <option value="projected_plus">Projected + Adjustment</option>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            options: [
+                                { value: 'projected', label: 'Projected (use calculated balance)' },
+                                { value: 'fixed', label: 'Fixed (specific amount)' },
+                                { value: 'projected_plus', label: 'Projected + Adjustment' }
+                            ],
+                            getSelectedLabel() {
+                                const opt = this.options.find(o => o.value === storyForm.funding_mode);
+                                return opt ? opt.label : 'Select...';
+                            },
+                            selectOption(value) {
+                                storyForm.funding_mode = value;
+                                storyFundingModeDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="storyFundingModeDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="storyFundingModeDropdownOpen = !storyFundingModeDropdownOpen">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyFundingModeDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyFundingModeDropdownOpen" x-cloak x-transition>
+                            <template x-for="opt in options" :key="opt.value">
+                                <li @click="selectOption(opt.value)"
+                                    :class="{ 'selected': storyForm.funding_mode === opt.value }"
+                                    x-text="opt.label"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">How starting balance is calculated</span>
                 </div>
 
@@ -908,11 +973,41 @@
                 <!-- Goal Type (Optional) -->
                 <div class="form-group">
                     <label for="story-goal-type">Goal Type</label>
-                    <select id="story-goal-type" x-model="storyForm.goal_type" class="form-input">
-                        <option value="none">-- No Goal --</option>
-                        <option value="spend_up_to">Spend Up To (budget limit)</option>
-                        <option value="end_with_at_least">End With At Least (target balance)</option>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            options: [
+                                { value: 'none', label: '-- No Goal --' },
+                                { value: 'spend_up_to', label: 'Spend Up To (budget limit)' },
+                                { value: 'end_with_at_least', label: 'End With At Least (target balance)' }
+                            ],
+                            getSelectedLabel() {
+                                const opt = this.options.find(o => o.value === storyForm.goal_type);
+                                return opt ? opt.label : '-- No Goal --';
+                            },
+                            selectOption(value) {
+                                storyForm.goal_type = value;
+                                storyGoalTypeDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="storyGoalTypeDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="storyGoalTypeDropdownOpen = !storyGoalTypeDropdownOpen">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyGoalTypeDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyGoalTypeDropdownOpen" x-cloak x-transition>
+                            <template x-for="opt in options" :key="opt.value">
+                                <li @click="selectOption(opt.value)"
+                                    :class="{ 'selected': storyForm.goal_type === opt.value, 'placeholder': opt.value === 'none' }"
+                                    x-text="opt.label"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">Optional spending/saving target</span>
                 </div>
 
