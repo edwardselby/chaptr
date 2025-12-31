@@ -949,14 +949,12 @@
                 <!-- Event Type Toggle -->
                 <div class="form-group">
                     <div class="toggle-switch">
-                        <label class="toggle-option" :class="{ active: !eventForm.is_recurring }">
-                            <input type="radio" name="event-type" :value="false" x-model="eventForm.is_recurring">
-                            <span>Simple Event</span>
-                        </label>
-                        <label class="toggle-option" :class="{ active: eventForm.is_recurring }">
-                            <input type="radio" name="event-type" :value="true" x-model="eventForm.is_recurring">
-                            <span>Recurring Event</span>
-                        </label>
+                        <button type="button" class="toggle-option" :class="{ active: !eventForm.is_recurring }" @click="eventForm.is_recurring = false">
+                            Simple Event
+                        </button>
+                        <button type="button" class="toggle-option" :class="{ active: eventForm.is_recurring }" @click="eventForm.is_recurring = true">
+                            Recurring Event
+                        </button>
                     </div>
                 </div>
 

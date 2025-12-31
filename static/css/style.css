@@ -1423,6 +1423,51 @@ body::before {
     color: var(--text-dim);
 }
 
+/* Toggle Switch (Event Type) */
+.toggle-switch {
+    display: flex;
+    gap: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.toggle-option {
+    flex: 1;
+    cursor: pointer;
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    transition: all 0.2s ease;
+    user-select: none;
+    outline: none;
+}
+
+.toggle-option:last-child {
+    border-right: none;
+}
+
+.toggle-option.active {
+    background: var(--green-dim);
+    color: var(--green-bright);
+    font-weight: 600;
+}
+
+.toggle-option:hover:not(.active) {
+    background: rgba(74, 246, 38, 0.05);
+    color: var(--text-bright);
+}
+
+.toggle-option:focus {
+    outline: none;
+}
+
 /* Date Quick Buttons */
 .date-quick-buttons {
     display: flex;
