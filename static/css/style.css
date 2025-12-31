@@ -1497,6 +1497,52 @@ body::before {
     transform: scale(0.98);
 }
 
+/* Amount Input with Toggle Buttons */
+.amount-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.amount-input {
+    flex: 1;
+    font-weight: 600;
+}
+
+.amount-toggle-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-amount-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-amount-toggle:hover {
+    border-color: var(--green-bright);
+    color: var(--text-bright);
+}
+
+.btn-amount-toggle.active {
+    background: var(--green-dim);
+    border-color: var(--green-bright);
+    color: var(--green-bright);
+}
+
 .form-checkbox {
     display: flex;
     align-items: center;
