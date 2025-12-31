@@ -1473,7 +1473,7 @@
                         <label for="event-day">
                             <span x-show="eventForm.frequency === 'weekly'">Day of Week</span>
                             <span x-show="eventForm.frequency === 'monthly'">Day of Month</span>
-                            <span x-show="eventForm.frequency === 'annual'">Anniversary Date</span>
+                            <span x-show="eventForm.frequency === 'annual'">Annual Date</span>
                             <span x-show="!eventForm.frequency">Day</span>
                         </label>
 
@@ -1542,7 +1542,7 @@
 
                         <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
-                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">Select the date (e.g., December 25th for Christmas)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">When this event occurs each year (e.g., Jan 1st for annual insurance)</span>
                     </div>
 
                     <!-- Start Date -->
