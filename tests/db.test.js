@@ -234,6 +234,35 @@ describe('Dexie Database - Helper Functions', () => {
     expect(activeAccounts[0].name).toBe('Active Account');
   });
 
+  it('should get active stories (excluding archived)', async () => {
+    await db.stories.bulkAdd([
+      {
+        id: generateUUID(),
+        name: 'Active Story',
+        start_date: '2025-01-01',
+        end_date: '2025-12-31',
+        funding_mode: 'projected',
+        is_archived: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: generateUUID(),
+        name: 'Archived Story',
+        start_date: '2024-01-01',
+        end_date: '2024-12-31',
+        funding_mode: 'projected',
+        is_archived: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    ]);
+
+    const activeStories = await db.getActiveStories();
+    expect(activeStories).toHaveLength(1);
+    expect(activeStories[0].name).toBe('Active Story');
+  });
+
   it('should get default account', async () => {
     const defaultAccountId = generateUUID();
     await db.accounts.bulkAdd([
