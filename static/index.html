@@ -1033,26 +1033,54 @@
 
     <!-- Balance Reconciliation Modal -->
     <div class="modal-overlay" x-show="showBalanceModal" x-cloak>
-        <div class="modal" @click.stop>
+        <div class="modal" @click.stop
+            x-data="{ balanceAccountDropdownOpen: false }">
             <div class="modal-header">
                 <h2>Update Account Balance</h2>
                 <button class="modal-close" @click="showBalanceModal = false">✕</button>
             </div>
 
-            <form @submit.prevent="saveBalanceUpdate" class="modal-body">
+            <form @submit.prevent="saveBalanceUpdate" class="modal-body"
+                @click="balanceAccountDropdownOpen = false">
                 <!-- Account Selection -->
                 <div class="form-group">
                     <label for="balance-account">Account</label>
-                    <select id="balance-account"
-                        x-model="balanceForm.account_id"
-                        @change="calculateBalanceDrift()"
-                        required
-                        class="form-input">
-                        <option value="">-- Select Account --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="account.name"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return balanceForm.account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- Select Account --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? account.name : '-- Select Account --';
+                            },
+                            selectOption(value) {
+                                balanceForm.account_id = value;
+                                calculateBalanceDrift();
+                                balanceAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="balanceAccountDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="balanceAccountDropdownOpen = !balanceAccountDropdownOpen">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': balanceAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="balanceAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- Select Account --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="account.name"></li>
+                            </template>
+                        </ul>
+                    </div>
                 </div>
 
                 <!-- Current Projected Balance (read-only) -->
@@ -1114,13 +1142,18 @@
     <!-- Event Modal -->
     <div class="modal-overlay" x-show="showEventModal" x-cloak>
         <div class="modal" @click.stop
-            x-data="{ eventAccountDropdownOpen: false }">
+            x-data="{
+                eventAccountDropdownOpen: false,
+                eventStoryDropdownOpen: false,
+                eventFrequencyDropdownOpen: false,
+                eventDayDropdownOpen: false
+            }">
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
                 <button class="modal-close" @click="showEventModal = false">✕</button>
             </div>
             <form @submit.prevent="saveEvent" class="modal-body"
-                @click="eventAccountDropdownOpen = false">
+                @click="eventAccountDropdownOpen = false; eventStoryDropdownOpen = false; eventFrequencyDropdownOpen = false; eventDayDropdownOpen = false">
 
                 <!-- Event Type Toggle -->
                 <div class="form-group">
@@ -1257,16 +1290,43 @@
                     <!-- Story Assignment (Baseline vs Story) -->
                     <div class="form-group">
                         <label for="event-story">Story</label>
-                        <select
-                            id="event-story"
-                            x-model="eventForm.story_id"
-                            @change="handleStoryChange()"
-                            class="form-input">
-                            <option value="">-- Baseline (no story) --</option>
-                            <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
-                                <option :value="story.id" x-text="story.name"></option>
-                            </template>
-                        </select>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            x-data="{
+                                get selectedValue() { return eventForm.story_id; },
+                                getSelectedLabel() {
+                                    if (!this.selectedValue) return '-- Baseline (no story) --';
+                                    const story = stories.find(s => s.id === this.selectedValue);
+                                    return story ? story.name : '-- Baseline (no story) --';
+                                },
+                                selectOption(value) {
+                                    eventForm.story_id = value;
+                                    handleStoryChange();
+                                    eventStoryDropdownOpen = false;
+                                }
+                            }"
+                            @click.stop
+                            @click.away="eventStoryDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="eventStoryDropdownOpen = !eventStoryDropdownOpen">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventStoryDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventStoryDropdownOpen" x-cloak x-transition>
+                                <li @click="selectOption('')"
+                                    :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                    -- Baseline (no story) --
+                                </li>
+                                <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
+                                    <li @click="selectOption(story.id)"
+                                        :class="{ 'selected': selectedValue === story.id }"
+                                        x-text="story.name"></li>
+                                </template>
+                            </ul>
+                        </div>
+
                         <span class="form-hint">Leave as baseline or assign to a story</span>
                     </div>
 
@@ -1285,12 +1345,41 @@
                     <!-- Frequency dropdown -->
                     <div class="form-group">
                         <label for="event-frequency">Frequency</label>
-                        <select id="event-frequency" x-model="eventForm.frequency" :required="eventForm.is_recurring" class="form-input">
-                            <option value="">-- Select frequency --</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="annual">Annual</option>
-                        </select>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            x-data="{
+                                options: [
+                                    { value: '', label: '-- Select frequency --' },
+                                    { value: 'weekly', label: 'Weekly' },
+                                    { value: 'monthly', label: 'Monthly' },
+                                    { value: 'annual', label: 'Annual' }
+                                ],
+                                getSelectedLabel() {
+                                    const opt = this.options.find(o => o.value === eventForm.frequency);
+                                    return opt ? opt.label : '-- Select frequency --';
+                                },
+                                selectOption(value) {
+                                    eventForm.frequency = value;
+                                    eventFrequencyDropdownOpen = false;
+                                }
+                            }"
+                            @click.stop
+                            @click.away="eventFrequencyDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="eventFrequencyDropdownOpen = !eventFrequencyDropdownOpen">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventFrequencyDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventFrequencyDropdownOpen" x-cloak x-transition>
+                                <template x-for="opt in options" :key="opt.value">
+                                    <li @click="selectOption(opt.value)"
+                                        :class="{ 'selected': eventForm.frequency === opt.value, 'placeholder': opt.value === '' }"
+                                        x-text="opt.label"></li>
+                                </template>
+                            </ul>
+                        </div>
                     </div>
 
                     <!-- Day field (conditional label based on frequency) -->
@@ -1301,27 +1390,59 @@
                             <span x-show="eventForm.frequency === 'annual'">Day of Year</span>
                             <span x-show="!eventForm.frequency">Day</span>
                         </label>
-                        <select id="event-day" x-model.number="eventForm.day" :required="eventForm.is_recurring" class="form-input">
-                            <option value="">-- Select day --</option>
-                            <!-- Weekly: 1-7 -->
-                            <template x-if="eventForm.frequency === 'weekly'">
-                                <template x-for="i in 7" :key="i">
-                                    <option :value="i" x-text="['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i-1]"></option>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            x-data="{
+                                get selectedValue() { return eventForm.day; },
+                                getDayOptions() {
+                                    if (eventForm.frequency === 'weekly') {
+                                        return [
+                                            { value: '', label: '-- Select day --' },
+                                            { value: 1, label: 'Monday' },
+                                            { value: 2, label: 'Tuesday' },
+                                            { value: 3, label: 'Wednesday' },
+                                            { value: 4, label: 'Thursday' },
+                                            { value: 5, label: 'Friday' },
+                                            { value: 6, label: 'Saturday' },
+                                            { value: 7, label: 'Sunday' }
+                                        ];
+                                    } else if (eventForm.frequency === 'monthly' || eventForm.frequency === 'annual') {
+                                        const days = [{ value: '', label: '-- Select day --' }];
+                                        for (let i = 1; i <= 31; i++) {
+                                            days.push({ value: i, label: String(i) });
+                                        }
+                                        return days;
+                                    }
+                                    return [{ value: '', label: '-- Select day --' }];
+                                },
+                                getSelectedLabel() {
+                                    const options = this.getDayOptions();
+                                    const opt = options.find(o => o.value === this.selectedValue);
+                                    return opt ? opt.label : '-- Select day --';
+                                },
+                                selectOption(value) {
+                                    eventForm.day = value;
+                                    eventDayDropdownOpen = false;
+                                }
+                            }"
+                            @click.stop
+                            @click.away="eventDayDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="eventDayDropdownOpen = !eventDayDropdownOpen">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventDayDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventDayDropdownOpen" x-cloak x-transition>
+                                <template x-for="opt in getDayOptions()" :key="opt.value">
+                                    <li @click="selectOption(opt.value)"
+                                        :class="{ 'selected': selectedValue === opt.value, 'placeholder': opt.value === '' }"
+                                        x-text="opt.label"></li>
                                 </template>
-                            </template>
-                            <!-- Monthly: 1-31 -->
-                            <template x-if="eventForm.frequency === 'monthly'">
-                                <template x-for="i in 31" :key="i">
-                                    <option :value="i" x-text="i"></option>
-                                </template>
-                            </template>
-                            <!-- Annual: 1-31 (day of start month) -->
-                            <template x-if="eventForm.frequency === 'annual'">
-                                <template x-for="i in 31" :key="i">
-                                    <option :value="i" x-text="i"></option>
-                                </template>
-                            </template>
-                        </select>
+                            </ul>
+                        </div>
+
                         <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'annual'">Which day of the month (uses start month)</span>
