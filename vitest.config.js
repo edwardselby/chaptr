@@ -16,8 +16,8 @@ export default defineConfig({
           provider: playwright(),
         },
       ],
-      // Headless for CI/CD, can disable for debugging
-      headless: true,
+      // Headless in CI, visible browser for local debugging
+      headless: process.env.CI !== undefined ? true : false,
     },
 
     // Setup file to configure browser environment

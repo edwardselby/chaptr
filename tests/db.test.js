@@ -343,6 +343,54 @@ describe('Dexie Database - Helper Functions', () => {
     expect(baselineEvents[0].description).toBe('Baseline Event');
     expect(baselineEvents[0].is_baseline).toBe(true);
   });
+
+  it('should get events for a specific story', async () => {
+    const accountId = generateUUID();
+    const storyId = generateUUID();
+
+    await db.events.bulkAdd([
+      {
+        id: generateUUID(),
+        event_date: '2025-01-05',
+        description: 'Story Event 1',
+        amount: 100,
+        account_id: accountId,
+        is_baseline: false,
+        is_hypothetical: false,
+        story_id: storyId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: generateUUID(),
+        event_date: '2025-01-15',
+        description: 'Story Event 2',
+        amount: 200,
+        account_id: accountId,
+        is_baseline: false,
+        is_hypothetical: false,
+        story_id: storyId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: generateUUID(),
+        event_date: '2025-01-20',
+        description: 'Different Story Event',
+        amount: 300,
+        account_id: accountId,
+        is_baseline: false,
+        is_hypothetical: false,
+        story_id: generateUUID(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    ]);
+
+    const storyEvents = await db.getStoryEvents(storyId);
+    expect(storyEvents).toHaveLength(2);
+    expect(storyEvents.every(e => e.story_id === storyId)).toBe(true);
+  });
 });
 
 describe('Dexie Database - Sync Queue Operations', () => {
