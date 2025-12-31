@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - REFACTOR: Duplicate opening balance events eliminated via metadata-based skipping (no database mutations)
 - REFACTOR: Adjustment events persist after sync via pending_reconciliation flag and same-batch update logic
 - REFACTOR: CREATE→UPDATE sequences in offline sessions work correctly (account creation + balance update)
+- POLISH: Stories Management screen Add Story button removed - now uses bottom navbar "+ Add Story" for consistency
 
 ## [0.2.0] - 2025-12-28
 
