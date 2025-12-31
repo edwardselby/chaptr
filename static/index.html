@@ -454,29 +454,82 @@
                             <div class="settings-form">
                                 <div class="form-group">
                                     <label for="base-currency">Base Currency</label>
-                                    <select
-                                        id="base-currency"
-                                        x-model="settingsForm.base_currency"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="GBP">GBP (£)</option>
-                                        <option value="USD">USD ($)</option>
-                                        <option value="EUR">EUR (€)</option>
-                                        <option value="CAD">CAD ($)</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="{
+                                            open: false,
+                                            options: [
+                                                { value: 'GBP', label: 'GBP (£)' },
+                                                { value: 'USD', label: 'USD ($)' },
+                                                { value: 'EUR', label: 'EUR (€)' },
+                                                { value: 'CAD', label: 'CAD ($)' }
+                                            ],
+                                            getSelectedLabel() {
+                                                const opt = this.options.find(o => o.value === settingsForm.base_currency);
+                                                return opt ? opt.label : 'Select...';
+                                            },
+                                            selectOption(value) {
+                                                settingsForm.base_currency = value;
+                                                updateSettings();
+                                                this.open = false;
+                                            }
+                                        }"
+                                        @click.away="open = false">
+
+                                        <button type="button" class="select-trigger" @click="open = !open">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': settingsForm.base_currency === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
+
                                     <span class="form-hint">All projections use this as the base currency</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="date-format">Date Format</label>
-                                    <select
-                                        id="date-format"
-                                        x-model="settingsForm.date_format"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="DD MMM">DD MMM (18 Dec)</option>
-                                        <option value="MMM DD">MMM DD (Dec 18)</option>
-                                        <option value="YYYY-MM-DD">YYYY-MM-DD (2024-12-18)</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="{
+                                            open: false,
+                                            options: [
+                                                { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
+                                                { value: 'MMM DD', label: 'MMM DD (Dec 18)' },
+                                                { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-18)' }
+                                            ],
+                                            getSelectedLabel() {
+                                                const opt = this.options.find(o => o.value === settingsForm.date_format);
+                                                return opt ? opt.label : 'Select...';
+                                            },
+                                            selectOption(value) {
+                                                settingsForm.date_format = value;
+                                                updateSettings();
+                                                this.open = false;
+                                            }
+                                        }"
+                                        @click.away="open = false">
+
+                                        <button type="button" class="select-trigger" @click="open = !open">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': settingsForm.date_format === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="baseline-months">Baseline Display (Months)</label>
@@ -555,15 +608,41 @@
                             <div class="sync-settings-form">
                                 <div class="form-group">
                                     <label for="sync-interval">Sync Interval</label>
-                                    <select
-                                        id="sync-interval"
-                                        x-model="settingsForm.auto_sync_interval"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="300">Every 5 minutes</option>
-                                        <option value="3600">Every hour</option>
-                                        <option value="86400">Every day</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="{
+                                            open: false,
+                                            options: [
+                                                { value: '300', label: 'Every 5 minutes' },
+                                                { value: '3600', label: 'Every hour' },
+                                                { value: '86400', label: 'Every day' }
+                                            ],
+                                            getSelectedLabel() {
+                                                const opt = this.options.find(o => o.value === String(settingsForm.auto_sync_interval));
+                                                return opt ? opt.label : 'Select...';
+                                            },
+                                            selectOption(value) {
+                                                settingsForm.auto_sync_interval = value;
+                                                updateSettings();
+                                                this.open = false;
+                                            }
+                                        }"
+                                        @click.away="open = false">
+
+                                        <button type="button" class="select-trigger" @click="open = !open">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': String(settingsForm.auto_sync_interval) === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
                         </section>
