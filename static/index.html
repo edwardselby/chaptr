@@ -1210,6 +1210,20 @@
                     this[dropdownName] = true;
                     // Dispatch event to close dropdowns in other modals/screens
                     $dispatch('dropdown-opened', { id: dropdownName });
+                },
+                handleAnniversaryDateChange() {
+                    if (eventForm.anniversary_date) {
+                        const date = new Date(eventForm.anniversary_date + 'T00:00:00');
+                        eventForm.day = date.getDate();
+                        if (!eventForm.start_date) {
+                            eventForm.start_date = eventForm.anniversary_date;
+                        } else {
+                            const startYear = new Date(eventForm.start_date + 'T00:00:00').getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            eventForm.start_date = startYear + '-' + month + '-' + day;
+                        }
+                    }
                 }
             }"
             @dropdown-opened.window="
@@ -1524,23 +1538,7 @@
                             x-model="eventForm.anniversary_date"
                             :required="eventForm.frequency === 'annual' && eventForm.is_recurring"
                             class="form-input"
-                            @change="
-                                // Extract month and day from anniversary_date
-                                if (eventForm.anniversary_date) {
-                                    const date = new Date(eventForm.anniversary_date + 'T00:00:00');
-                                    eventForm.day = date.getDate();
-                                    // Update start_date to use the selected month/day
-                                    if (!eventForm.start_date) {
-                                        eventForm.start_date = eventForm.anniversary_date;
-                                    } else {
-                                        // Keep the year from start_date, but use month/day from anniversary
-                                        const startYear = new Date(eventForm.start_date + 'T00:00:00').getFullYear();
-                                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                                        const day = String(date.getDate()).padStart(2, '0');
-                                        eventForm.start_date = startYear + '-' + month + '-' + day;
-                                    }
-                                }
-                            ">
+                            @change="handleAnniversaryDateChange()">
 
                         <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
