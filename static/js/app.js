@@ -1638,11 +1638,11 @@ window.app = function() {
                 // Perform incremental sync
                 const result = await storage.manualSync();
 
-                // Check for conflicts after sync
-                const conflicts = await db.conflicts.count();
-                if (conflicts > 0) {
+                // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
+                const unresolvedConflicts = await db.getUnresolvedConflicts();
+                if (unresolvedConflicts.length > 0) {
                     this.showNotification(
-                        `${conflicts} conflicts`,
+                        `${unresolvedConflicts.length} conflicts`,
                         'warning'
                     );
                 } else if (result.applied && result.applied > 0) {
