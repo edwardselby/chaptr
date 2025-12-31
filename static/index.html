@@ -1382,17 +1382,18 @@
                         </div>
                     </div>
 
-                    <!-- Day field (conditional label based on frequency) -->
+                    <!-- Day field (conditional: dropdown for weekly/monthly, date picker for annual) -->
                     <div class="form-group">
                         <label for="event-day">
                             <span x-show="eventForm.frequency === 'weekly'">Day of Week</span>
                             <span x-show="eventForm.frequency === 'monthly'">Day of Month</span>
-                            <span x-show="eventForm.frequency === 'annual'">Day of Year</span>
+                            <span x-show="eventForm.frequency === 'annual'">Anniversary Date</span>
                             <span x-show="!eventForm.frequency">Day</span>
                         </label>
 
-                        <!-- Custom Dropdown -->
+                        <!-- Custom Dropdown (for weekly/monthly) -->
                         <div class="custom-select"
+                            x-show="eventForm.frequency === 'weekly' || eventForm.frequency === 'monthly'"
                             x-data="{
                                 get selectedValue() { return eventForm.day; },
                                 getDayOptions() {
@@ -1407,7 +1408,7 @@
                                             { value: 6, label: 'Saturday' },
                                             { value: 7, label: 'Sunday' }
                                         ];
-                                    } else if (eventForm.frequency === 'monthly' || eventForm.frequency === 'annual') {
+                                    } else if (eventForm.frequency === 'monthly') {
                                         const days = [{ value: '', label: '-- Select day --' }];
                                         for (let i = 1; i <= 31; i++) {
                                             days.push({ value: i, label: String(i) });
@@ -1443,9 +1444,35 @@
                             </ul>
                         </div>
 
+                        <!-- Date Picker (for annual) -->
+                        <input
+                            x-show="eventForm.frequency === 'annual'"
+                            id="event-anniversary-date"
+                            type="date"
+                            x-model="eventForm.anniversary_date"
+                            :required="eventForm.frequency === 'annual' && eventForm.is_recurring"
+                            class="form-input"
+                            @change="
+                                // Extract month and day from anniversary_date
+                                if (eventForm.anniversary_date) {
+                                    const date = new Date(eventForm.anniversary_date + 'T00:00:00');
+                                    eventForm.day = date.getDate();
+                                    // Update start_date to use the selected month/day
+                                    if (!eventForm.start_date) {
+                                        eventForm.start_date = eventForm.anniversary_date;
+                                    } else {
+                                        // Keep the year from start_date, but use month/day from anniversary
+                                        const startYear = new Date(eventForm.start_date + 'T00:00:00').getFullYear();
+                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                        const day = String(date.getDate()).padStart(2, '0');
+                                        eventForm.start_date = startYear + '-' + month + '-' + day;
+                                    }
+                                }
+                            ">
+
                         <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
-                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">Which day of the month (uses start month)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">Select the date (e.g., December 25th for Christmas)</span>
                     </div>
 
                     <!-- Start Date -->

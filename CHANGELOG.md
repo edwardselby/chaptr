@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - POLISH: Custom dropdown component (ul/li based) - fully styled dropdown using Alpine.js with terminal aesthetic, custom green chevron, smooth transitions, and full option styling support
 - POLISH: Custom dropdown click-outside detection - closes dropdown on clicks inside or outside modal using @click.stop propagation control and parent state management
+- POLISH: Anniversary date picker for annual recurring events - replaces confusing dropdown with HTML5 date picker when frequency is "annual", auto-extracts month/day for recurrence
 - POLISH: Amount field toggle buttons - [−] button active by default (red), [+] button green when active, enforces sign automatically
 - POLISH: Amount field color coding - red text for expenses, green for income, button colors match sign (red for minus, green for plus)
 - REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)
