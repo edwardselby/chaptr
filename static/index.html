@@ -996,21 +996,22 @@
                         <input
                             id="event-amount"
                             type="number"
-                            x-model="eventForm.amount"
+                            x-model.number="eventForm.amount"
+                            @input="eventForm.amount = Math.abs(eventForm.amount || 0)"
                             step="0.01"
+                            min="0"
                             placeholder="0.00"
                             required
                             class="form-input amount-input"
-                            :style="{ color: eventForm.amount < 0 ? 'var(--red)' : eventForm.amount > 0 ? 'var(--green-bright)' : 'var(--text-bright)' }">
+                            :style="{ color: eventForm.amountIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
                         <div class="amount-toggle-buttons">
-                            <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amount < 0 }" @click="eventForm.amount = Math.abs(eventForm.amount || 0) * -1" title="Expense (deduction)">−</button>
-                            <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amount > 0 }" @click="eventForm.amount = Math.abs(eventForm.amount || 0)" title="Income (addition)">+</button>
+                            <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = true" title="Expense (deduction)">−</button>
+                            <button type="button" class="btn-amount-toggle" :class="{ active: !eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = false" title="Income (addition)">+</button>
                         </div>
                     </div>
                     <span class="form-hint">
-                        <span x-show="eventForm.amount < 0" style="color: var(--red)">Expense (deduction)</span>
-                        <span x-show="eventForm.amount > 0" style="color: var(--green-bright)">Income (addition)</span>
-                        <span x-show="!eventForm.amount || eventForm.amount === 0">Enter amount and select type</span>
+                        <span x-show="eventForm.amountIsNegative" style="color: var(--red)">Expense (deduction)</span>
+                        <span x-show="!eventForm.amountIsNegative" style="color: var(--green-bright)">Income (addition)</span>
                     </span>
                 </div>
 
