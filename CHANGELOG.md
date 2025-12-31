@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Frontend testing framework with Vitest 4.0.16 + Browser Mode for real browser testing with IndexedDB
+- Comprehensive test suite: 113 tests covering utils, database, event helpers, and projection logic (100% coverage of pure functions)
+- tests/utils.test.js: 48 tests for utility functions (currency, dates, UUIDs, validation)
+- tests/db.test.js: 24 tests for Dexie database operations (CRUD, transactions, helpers, sync queue)
+- tests/event-helpers.test.js: 26 tests for event creation logic (opening balance, recurring instances, rate calculation)
+- tests/projection.test.js: 15 tests for currency conversion functions
+- tests/TEST_PLAN.md: Comprehensive testing strategy documentation
 - REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)
 - REFACTOR: Metadata-based derived event skipping in sync protocol - server skips client-created derived events before database insertion
 - REFACTOR: Same-batch update conflict skipping - updates to entities created in same sync session apply without conflict detection
