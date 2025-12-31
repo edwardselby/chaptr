@@ -1837,6 +1837,7 @@ window.app = function() {
                 dashboard: 'Event',
                 projection: 'To Story',
                 accounts: 'Account',
+                stories: 'Story',
                 settings: 'User'
             };
             return labels[this.currentScreen] || 'Add';
@@ -1864,6 +1865,7 @@ window.app = function() {
                 dashboard: () => this.addEvent(),
                 projection: () => this.addEventToStory(),
                 accounts: () => this.openAccountModal(),
+                stories: () => this.openStoryModal(),
                 settings: () => this.openUserModal()
             };
 
