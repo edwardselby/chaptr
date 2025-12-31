@@ -1416,6 +1416,36 @@ body::before {
     box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1);
 }
 
+/* Date picker calendar icon styling */
+input[type="date"] {
+    position: relative;
+    cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 1;
+    filter: invert(0.7) sepia(1) saturate(5) hue-rotate(70deg);
+    width: 20px;
+    height: 20px;
+    margin-left: 8px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    filter: invert(0.8) sepia(1) saturate(5) hue-rotate(70deg) brightness(1.2);
+}
+
+/* Firefox date picker */
+input[type="date"]::-moz-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.7) sepia(1) saturate(5) hue-rotate(70deg);
+}
+
+/* Ensure date inputs show calendar on click anywhere */
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    cursor: pointer;
+}
+
 .form-hint {
     display: block;
     margin-top: 4px;

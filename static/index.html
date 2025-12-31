@@ -458,6 +458,7 @@
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
                                         x-data="{
+                                            dropdownId: 'base-currency',
                                             open: false,
                                             options: [
                                                 { value: 'GBP', label: 'GBP (£)' },
@@ -473,11 +474,18 @@
                                                 settingsForm.base_currency = value;
                                                 updateSettings();
                                                 this.open = false;
+                                            },
+                                            toggleOpen() {
+                                                this.open = !this.open;
+                                                if (this.open) {
+                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
+                                                }
                                             }
                                         }"
-                                        @click.away="open = false">
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
-                                        <button type="button" class="select-trigger" @click="open = !open">
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
                                             <span x-text="getSelectedLabel()"></span>
                                             <span class="chevron" :class="{ 'open': open }">▼</span>
                                         </button>
@@ -499,6 +507,7 @@
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
                                         x-data="{
+                                            dropdownId: 'date-format',
                                             open: false,
                                             options: [
                                                 { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
@@ -513,11 +522,18 @@
                                                 settingsForm.date_format = value;
                                                 updateSettings();
                                                 this.open = false;
+                                            },
+                                            toggleOpen() {
+                                                this.open = !this.open;
+                                                if (this.open) {
+                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
+                                                }
                                             }
                                         }"
-                                        @click.away="open = false">
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
-                                        <button type="button" class="select-trigger" @click="open = !open">
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
                                             <span x-text="getSelectedLabel()"></span>
                                             <span class="chevron" :class="{ 'open': open }">▼</span>
                                         </button>
@@ -612,6 +628,7 @@
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
                                         x-data="{
+                                            dropdownId: 'sync-interval',
                                             open: false,
                                             options: [
                                                 { value: '300', label: 'Every 5 minutes' },
@@ -626,11 +643,18 @@
                                                 settingsForm.auto_sync_interval = value;
                                                 updateSettings();
                                                 this.open = false;
+                                            },
+                                            toggleOpen() {
+                                                this.open = !this.open;
+                                                if (this.open) {
+                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
+                                                }
                                             }
                                         }"
-                                        @click.away="open = false">
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
-                                        <button type="button" class="select-trigger" @click="open = !open">
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
                                             <span x-text="getSelectedLabel()"></span>
                                             <span class="chevron" :class="{ 'open': open }">▼</span>
                                         </button>
@@ -824,8 +848,25 @@
             x-data="{
                 storyDefaultAccountDropdownOpen: false,
                 storyFundingModeDropdownOpen: false,
-                storyGoalTypeDropdownOpen: false
-            }">
+                storyGoalTypeDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    // Close all dropdowns
+                    this.storyDefaultAccountDropdownOpen = false;
+                    this.storyFundingModeDropdownOpen = false;
+                    this.storyGoalTypeDropdownOpen = false;
+                    // Open the requested dropdown
+                    this[dropdownName] = true;
+                    // Dispatch event to close dropdowns in other modals/screens
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('story')) {
+                    storyDefaultAccountDropdownOpen = false;
+                    storyFundingModeDropdownOpen = false;
+                    storyGoalTypeDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
                 <button class="modal-close" @click="showStoryModal = false">✕</button>
@@ -887,7 +928,7 @@
                         @click.stop
                         @click.away="storyDefaultAccountDropdownOpen = false">
 
-                        <button type="button" class="select-trigger" @click="storyDefaultAccountDropdownOpen = !storyDefaultAccountDropdownOpen">
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyDefaultAccountDropdownOpen')">
                             <span x-text="getSelectedLabel()"></span>
                             <span class="chevron" :class="{ 'open': storyDefaultAccountDropdownOpen }">▼</span>
                         </button>
@@ -941,7 +982,7 @@
                         @click.stop
                         @click.away="storyFundingModeDropdownOpen = false">
 
-                        <button type="button" class="select-trigger" @click="storyFundingModeDropdownOpen = !storyFundingModeDropdownOpen">
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyFundingModeDropdownOpen')">
                             <span x-text="getSelectedLabel()"></span>
                             <span class="chevron" :class="{ 'open': storyFundingModeDropdownOpen }">▼</span>
                         </button>
@@ -994,7 +1035,7 @@
                         @click.stop
                         @click.away="storyGoalTypeDropdownOpen = false">
 
-                        <button type="button" class="select-trigger" @click="storyGoalTypeDropdownOpen = !storyGoalTypeDropdownOpen">
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyGoalTypeDropdownOpen')">
                             <span x-text="getSelectedLabel()"></span>
                             <span class="chevron" :class="{ 'open': storyGoalTypeDropdownOpen }">▼</span>
                         </button>
@@ -1034,7 +1075,19 @@
     <!-- Balance Reconciliation Modal -->
     <div class="modal-overlay" x-show="showBalanceModal" x-cloak>
         <div class="modal" @click.stop
-            x-data="{ balanceAccountDropdownOpen: false }">
+            x-data="{
+                balanceAccountDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    this.balanceAccountDropdownOpen = false;
+                    this[dropdownName] = true;
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('balance')) {
+                    balanceAccountDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2>Update Account Balance</h2>
                 <button class="modal-close" @click="showBalanceModal = false">✕</button>
@@ -1064,7 +1117,7 @@
                         @click.stop
                         @click.away="balanceAccountDropdownOpen = false">
 
-                        <button type="button" class="select-trigger" @click="balanceAccountDropdownOpen = !balanceAccountDropdownOpen">
+                        <button type="button" class="select-trigger" @click="toggleDropdown('balanceAccountDropdownOpen')">
                             <span x-text="getSelectedLabel()"></span>
                             <span class="chevron" :class="{ 'open': balanceAccountDropdownOpen }">▼</span>
                         </button>
@@ -1146,8 +1199,27 @@
                 eventAccountDropdownOpen: false,
                 eventStoryDropdownOpen: false,
                 eventFrequencyDropdownOpen: false,
-                eventDayDropdownOpen: false
-            }">
+                eventDayDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    // Close all dropdowns
+                    this.eventAccountDropdownOpen = false;
+                    this.eventStoryDropdownOpen = false;
+                    this.eventFrequencyDropdownOpen = false;
+                    this.eventDayDropdownOpen = false;
+                    // Open the requested dropdown
+                    this[dropdownName] = true;
+                    // Dispatch event to close dropdowns in other modals/screens
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('event')) {
+                    eventAccountDropdownOpen = false;
+                    eventStoryDropdownOpen = false;
+                    eventFrequencyDropdownOpen = false;
+                    eventDayDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
                 <button class="modal-close" @click="showEventModal = false">✕</button>
@@ -1246,7 +1318,7 @@
                         @click.away="eventAccountDropdownOpen = false">
 
                         <!-- Trigger Button -->
-                        <button type="button" class="select-trigger" @click="eventAccountDropdownOpen = !eventAccountDropdownOpen">
+                        <button type="button" class="select-trigger" @click="toggleDropdown('eventAccountDropdownOpen')">
                             <span x-text="getSelectedLabel()"></span>
                             <span class="chevron" :class="{ 'open': eventAccountDropdownOpen }">▼</span>
                         </button>
@@ -1309,7 +1381,7 @@
                             @click.stop
                             @click.away="eventStoryDropdownOpen = false">
 
-                            <button type="button" class="select-trigger" @click="eventStoryDropdownOpen = !eventStoryDropdownOpen">
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventStoryDropdownOpen')">
                                 <span x-text="getSelectedLabel()"></span>
                                 <span class="chevron" :class="{ 'open': eventStoryDropdownOpen }">▼</span>
                             </button>
@@ -1367,7 +1439,7 @@
                             @click.stop
                             @click.away="eventFrequencyDropdownOpen = false">
 
-                            <button type="button" class="select-trigger" @click="eventFrequencyDropdownOpen = !eventFrequencyDropdownOpen">
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventFrequencyDropdownOpen')">
                                 <span x-text="getSelectedLabel()"></span>
                                 <span class="chevron" :class="{ 'open': eventFrequencyDropdownOpen }">▼</span>
                             </button>
@@ -1430,7 +1502,7 @@
                             @click.stop
                             @click.away="eventDayDropdownOpen = false">
 
-                            <button type="button" class="select-trigger" @click="eventDayDropdownOpen = !eventDayDropdownOpen">
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventDayDropdownOpen')">
                                 <span x-text="getSelectedLabel()"></span>
                                 <span class="chevron" :class="{ 'open': eventDayDropdownOpen }">▼</span>
                             </button>
