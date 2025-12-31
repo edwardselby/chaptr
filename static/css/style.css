@@ -1543,6 +1543,12 @@ body::before {
     color: var(--green-bright);
 }
 
+.btn-amount-toggle:first-child.active {
+    background: rgba(220, 38, 38, 0.1);
+    border-color: var(--red);
+    color: var(--red);
+}
+
 .form-checkbox {
     display: flex;
     align-items: center;
