@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- POLISH: Select dropdown custom styling - green terminal aesthetic with custom chevron icon, hover effects, focus glow, and styled options matching form-input pattern
 - POLISH: Amount field toggle buttons - [−] button active by default (red), [+] button green when active, enforces sign automatically
 - POLISH: Amount field color coding - red text for expenses, green for income, button colors match sign (red for minus, green for plus)
 - REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)

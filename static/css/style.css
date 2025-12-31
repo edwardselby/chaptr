@@ -1564,6 +1564,63 @@ body::before {
     cursor: pointer;
 }
 
+/* Select Dropdowns - Custom Terminal Styling */
+select.form-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%234af626" stroke-width="2" stroke-linecap="square"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    background-color: var(--bg-primary);
+    padding-right: 40px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+select.form-input:hover {
+    border-color: var(--green-dim);
+    background-color: rgba(74, 246, 38, 0.02);
+}
+
+select.form-input:focus {
+    outline: none;
+    border-color: var(--green-bright);
+    box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.15);
+    background-color: var(--bg-primary);
+}
+
+select.form-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Select Options - Terminal Styling */
+select.form-input option {
+    background: var(--bg-secondary);
+    color: var(--text-bright);
+    padding: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+}
+
+select.form-input option:hover {
+    background: var(--green-dim);
+    color: var(--text-bright);
+}
+
+select.form-input option:checked {
+    background: var(--green-dim);
+    color: var(--green-bright);
+    font-weight: 600;
+}
+
+select.form-input option[value=""] {
+    color: var(--text-dim);
+    font-style: italic;
+}
+
 .modal-actions {
     display: flex;
     gap: 12px;
