@@ -73,13 +73,10 @@ describe('toLocalISODate', () => {
 });
 
 describe('formatDate', () => {
-  // Known bug: formatDate has timezone conversion issues when parsing ISO strings
-  // The function converts '2025-06-15' to Date object, which applies local timezone
-  // This causes off-by-one errors in certain timezones
-  it.skip('formats dates as "Mon DD" (KNOWN BUG: timezone conversion)', () => {
-    // Use dates that don't have timezone conversion issues
+  it('formats dates as "Mon DD"', () => {
     expect(formatDate('2025-06-15')).toBe('Jun 15');
     expect(formatDate('2025-03-20')).toBe('Mar 20');
+    expect(formatDate('2025-12-31')).toBe('Dec 31');
   });
 
   it('handles Date objects', () => {
@@ -99,10 +96,9 @@ describe('formatDate', () => {
 });
 
 describe('formatDateRange', () => {
-  // Known bug: formatDateRange uses formatDate which has timezone conversion issues
-  it.skip('formats date ranges with arrow (KNOWN BUG: timezone conversion)', () => {
-    // Use dates that don't have timezone conversion issues
+  it('formats date ranges with arrow', () => {
     expect(formatDateRange('2025-06-01', '2025-06-30')).toBe('Jun 1 → Jun 30');
+    expect(formatDateRange('2025-01-01', '2025-12-31')).toBe('Jan 1 → Dec 31');
   });
 
   it('returns empty string for missing dates', () => {
