@@ -238,6 +238,7 @@ async def sync(
     - edit_edit: Both client and server modified same entity
     - delete_edit: Client deleted, server modified (or vice versa)
     - business_rule: Change violates business logic (e.g., cascade constraints)
+    - derived_event_overridden: Client's optimistic derived event replaced by server's authoritative version (auto-resolved by frontend)
 
     Stale Client Handling:
         If last_sync_at is older than oldest change_log entry, returns
@@ -254,6 +255,9 @@ async def sync(
     applied: list[UUID] = []
     conflicts: list[SyncConflict] = []
 
+    # Track entities created in this batch to skip conflict detection on immediate updates
+    created_in_batch: set[UUID] = set()
+
     # ========== PUSH PHASE: Process client changes ==========
     for change in request.changes:
         repo = get_repository(db, change.entity_type.value)
@@ -261,17 +265,68 @@ async def sync(
             # Unknown entity type - skip
             continue
 
+        # Skip client-created derived events (server creates authoritative versions)
+        # Derived events have metadata._derived_from set by queue-as-state architecture
+        # If _derived_from is present, client marked this as a derived event that server will recreate
+        if (change.action == ChangeAction.CREATE and
+            change.metadata and
+            change.metadata.get('_derived_from')):
+
+            # Return conflict to notify frontend to delete its optimistic version
+            # Frontend will silently resolve by removing from IndexedDB
+            conflicts.append(SyncConflict(
+                entity_type=change.entity_type,
+                entity_id=change.entity_id,
+                conflict_type="derived_event_overridden",
+                client_version=change.data,
+                server_version=None  # Server will create its own version
+            ))
+
+            # Skip processing this change - server creates authoritative version
+            continue
+
         try:
             if change.action == ChangeAction.CREATE:
                 await handle_create(repo, change, current_user, request.client_id)
                 applied.append(change.entity_id)
+                created_in_batch.add(change.entity_id)  # Track for conflict-free updates
 
             elif change.action == ChangeAction.UPDATE:
-                conflict = await handle_update(repo, change, current_user, request.client_id)
-                if conflict:
-                    conflicts.append(conflict)
+                # Skip conflict detection if entity was just created in this batch
+                # This allows CREATE → UPDATE in same sync (e.g., account creation + immediate balance update)
+                skip_conflict_check = change.entity_id in created_in_batch
+
+                if skip_conflict_check:
+                    # SECURITY: Validate entity was actually created recently (within 5 seconds)
+                    # This prevents exploiting same-batch bypass if timing is off
+                    entity = await repo.get(change.entity_id)
+                    if entity:
+                        time_since_create = (sync_start_time - entity.created_at).total_seconds()
+                        if time_since_create > 5:  # More than 5 seconds old - shouldn't happen in same batch
+                            # Fall back to normal conflict detection
+                            skip_conflict_check = False
+
+                    if skip_conflict_check:
+                        # Apply update without conflict detection
+                        update_model_class = get_update_model(change.entity_type.value)
+                        if update_model_class:
+                            update_data = update_model_class(**change.data)
+                            await repo.update(change.entity_id, update_data, current_user=current_user, client_id=request.client_id)
+                            applied.append(change.entity_id)
+                    else:
+                        # Entity too old - use normal conflict detection
+                        conflict = await handle_update(repo, change, current_user, request.client_id)
+                        if conflict:
+                            conflicts.append(conflict)
+                        else:
+                            applied.append(change.entity_id)
                 else:
-                    applied.append(change.entity_id)
+                    # Normal conflict detection
+                    conflict = await handle_update(repo, change, current_user, request.client_id)
+                    if conflict:
+                        conflicts.append(conflict)
+                    else:
+                        applied.append(change.entity_id)
 
             elif change.action == ChangeAction.DELETE:
                 conflict = await handle_delete(repo, change, current_user, request.client_id)

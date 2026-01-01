@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body x-data="app()">
 
@@ -230,6 +230,18 @@
                 <div class="timeline">
                     <template x-for="row in projectionRows" :key="row.id || row.event_date + row.description">
                         <div>
+                            <!-- Hidden Events Gap Indicator BEFORE event (story views only) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'before'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
                             <!-- Regular Event Row -->
                             <div
                                 class="timeline-row"
@@ -241,7 +253,8 @@
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
                                     <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
-                                    <span class="tag" x-show="row.source && row.source !== 'baseline'" x-text="'[' + row.source + ']'"></span>
+                                    <span class="tag recurring-tag" x-show="row.recurring_rule_id" @click.stop="viewRecurringRule(row.recurring_rule_id)">[recurring]</span>
+                                    <span class="tag" x-show="row.source && row.source !== 'baseline' && currentView === 'all'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>
@@ -252,7 +265,19 @@
                                 <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
                             </div>
 
-                            <!-- Gap Indicator Row -->
+                            <!-- Hidden Events Gap Indicator AFTER event (trailing gaps) -->
+                            <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'after'">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.gap_indicator?.hidden_event_count + ' hidden event' + (row.gap_indicator?.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.gap_indicator?.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="(row.gap_indicator?.delta_display >= 0 ? '+' : '') + formatCurrency(Math.abs(row.gap_indicator?.delta_display || 0), row.gap_indicator?.display_currency || settings.base_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
+                            <!-- Gap Indicator Row (time-based gaps) -->
                             <div class="gap-row" x-show="row.isGap" @click="toggleGap(row.id)">
                                 <div class="gap-line"></div>
                                 <div class="gap-content">
@@ -429,29 +454,70 @@
                             <div class="settings-form">
                                 <div class="form-group">
                                     <label for="base-currency">Base Currency</label>
-                                    <select
-                                        id="base-currency"
-                                        x-model="settingsForm.base_currency"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="GBP">GBP (£)</option>
-                                        <option value="USD">USD ($)</option>
-                                        <option value="EUR">EUR (€)</option>
-                                        <option value="CAD">CAD ($)</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="window.settingsDropdown(
+                                            'base-currency',
+                                            [
+                                                { value: 'GBP', label: 'GBP (£)' },
+                                                { value: 'USD', label: 'USD ($)' },
+                                                { value: 'EUR', label: 'EUR (€)' },
+                                                { value: 'CAD', label: 'CAD ($)' }
+                                            ],
+                                            () => settingsForm.base_currency,
+                                            (value) => { settingsForm.base_currency = value; updateSettings(); }
+                                        )"
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
+
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': settingsForm.base_currency === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
+
                                     <span class="form-hint">All projections use this as the base currency</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="date-format">Date Format</label>
-                                    <select
-                                        id="date-format"
-                                        x-model="settingsForm.date_format"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="DD MMM">DD MMM (18 Dec)</option>
-                                        <option value="MMM DD">MMM DD (Dec 18)</option>
-                                        <option value="YYYY-MM-DD">YYYY-MM-DD (2024-12-18)</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="window.settingsDropdown(
+                                            'date-format',
+                                            [
+                                                { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
+                                                { value: 'MMM DD', label: 'MMM DD (Dec 18)' },
+                                                { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-18)' }
+                                            ],
+                                            () => settingsForm.date_format,
+                                            (value) => { settingsForm.date_format = value; updateSettings(); }
+                                        )"
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
+
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': settingsForm.date_format === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="baseline-months">Baseline Display (Months)</label>
@@ -530,15 +596,35 @@
                             <div class="sync-settings-form">
                                 <div class="form-group">
                                     <label for="sync-interval">Sync Interval</label>
-                                    <select
-                                        id="sync-interval"
-                                        x-model="settingsForm.auto_sync_interval"
-                                        @change="updateSettings()"
-                                        class="form-input">
-                                        <option value="300">Every 5 minutes</option>
-                                        <option value="3600">Every hour</option>
-                                        <option value="86400">Every day</option>
-                                    </select>
+
+                                    <!-- Custom Dropdown -->
+                                    <div class="custom-select"
+                                        x-data="window.settingsDropdown(
+                                            'sync-interval',
+                                            [
+                                                { value: 300, label: 'Every 5 minutes' },
+                                                { value: 3600, label: 'Every hour' },
+                                                { value: 86400, label: 'Every day' }
+                                            ],
+                                            () => Number(settingsForm.auto_sync_interval),
+                                            (value) => { settingsForm.auto_sync_interval = Number(value); updateSettings(); }
+                                        )"
+                                        @click.away="open = false"
+                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
+
+                                        <button type="button" class="select-trigger" @click="toggleOpen()">
+                                            <span x-text="getSelectedLabel()"></span>
+                                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                                        </button>
+
+                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                            <template x-for="opt in options" :key="opt.value">
+                                                <li @click="selectOption(opt.value)"
+                                                    :class="{ 'selected': Number(settingsForm.auto_sync_interval) === opt.value }"
+                                                    x-text="opt.label"></li>
+                                            </template>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -581,7 +667,6 @@
                 <section class="section">
                     <div class="section-header">
                         <h2>Stories</h2>
-                        <button class="btn-add" @click="openStoryModal()">+ Add Story</button>
                     </div>
 
                     <!-- Search Filter -->
@@ -653,7 +738,7 @@
     </main>
 
     <!-- Account Modal -->
-    <div class="modal-overlay" x-show="showAccountModal" @click="showAccountModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showAccountModal" x-cloak>
         <div class="modal" @click.stop>
             <div class="modal-header">
                 <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
@@ -716,13 +801,36 @@
     </div>
 
     <!-- Story Modal -->
-    <div class="modal-overlay" x-show="showStoryModal" @click="showStoryModal = false" x-cloak>
-        <div class="modal" @click.stop>
+    <div class="modal-overlay" x-show="showStoryModal" x-cloak>
+        <div class="modal" @click.stop
+            x-data="{
+                storyDefaultAccountDropdownOpen: false,
+                storyFundingModeDropdownOpen: false,
+                storyGoalTypeDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    // Close all dropdowns
+                    this.storyDefaultAccountDropdownOpen = false;
+                    this.storyFundingModeDropdownOpen = false;
+                    this.storyGoalTypeDropdownOpen = false;
+                    // Open the requested dropdown
+                    this[dropdownName] = true;
+                    // Dispatch event to close dropdowns in other modals/screens
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('story')) {
+                    storyDefaultAccountDropdownOpen = false;
+                    storyFundingModeDropdownOpen = false;
+                    storyGoalTypeDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
                 <button class="modal-close" @click="showStoryModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveStory" class="modal-body">
+            <form @submit.prevent="saveStory" class="modal-body"
+                @click="storyDefaultAccountDropdownOpen = false; storyFundingModeDropdownOpen = false; storyGoalTypeDropdownOpen = false">
 
                 <!-- Story Name (Required) -->
                 <div class="form-group">
@@ -737,6 +845,11 @@
                     <label for="story-start-date">Start Date</label>
                     <input id="story-start-date" type="date" x-model="storyForm.start_date"
                         required class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.start_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.start_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.start_date')">Tomorrow</button>
+                    </div>
                 </div>
 
                 <!-- End Date (Optional) -->
@@ -744,19 +857,53 @@
                     <label for="story-end-date">End Date</label>
                     <input id="story-end-date" type="date" x-model="storyForm.end_date"
                         class="form-input">
+                    <div class="date-quick-buttons">
+                        <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.end_date')">Yesterday</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.end_date')">Today</button>
+                        <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.end_date')">Tomorrow</button>
+                    </div>
                     <span class="form-hint">Leave blank for ongoing stories</span>
                 </div>
 
                 <!-- Default Account (Optional) -->
                 <div class="form-group">
                     <label for="story-default-account">Default Account</label>
-                    <select id="story-default-account" x-model="storyForm.default_account_id"
-                        class="form-input">
-                        <option value="">-- None (use global default) --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return storyForm.default_account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- None (use global default) --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? `${account.name} (${account.currency})` : '-- None (use global default) --';
+                            },
+                            selectOption(value) {
+                                storyForm.default_account_id = value;
+                                storyDefaultAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="storyDefaultAccountDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyDefaultAccountDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyDefaultAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyDefaultAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- None (use global default) --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="`${account.name} (${account.currency})`"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">Events in this story will use this account by default</span>
                 </div>
 
@@ -772,11 +919,35 @@
                 <!-- Funding Mode (Required) -->
                 <div class="form-group">
                     <label for="story-funding-mode">Funding Mode</label>
-                    <select id="story-funding-mode" x-model="storyForm.funding_mode" class="form-input">
-                        <option value="projected">Projected (use calculated balance)</option>
-                        <option value="fixed">Fixed (specific amount)</option>
-                        <option value="projected_plus">Projected + Adjustment</option>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="window.modalDropdown(
+                            [
+                                { value: 'projected', label: 'Projected (use calculated balance)' },
+                                { value: 'fixed', label: 'Fixed (specific amount)' },
+                                { value: 'projected_plus', label: 'Projected + Adjustment' }
+                            ],
+                            () => storyForm.funding_mode,
+                            (value) => { storyForm.funding_mode = value; storyFundingModeDropdownOpen = false; }
+                        )"
+                        @click.stop
+                        @click.away="storyFundingModeDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyFundingModeDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyFundingModeDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyFundingModeDropdownOpen" x-cloak x-transition>
+                            <template x-for="opt in options" :key="opt.value">
+                                <li @click="selectOption(opt.value)"
+                                    :class="{ 'selected': storyForm.funding_mode === opt.value }"
+                                    x-text="opt.label"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">How starting balance is calculated</span>
                 </div>
 
@@ -795,11 +966,36 @@
                 <!-- Goal Type (Optional) -->
                 <div class="form-group">
                     <label for="story-goal-type">Goal Type</label>
-                    <select id="story-goal-type" x-model="storyForm.goal_type" class="form-input">
-                        <option value="none">-- No Goal --</option>
-                        <option value="spend_up_to">Spend Up To (budget limit)</option>
-                        <option value="end_with_at_least">End With At Least (target balance)</option>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="window.modalDropdown(
+                            [
+                                { value: 'none', label: '-- No Goal --' },
+                                { value: 'spend_up_to', label: 'Spend Up To (budget limit)' },
+                                { value: 'end_with_at_least', label: 'End With At Least (target balance)' }
+                            ],
+                            () => storyForm.goal_type,
+                            (value) => { storyForm.goal_type = value; storyGoalTypeDropdownOpen = false; },
+                            '-- No Goal --'
+                        )"
+                        @click.stop
+                        @click.away="storyGoalTypeDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyGoalTypeDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyGoalTypeDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyGoalTypeDropdownOpen" x-cloak x-transition>
+                            <template x-for="opt in options" :key="opt.value">
+                                <li @click="selectOption(opt.value)"
+                                    :class="{ 'selected': storyForm.goal_type === opt.value, 'placeholder': opt.value === 'none' }"
+                                    x-text="opt.label"></li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint">Optional spending/saving target</span>
                 </div>
 
@@ -824,27 +1020,67 @@
     </div>
 
     <!-- Balance Reconciliation Modal -->
-    <div class="modal-overlay" x-show="showBalanceModal" @click="showBalanceModal = false" x-cloak>
-        <div class="modal" @click.stop>
+    <div class="modal-overlay" x-show="showBalanceModal" x-cloak>
+        <div class="modal" @click.stop
+            x-data="{
+                balanceAccountDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    this.balanceAccountDropdownOpen = false;
+                    this[dropdownName] = true;
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('balance')) {
+                    balanceAccountDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2>Update Account Balance</h2>
                 <button class="modal-close" @click="showBalanceModal = false">✕</button>
             </div>
 
-            <form @submit.prevent="saveBalanceUpdate" class="modal-body">
+            <form @submit.prevent="saveBalanceUpdate" class="modal-body"
+                @click="balanceAccountDropdownOpen = false">
                 <!-- Account Selection -->
                 <div class="form-group">
                     <label for="balance-account">Account</label>
-                    <select id="balance-account"
-                        x-model="balanceForm.account_id"
-                        @change="calculateBalanceDrift()"
-                        required
-                        class="form-input">
-                        <option value="">-- Select Account --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="account.name"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return balanceForm.account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- Select Account --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? account.name : '-- Select Account --';
+                            },
+                            selectOption(value) {
+                                balanceForm.account_id = value;
+                                calculateBalanceDrift();
+                                balanceAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="balanceAccountDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="toggleDropdown('balanceAccountDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': balanceAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="balanceAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- Select Account --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="account.name"></li>
+                            </template>
+                        </ul>
+                    </div>
                 </div>
 
                 <!-- Current Projected Balance (read-only) -->
@@ -904,23 +1140,83 @@
     </div>
 
     <!-- Event Modal -->
-    <div class="modal-overlay" x-show="showEventModal" @click="showEventModal = false" x-cloak>
-        <div class="modal" @click.stop>
+    <div class="modal-overlay" x-show="showEventModal" x-cloak>
+        <div class="modal" @click.stop
+            x-data="{
+                eventAccountDropdownOpen: false,
+                eventStoryDropdownOpen: false,
+                eventFrequencyDropdownOpen: false,
+                eventDayDropdownOpen: false,
+                toggleDropdown(dropdownName) {
+                    // Close all dropdowns
+                    this.eventAccountDropdownOpen = false;
+                    this.eventStoryDropdownOpen = false;
+                    this.eventFrequencyDropdownOpen = false;
+                    this.eventDayDropdownOpen = false;
+                    // Open the requested dropdown
+                    this[dropdownName] = true;
+                    // Dispatch event to close dropdowns in other modals/screens
+                    $dispatch('dropdown-opened', { id: dropdownName });
+                },
+                handleAnniversaryDateChange() {
+                    if (eventForm.anniversary_date) {
+                        const date = new Date(eventForm.anniversary_date + 'T00:00:00');
+                        eventForm.day = date.getDate();
+                        if (!eventForm.start_date) {
+                            eventForm.start_date = eventForm.anniversary_date;
+                        } else {
+                            const startYear = new Date(eventForm.start_date + 'T00:00:00').getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            eventForm.start_date = startYear + '-' + month + '-' + day;
+                        }
+                    }
+                }
+            }"
+            @dropdown-opened.window="
+                if (!$event.detail.id.startsWith('event')) {
+                    eventAccountDropdownOpen = false;
+                    eventStoryDropdownOpen = false;
+                    eventFrequencyDropdownOpen = false;
+                    eventDayDropdownOpen = false;
+                }
+            ">
             <div class="modal-header">
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
                 <button class="modal-close" @click="showEventModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveEvent" class="modal-body">
+            <form @submit.prevent="saveEvent" class="modal-body"
+                @click="eventAccountDropdownOpen = false; eventStoryDropdownOpen = false; eventFrequencyDropdownOpen = false; eventDayDropdownOpen = false">
 
-                <!-- Event Date (Required) -->
+                <!-- Event Type Toggle -->
                 <div class="form-group">
-                    <label for="event-date">Event Date</label>
-                    <input
-                        id="event-date"
-                        type="date"
-                        x-model="eventForm.event_date"
-                        required
-                        class="form-input">
+                    <div class="toggle-switch">
+                        <button type="button" class="toggle-option" :class="{ active: !eventForm.is_recurring }" @click="eventForm.is_recurring = false">
+                            Simple Event
+                        </button>
+                        <button type="button" class="toggle-option" :class="{ active: eventForm.is_recurring }" @click="eventForm.is_recurring = true">
+                            Recurring Event
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Simple Event Fields -->
+                <div x-show="!eventForm.is_recurring">
+                    <!-- Event Date (Required) -->
+                    <div class="form-group">
+                        <label for="event-date">Event Date</label>
+                        <input
+                            id="event-date"
+                            type="date"
+                            x-model="eventForm.event_date"
+                            :required="!eventForm.is_recurring"
+                            class="form-input">
+                        <div class="date-quick-buttons">
+                            <button type="button" class="btn-quick-date" @click="setDateToYesterday('eventForm.event_date')">Yesterday</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToToday('eventForm.event_date')">Today</button>
+                            <button type="button" class="btn-quick-date" @click="setDateToTomorrow('eventForm.event_date')">Tomorrow</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Description (Required) -->
@@ -938,29 +1234,71 @@
                 <!-- Amount (Required) -->
                 <div class="form-group">
                     <label for="event-amount">Amount</label>
-                    <input
-                        id="event-amount"
-                        type="number"
-                        x-model="eventForm.amount"
-                        step="0.01"
-                        placeholder="0.00"
-                        required
-                        class="form-input">
-                    <span class="form-hint">Positive for income, negative for expense</span>
+                    <div class="amount-input-wrapper">
+                        <input
+                            id="event-amount"
+                            type="number"
+                            x-model.number="eventForm.amount"
+                            @input="eventForm.amount = Math.abs(eventForm.amount || 0)"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            required
+                            class="form-input amount-input"
+                            :style="{ color: eventForm.amountIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
+                        <div class="amount-toggle-buttons">
+                            <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = true" title="Expense (deduction)">−</button>
+                            <button type="button" class="btn-amount-toggle" :class="{ active: !eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = false" title="Income (addition)">+</button>
+                        </div>
+                    </div>
+                    <span class="form-hint">
+                        <span x-show="eventForm.amountIsNegative" style="color: var(--red)">Expense (deduction)</span>
+                        <span x-show="!eventForm.amountIsNegative" style="color: var(--green-bright)">Income (addition)</span>
+                    </span>
                 </div>
 
                 <!-- Account Selection (Resolved via hierarchy) -->
                 <div class="form-group">
                     <label for="event-account">Account</label>
-                    <select
-                        id="event-account"
-                        x-model="eventForm.account_id"
-                        class="form-input">
-                        <option value="">-- Auto (use hierarchy) --</option>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <option :value="account.id" x-text="`${account.name} (${account.currency})`"></option>
-                        </template>
-                    </select>
+
+                    <!-- Custom Dropdown Component -->
+                    <div class="custom-select"
+                        x-data="{
+                            get selectedValue() { return eventForm.account_id; },
+                            getSelectedLabel() {
+                                if (!this.selectedValue) return '-- Auto (use hierarchy) --';
+                                const account = accounts.find(a => a.id === this.selectedValue);
+                                return account ? `${account.name} (${account.currency})` : '-- Auto (use hierarchy) --';
+                            },
+                            selectOption(value) {
+                                eventForm.account_id = value;
+                                eventAccountDropdownOpen = false;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="eventAccountDropdownOpen = false">
+
+                        <!-- Trigger Button -->
+                        <button type="button" class="select-trigger" @click="toggleDropdown('eventAccountDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': eventAccountDropdownOpen }">▼</span>
+                        </button>
+
+                        <!-- Dropdown List -->
+                        <ul class="select-dropdown" x-show="eventAccountDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                -- Auto (use hierarchy) --
+                            </li>
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <li @click="selectOption(account.id)"
+                                    :class="{ 'selected': selectedValue === account.id }"
+                                    x-text="`${account.name} (${account.currency})`">
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+
                     <span class="form-hint" x-text="getAccountHierarchyHint()"></span>
                 </div>
 
@@ -980,29 +1318,194 @@
                     <span class="form-hint">Auto-set from account or enter manually</span>
                 </div>
 
-                <!-- Story Assignment (Baseline vs Story) -->
-                <div class="form-group">
-                    <label for="event-story">Story</label>
-                    <select
-                        id="event-story"
-                        x-model="eventForm.story_id"
-                        @change="handleStoryChange()"
-                        class="form-input">
-                        <option value="">-- Baseline (no story) --</option>
-                        <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
-                            <option :value="story.id" x-text="story.name"></option>
-                        </template>
-                    </select>
-                    <span class="form-hint">Leave as baseline or assign to a story</span>
+                <!-- Simple Event Only Fields -->
+                <div x-show="!eventForm.is_recurring">
+                    <!-- Story Assignment (Baseline vs Story) -->
+                    <div class="form-group">
+                        <label for="event-story">Story</label>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            x-data="{
+                                get selectedValue() { return eventForm.story_id; },
+                                getSelectedLabel() {
+                                    if (!this.selectedValue) return '-- Baseline (no story) --';
+                                    const story = stories.find(s => s.id === this.selectedValue);
+                                    return story ? story.name : '-- Baseline (no story) --';
+                                },
+                                selectOption(value) {
+                                    eventForm.story_id = value;
+                                    handleStoryChange();
+                                    eventStoryDropdownOpen = false;
+                                }
+                            }"
+                            @click.stop
+                            @click.away="eventStoryDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventStoryDropdownOpen')">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventStoryDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventStoryDropdownOpen" x-cloak x-transition>
+                                <li @click="selectOption('')"
+                                    :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                    -- Baseline (no story) --
+                                </li>
+                                <template x-for="story in stories.filter(s => !s.is_archived)" :key="story.id">
+                                    <li @click="selectOption(story.id)"
+                                        :class="{ 'selected': selectedValue === story.id }"
+                                        x-text="story.name"></li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        <span class="form-hint">Leave as baseline or assign to a story</span>
+                    </div>
+
+                    <!-- Hypothetical Toggle -->
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" x-model="eventForm.is_hypothetical">
+                            <span>Hypothetical (planned/future)</span>
+                        </label>
+                        <span class="form-hint">Check if this is planned/not yet confirmed</span>
+                    </div>
                 </div>
 
-                <!-- Hypothetical Toggle -->
-                <div class="form-group">
-                    <label class="form-checkbox">
-                        <input type="checkbox" x-model="eventForm.is_hypothetical">
-                        <span>Hypothetical (planned/future)</span>
-                    </label>
-                    <span class="form-hint">Check if this is planned/not yet confirmed</span>
+                <!-- Recurring Event Fields -->
+                <div x-show="eventForm.is_recurring">
+                    <!-- Frequency dropdown -->
+                    <div class="form-group">
+                        <label for="event-frequency">Frequency</label>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            x-data="window.modalDropdown(
+                                [
+                                    { value: '', label: '-- Select frequency --' },
+                                    { value: 'weekly', label: 'Weekly' },
+                                    { value: 'monthly', label: 'Monthly' },
+                                    { value: 'annual', label: 'Annual' }
+                                ],
+                                () => eventForm.frequency,
+                                (value) => {
+                                    eventForm.frequency = value;
+                                    if (value !== 'annual') { eventForm.anniversary_date = ''; }
+                                    eventFrequencyDropdownOpen = false;
+                                },
+                                '-- Select frequency --'
+                            )"
+                            @click.stop
+                            @click.away="eventFrequencyDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventFrequencyDropdownOpen')">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventFrequencyDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventFrequencyDropdownOpen" x-cloak x-transition>
+                                <template x-for="opt in options" :key="opt.value">
+                                    <li @click="selectOption(opt.value)"
+                                        :class="{ 'selected': eventForm.frequency === opt.value, 'placeholder': opt.value === '' }"
+                                        x-text="opt.label"></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Day field (conditional: dropdown for weekly/monthly, date picker for annual) -->
+                    <div class="form-group">
+                        <label for="event-day">
+                            <span x-show="eventForm.frequency === 'weekly'">Day of Week</span>
+                            <span x-show="eventForm.frequency === 'monthly'">Day of Month</span>
+                            <span x-show="eventForm.frequency === 'annual'">Annual Date</span>
+                            <span x-show="!eventForm.frequency">Day</span>
+                        </label>
+
+                        <!-- Custom Dropdown (for weekly/monthly) -->
+                        <div class="custom-select"
+                            x-show="eventForm.frequency === 'weekly' || eventForm.frequency === 'monthly'"
+                            x-data="window.modalDropdown(
+                                () => {
+                                    if (eventForm.frequency === 'weekly') {
+                                        return [
+                                            { value: '', label: '-- Select day --' },
+                                            { value: 1, label: 'Monday' },
+                                            { value: 2, label: 'Tuesday' },
+                                            { value: 3, label: 'Wednesday' },
+                                            { value: 4, label: 'Thursday' },
+                                            { value: 5, label: 'Friday' },
+                                            { value: 6, label: 'Saturday' },
+                                            { value: 7, label: 'Sunday' }
+                                        ];
+                                    } else if (eventForm.frequency === 'monthly') {
+                                        const days = [{ value: '', label: '-- Select day --' }];
+                                        for (let i = 1; i <= 31; i++) {
+                                            days.push({ value: i, label: String(i) });
+                                        }
+                                        return days;
+                                    }
+                                    return [{ value: '', label: '-- Select day --' }];
+                                },
+                                () => eventForm.day,
+                                (value) => { eventForm.day = value; eventDayDropdownOpen = false; },
+                                '-- Select day --'
+                            )"
+                            @click.stop
+                            @click.away="eventDayDropdownOpen = false">
+
+                            <button type="button" class="select-trigger" @click="toggleDropdown('eventDayDropdownOpen')">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': eventDayDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="eventDayDropdownOpen" x-cloak x-transition>
+                                <template x-for="opt in options" :key="opt.value">
+                                    <li @click="selectOption(opt.value)"
+                                        :class="{ 'selected': selectedValue === opt.value, 'placeholder': opt.value === '' }"
+                                        x-text="opt.label"></li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        <!-- Date Picker (for annual) -->
+                        <input
+                            x-show="eventForm.frequency === 'annual'"
+                            id="event-anniversary-date"
+                            type="date"
+                            x-model="eventForm.anniversary_date"
+                            :required="eventForm.frequency === 'annual' && eventForm.is_recurring"
+                            class="form-input"
+                            @change="handleAnniversaryDateChange()">
+
+                        <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">When this event occurs each year (e.g., Jan 1st for annual renewals)</span>
+                    </div>
+
+                    <!-- Start Date -->
+                    <div class="form-group">
+                        <label for="event-start-date">Start Date</label>
+                        <input
+                            id="event-start-date"
+                            type="date"
+                            x-model="eventForm.start_date"
+                            :required="eventForm.is_recurring"
+                            class="form-input">
+                        <span class="form-hint">When this recurring event starts</span>
+                    </div>
+
+                    <!-- End Date (optional) -->
+                    <div class="form-group">
+                        <label for="event-end-date">End Date (Optional)</label>
+                        <input
+                            id="event-end-date"
+                            type="date"
+                            x-model="eventForm.end_date"
+                            class="form-input">
+                        <span class="form-hint">Leave blank for ongoing recurrence</span>
+                    </div>
                 </div>
 
                 <!-- Modal Actions -->
@@ -1013,7 +1516,8 @@
                         type="button"
                         class="btn-danger"
                         x-show="eventForm.id"
-                        @click="deleteEventFromModal()">Delete</button>
+                        @click="eventForm.is_recurring ? deleteRecurringRuleFromModal() : deleteEventFromModal()"
+                        x-text="eventForm.is_recurring ? 'Delete Rule' : 'Delete'"></button>
                 </div>
             </form>
         </div>
@@ -1048,7 +1552,7 @@
 
 
     <!-- Help Modal -->
-    <div class="modal-overlay" x-show="showHelpModal" @click="showHelpModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showHelpModal" x-cloak>
         <div class="modal help-modal" @click.stop>
             <div class="modal-header">
                 <h2>Help & Tips</h2>
@@ -1083,7 +1587,7 @@
     </div>
 
     <!-- Database Tools Modal -->
-    <div class="modal-overlay" x-show="showDatabaseToolsModal" @click="showDatabaseToolsModal = false" x-cloak>
+    <div class="modal-overlay" x-show="showDatabaseToolsModal" x-cloak>
         <div class="modal database-tools-modal" @click.stop>
             <div class="modal-header">
                 <h2>🛠 Database Management Tools</h2>
@@ -1183,7 +1687,7 @@
     </div>
 
     <!-- Confirmation Modal -->
-    <div class="modal-overlay" x-show="showConfirmModal" @click="closeConfirmModal()" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showConfirmModal" @keydown.escape.window="closeConfirmModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="confirmModalData.title" id="confirm-modal-title"></h2>
@@ -1205,7 +1709,7 @@
     </div>
 
     <!-- Input Modal -->
-    <div class="modal-overlay" x-show="showInputModal" @click="closeInputModal()" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showInputModal" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header">
                 <h2 x-text="inputModalData.title" id="input-modal-title"></h2>
@@ -1232,7 +1736,7 @@
     </div>
 
     <!-- Password Modal -->
-    <div class="modal-overlay" x-show="showPasswordModal" @click="closePasswordModal()" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
+    <div class="modal-overlay" x-show="showPasswordModal" @keydown.escape.window="closePasswordModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header" style="border-bottom-color: var(--red);">
                 <h2 x-text="passwordModalData.title" style="color: var(--red);" id="password-modal-title"></h2>
@@ -1332,57 +1836,12 @@
         </div>
     </div>
 
-    <!-- Scripts - Load Dexie first (needed by modules) -->
+    <!-- Scripts -->
+    <!-- Load Dexie first (required by modules) -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
 
-    <!-- Load app modules and Alpine -->
-    <script type="module">
-        // Import app.js which will set window.app
-        await import('/static/js/app.js');
-
-        // Wait for app to be defined
-        if (typeof window.app !== 'function') {
-            console.error('app() not defined after importing app.js');
-        }
-
-        // Dynamically load Alpine after app is ready
-        const alpineScript = document.createElement('script');
-        alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
-        // Remove defer to prevent double initialization
-        document.head.appendChild(alpineScript);
-    </script>
-
-    <!-- Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('[CHAPTR] Service Worker registered:', registration.scope);
-
-                        // Listen for background sync messages
-                        navigator.serviceWorker.addEventListener('message', event => {
-                            if (event.data.type === 'BACKGROUND_SYNC') {
-                                console.log('[CHAPTR] Background sync triggered');
-                                // Trigger Alpine.js manual sync if app is available
-                                if (window.Alpine && window.Alpine.store) {
-                                    const appInstance = document.querySelector('[x-data]');
-                                    if (appInstance) {
-                                        appInstance.__x.$data.manualSync();
-                                    }
-                                }
-                            }
-                        });
-                    })
-                    .catch(error => {
-                        console.warn('[CHAPTR] Service Worker registration failed:', error.message);
-                        console.warn('[CHAPTR] Static assets won\'t cache - app will still work');
-                    });
-            });
-        } else {
-            console.warn('[CHAPTR] Service Worker not supported - static assets won\'t cache');
-        }
-    </script>
+    <!-- Modular initialization: loads app, dropdowns, Alpine, and service worker -->
+    <script type="module" src="/static/js/init.js"></script>
 
 </body>
 </html>

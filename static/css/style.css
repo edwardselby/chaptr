@@ -236,7 +236,7 @@ body::before {
     border: 1px solid var(--border);
     border-radius: 4px;
     margin-bottom: 16px;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .section-header {
@@ -785,6 +785,32 @@ body::before {
 
 .gap-amount.positive {
     color: var(--green-bright);
+}
+
+/* Hidden Events Gap Indicator (story views) */
+.hidden-events-gap {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+}
+
+.gap-count {
+    font-style: italic;
+}
+
+.gap-delta {
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.gap-delta.positive {
+    color: var(--green-bright);
+}
+
+.gap-delta.negative {
+    color: var(--red);
 }
 
 /* Revealed Gap Rows */
@@ -1390,11 +1416,167 @@ body::before {
     box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1);
 }
 
+/* Date picker calendar icon styling */
+input[type="date"] {
+    position: relative;
+    cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 1;
+    filter: invert(0.7) sepia(1) saturate(5) hue-rotate(70deg);
+    width: 20px;
+    height: 20px;
+    margin-left: 8px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    filter: invert(0.8) sepia(1) saturate(5) hue-rotate(70deg) brightness(1.2);
+}
+
+/* Firefox date picker */
+input[type="date"]::-moz-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.7) sepia(1) saturate(5) hue-rotate(70deg);
+}
+
+/* Ensure date inputs show calendar on click anywhere */
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    cursor: pointer;
+}
+
 .form-hint {
     display: block;
     margin-top: 4px;
     font-size: 11px;
     color: var(--text-dim);
+}
+
+/* Toggle Switch (Event Type) */
+.toggle-switch {
+    display: flex;
+    gap: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.toggle-option {
+    flex: 1;
+    cursor: pointer;
+    padding: 10px 12px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    transition: all 0.2s ease;
+    user-select: none;
+    outline: none;
+}
+
+.toggle-option:last-child {
+    border-right: none;
+}
+
+.toggle-option.active {
+    background: var(--green-dim);
+    color: var(--green-bright);
+    font-weight: 600;
+}
+
+.toggle-option:hover:not(.active) {
+    background: rgba(74, 246, 38, 0.05);
+    color: var(--text-bright);
+}
+
+.toggle-option:focus {
+    outline: none;
+}
+
+/* Date Quick Buttons */
+.date-quick-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.btn-quick-date {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    background-color: transparent;
+    color: var(--green-bright);
+    border: 1px solid var(--green-bright);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-quick-date:hover {
+    background-color: var(--green-bright);
+    color: var(--bg-primary);
+}
+
+.btn-quick-date:active {
+    transform: scale(0.98);
+}
+
+/* Amount Input with Toggle Buttons */
+.amount-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.amount-input {
+    flex: 1;
+    font-weight: 600;
+}
+
+.amount-toggle-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-amount-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-amount-toggle:hover {
+    border-color: var(--green-bright);
+    color: var(--text-bright);
+}
+
+.btn-amount-toggle.active {
+    background: var(--green-dim);
+    border-color: var(--green-bright);
+    color: var(--green-bright);
+}
+
+.btn-amount-toggle:first-child.active {
+    background: rgba(220, 38, 38, 0.1);
+    border-color: var(--red);
+    color: var(--red);
 }
 
 .form-checkbox {
@@ -1410,6 +1592,120 @@ body::before {
     width: 18px;
     height: 18px;
     cursor: pointer;
+}
+
+/* Custom Dropdown Component - Terminal Styling */
+.custom-select {
+    position: relative;
+    width: 100%;
+}
+
+.select-trigger {
+    width: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.select-trigger:hover {
+    border-color: var(--green-dim);
+    background-color: rgba(74, 246, 38, 0.02);
+}
+
+.select-trigger:focus {
+    outline: none;
+    border-color: var(--green-bright);
+    box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.15);
+}
+
+.select-trigger .chevron {
+    color: var(--green-bright);
+    font-size: 12px;
+    transition: transform 0.2s ease;
+    margin-left: 8px;
+}
+
+.select-trigger .chevron.open {
+    transform: rotate(180deg);
+}
+
+.select-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--green-dim);
+    border-top: none;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 5000;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-shadow: 0 4px 12px rgba(74, 246, 38, 0.15);
+}
+
+.select-dropdown li {
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    transition: all 0.15s ease;
+    border-bottom: 1px solid var(--border);
+}
+
+.select-dropdown li:last-child {
+    border-bottom: none;
+}
+
+.select-dropdown li:hover {
+    background: var(--green-dim);
+    color: var(--text-bright);
+}
+
+.select-dropdown li.selected {
+    background: rgba(74, 246, 38, 0.1);
+    color: var(--green-bright);
+    font-weight: 600;
+}
+
+.select-dropdown li.selected:hover {
+    background: var(--green-dim);
+}
+
+/* Placeholder/empty option styling */
+.select-dropdown li.placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* Scrollbar styling for dropdown */
+.select-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+
+.select-dropdown::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+.select-dropdown::-webkit-scrollbar-thumb {
+    background: var(--green-dim);
+    border-radius: 4px;
+}
+
+.select-dropdown::-webkit-scrollbar-thumb:hover {
+    background: var(--green-bright);
 }
 
 .modal-actions {
@@ -1466,6 +1762,20 @@ body::before {
 
 .btn-danger:hover {
     background: rgba(244, 67, 54, 0.1);
+}
+
+/* Recurring Tag Styles */
+.recurring-tag {
+    color: var(--blue);
+    border: 1px solid var(--blue);
+    background: rgba(0, 123, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recurring-tag:hover {
+    background: rgba(0, 123, 255, 0.2);
+    transform: scale(1.05);
 }
 
 /* Balance Modal Styles */

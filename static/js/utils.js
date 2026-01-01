@@ -47,7 +47,7 @@ export function toLocalISODate(date) {
  */
 export function formatDate(dateStr) {
     if (!dateStr) return '';
-    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    const date = typeof dateStr === 'string' ? parseISODate(dateStr) : dateStr;
     if (!date || isNaN(date.getTime())) return '';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -768,6 +768,30 @@ class ChangeLogEntry(BaseModel):
 
 # ==================== Sync Protocol Models ====================
 
+class SyncChangeMetadata(BaseModel):
+    """
+    Metadata for sync changes, used to track derived events and dependencies.
+
+    Enables server-side detection of client-generated derived events
+    (opening balances, recurring instances) that may be overridden by
+    authoritative server-generated versions.
+    """
+    _derived_from: Optional[str] = Field(
+        default=None,
+        description="Derivation source (e.g., 'account_creation', 'recurring_rule_creation', 'balance_update')"
+    )
+    _optimistic: Optional[bool] = Field(
+        default=None,
+        description="Is this a frontend optimistic guess? (true for derived changes)"
+    )
+    dependencies: Optional[list[str]] = Field(
+        default=None,
+        description="Array of entity IDs this change depends on (for cascade operations)"
+    )
+
+    model_config = ConfigDict(extra='allow')  # Allow additional fields beyond core ones
+
+
 class SyncChange(BaseModel):
     """
     Client change to push to server during sync.
@@ -788,6 +812,10 @@ class SyncChange(BaseModel):
     base_updated_at: Optional[datetime] = Field(
         default=None,
         description="Client's last known updated_at for conflict detection (updates/deletes only)"
+    )
+    metadata: Optional[SyncChangeMetadata] = Field(
+        default=None,
+        description="Queue metadata: _derived_from, _optimistic, dependencies (for derived event detection)"
     )
 
     @model_validator(mode='after')
@@ -854,18 +882,20 @@ class SyncConflict(BaseModel):
     """
     Conflict detected during push phase.
 
-    Three conflict types:
+    Four conflict types:
     - edit_edit: Client and server both modified entity
     - delete_edit: Client deleted, server modified (or vice versa)
     - business_rule: Change violates business logic (e.g., delete account with events)
+    - derived_event_overridden: Client's optimistic derived event replaced by server's authoritative version
 
     Both versions included for client-side resolution UI.
+    For derived_event_overridden, frontend auto-resolves by deleting client version.
     """
     entity_type: EntityType = Field(..., description="Type of conflicting entity")
     entity_id: UUID = Field(..., description="ID of conflicting entity")
     conflict_type: str = Field(
         ...,
-        description="Conflict category: edit_edit, delete_edit, business_rule"
+        description="Conflict category: edit_edit, delete_edit, business_rule, derived_event_overridden"
     )
     client_version: Optional[dict] = Field(
         default=None,
