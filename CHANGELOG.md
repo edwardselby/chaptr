@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- Pydantic v2 compatibility: Renamed SyncChangeMetadata fields (_derived_from, _optimistic) to use aliases for underscore-prefixed JSON keys
+- Sync endpoint AttributeError: Changed dictionary-style access to attribute access for SyncChangeMetadata model
 
 ## [0.3.0] - 2025-12-31
 

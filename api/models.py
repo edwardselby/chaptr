@@ -776,12 +776,14 @@ class SyncChangeMetadata(BaseModel):
     (opening balances, recurring instances) that may be overridden by
     authoritative server-generated versions.
     """
-    _derived_from: Optional[str] = Field(
+    derived_from: Optional[str] = Field(
         default=None,
+        alias='_derived_from',
         description="Derivation source (e.g., 'account_creation', 'recurring_rule_creation', 'balance_update')"
     )
-    _optimistic: Optional[bool] = Field(
+    optimistic: Optional[bool] = Field(
         default=None,
+        alias='_optimistic',
         description="Is this a frontend optimistic guess? (true for derived changes)"
     )
     dependencies: Optional[list[str]] = Field(
@@ -789,7 +791,7 @@ class SyncChangeMetadata(BaseModel):
         description="Array of entity IDs this change depends on (for cascade operations)"
     )
 
-    model_config = ConfigDict(extra='allow')  # Allow additional fields beyond core ones
+    model_config = ConfigDict(extra='allow', populate_by_name=True)  # Allow additional fields and populate by alias
 
 
 class SyncChange(BaseModel):

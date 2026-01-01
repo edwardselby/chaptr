@@ -270,7 +270,7 @@ async def sync(
         # If _derived_from is present, client marked this as a derived event that server will recreate
         if (change.action == ChangeAction.CREATE and
             change.metadata and
-            change.metadata.get('_derived_from')):
+            change.metadata.derived_from):
 
             # Return conflict to notify frontend to delete its optimistic version
             # Frontend will silently resolve by removing from IndexedDB
