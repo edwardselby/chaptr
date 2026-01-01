@@ -1629,26 +1629,31 @@ window.app = function() {
             this.syncButtonSpinner = true; // Show spinner
 
             try {
-                const queueCount = await this.updateSyncQueueCount();
+                await this.updateSyncQueueCount();
 
-                if (queueCount === 0) {
-                    // No notification needed - silence is golden
+                if (this.syncQueueCount === 0) {
+                    this.showNotification('Nothing to sync', 'info');
                     return;
                 }
 
-                // Perform sync
-                await this.fullSync();
+                // Perform incremental sync
+                const result = await storage.manualSync();
 
-                // Check for conflicts after sync
-                const conflicts = await db.conflicts.count();
-                if (conflicts > 0) {
+                // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
+                const unresolvedConflicts = await db.getUnresolvedConflicts();
+                if (unresolvedConflicts.length > 0) {
                     this.showNotification(
-                        `${conflicts} conflicts`,
+                        `${unresolvedConflicts.length} conflicts`,
                         'warning'
                     );
+                } else if (result.applied && result.applied > 0) {
+                    this.showNotification(`Synced ${result.applied}`, 'success');
                 } else {
-                    this.showNotification(`Synced ${queueCount}`, 'success');
+                    this.showNotification('Sync complete', 'success');
                 }
+
+                // Reload data to reflect server changes
+                await this.loadData();
 
             } catch (error) {
                 console.error('Sync error:', error);
@@ -1838,6 +1843,7 @@ window.app = function() {
                 dashboard: 'Event',
                 projection: 'To Story',
                 accounts: 'Account',
+                stories: 'Story',
                 settings: 'User'
             };
             return labels[this.currentScreen] || 'Add';
@@ -1865,6 +1871,7 @@ window.app = function() {
                 dashboard: () => this.addEvent(),
                 projection: () => this.addEventToStory(),
                 accounts: () => this.openAccountModal(),
+                stories: () => this.openStoryModal(),
                 settings: () => this.openUserModal()
             };
 
@@ -2219,6 +2226,7 @@ window.app = function() {
                 event_date: today,
                 description: '',
                 amount: 0,
+                amountIsNegative: true, // Default to expense (deduction)
                 account_id: '', // Will resolve via hierarchy
                 currency: this.settings.base_currency || 'GBP',
                 story_id: '', // Empty = baseline
@@ -2230,7 +2238,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: today,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2267,6 +2276,7 @@ window.app = function() {
                 event_date: defaultDate,
                 description: '',
                 amount: 0,
+                amountIsNegative: true, // Default to expense (deduction)
                 account_id: story.default_account_id || '',
                 currency: story.display_currency || (defaultAccount ? defaultAccount.currency : null) || this.settings.base_currency || 'GBP',
                 story_id: storyId,
@@ -2278,7 +2288,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: defaultDate,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2306,7 +2317,8 @@ window.app = function() {
                 id: event.id,
                 event_date: event.event_date,
                 description: event.description,
-                amount: event.amount,
+                amount: Math.abs(event.amount), // Store as absolute value
+                amountIsNegative: event.amount < 0, // Track sign separately
                 account_id: event.account_id,
                 currency: event.currency,
                 story_id: event.story_id || '',
@@ -2319,7 +2331,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: event.event_date,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2349,12 +2362,20 @@ window.app = function() {
          * @param {Object} rule - Recurring rule object
          */
         async editRecurringRule(rule) {
+            // Populate anniversary_date for annual recurring rules
+            let anniversaryDate = '';
+            if (rule.frequency === 'annual' && rule.start_date) {
+                // Use start_date as the anniversary date (contains month/day)
+                anniversaryDate = rule.start_date;
+            }
+
             // Populate form with existing rule data
             this.eventForm = {
                 id: rule.id,
                 event_date: '',  // Not used for recurring
                 description: rule.description,
-                amount: rule.amount,
+                amount: Math.abs(rule.amount), // Store as absolute value
+                amountIsNegative: rule.amount < 0, // Track sign separately
                 account_id: rule.account_id,
                 currency: rule.currency,
                 story_id: '',  // Recurring rules don't have stories
@@ -2367,7 +2388,8 @@ window.app = function() {
                 frequency: rule.frequency,
                 day: rule.day,
                 start_date: rule.start_date,
-                end_date: rule.end_date || ''
+                end_date: rule.end_date || '',
+                anniversary_date: anniversaryDate
             };
 
             this.showEventModal = true;
@@ -2489,10 +2511,15 @@ window.app = function() {
             try {
                 const isEdit = !!this.eventForm.id;
 
+                // Apply sign based on amountIsNegative flag
+                const signedAmount = this.eventForm.amountIsNegative
+                    ? -Math.abs(parseFloat(this.eventForm.amount))
+                    : Math.abs(parseFloat(this.eventForm.amount));
+
                 const eventData = {
                     event_date: this.eventForm.event_date,
                     description: this.eventForm.description.trim(),
-                    amount: parseFloat(this.eventForm.amount),
+                    amount: signedAmount,
                     account_id: resolvedAccountId,
                     currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
                     story_id: this.eventForm.story_id || null,
@@ -2553,9 +2580,14 @@ window.app = function() {
                 throw new Error('No account resolved');
             }
 
+            // Apply sign based on amountIsNegative flag
+            const signedAmount = this.eventForm.amountIsNegative
+                ? -Math.abs(parseFloat(this.eventForm.amount))
+                : Math.abs(parseFloat(this.eventForm.amount));
+
             const ruleData = {
                 description: this.eventForm.description.trim(),
-                amount: parseFloat(this.eventForm.amount),
+                amount: signedAmount,
                 currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
                 account_id: resolvedAccountId,
                 frequency: this.eventForm.frequency,
@@ -2616,9 +2648,14 @@ window.app = function() {
                 throw new Error('No account resolved');
             }
 
+            // Apply sign based on amountIsNegative flag
+            const signedAmount = this.eventForm.amountIsNegative
+                ? -Math.abs(parseFloat(this.eventForm.amount))
+                : Math.abs(parseFloat(this.eventForm.amount));
+
             const ruleData = {
                 description: this.eventForm.description.trim(),
-                amount: parseFloat(this.eventForm.amount),
+                amount: signedAmount,
                 currency: this.eventForm.currency || this.settings.base_currency || 'GBP',
                 account_id: resolvedAccountId,
                 frequency: this.eventForm.frequency,

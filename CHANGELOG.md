@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- POLISH: Production-ready initialization system with visual loading indicator, performance monitoring, automatic CDN retry, and environment-aware logging
+- POLISH: Loading indicator with animated progress bar during app initialization (300ms smooth fade transition)
+- POLISH: Modular dropdown factory system extracted to dedicated module (static/js/dropdown-factories.js) with comprehensive input validation and error boundaries
+- POLISH: Custom dropdown component (ul/li based) - fully styled dropdown using Alpine.js with terminal aesthetic, custom green chevron, smooth transitions, and full option styling support
+- POLISH: Custom dropdown click-outside detection - closes dropdown on clicks inside or outside modal using @click.stop propagation control and parent state management
+- POLISH: Anniversary date picker for annual recurring events - replaces confusing dropdown with HTML5 date picker when frequency is "annual", auto-extracts month/day for recurrence
+- POLISH: Global dropdown coordination system - opening any dropdown automatically closes all others using Alpine.js custom events, works across Settings screen and all modals
+- POLISH: HTML5 date picker styling - visible calendar icon with green tint, hover effects, and cursor pointer for better UX
+- POLISH: Amount field toggle buttons - [−] button active by default (red), [+] button green when active, enforces sign automatically
+- POLISH: Amount field color coding - red text for expenses, green for income, button colors match sign (red for minus, green for plus)
 - Frontend testing framework with Vitest 4.0.16 + Browser Mode for real browser testing with IndexedDB
 - Comprehensive test suite: 113 tests covering utils, database, event helpers, and projection logic (100% coverage of pure functions)
 - tests/utils.test.js: 48 tests for utility functions (currency, dates, UUIDs, validation)
@@ -28,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-8b3ea066: Phantom-to-real event conversion when user edits recurring event instance
 
 ### Changed
+- POLISH: Initialization system refactored from 93 inline HTML lines to 462 lines across 2 modular files (dropdown-factories.js, init.js)
+- POLISH: Alpine.js loading with automatic retry logic (2 attempts, 1-second delay) and 10-second timeout protection
+- POLISH: Environment-aware console logging (verbose in development with performance timing table, errors-only in production)
+- POLISH: Alpine.js dropdown factory components - extracted repeated dropdown logic into reusable settingsDropdown() and modalDropdown() factories reducing duplication from ~900 lines to ~60 lines across 7 dropdowns
+- POLISH: Service Worker registration with readyState detection to prevent race conditions (checks if page already loaded before adding event listener)
+- POLISH: Annual date picker hint text - changed from "annual insurance" to generic "annual renewals" for broader applicability
 - REFACTOR: Sync queue includes metadata when building sync requests for server-side derived event detection
 - REFACTOR: Balance reconciliation modal sets pending_reconciliation flag to trigger server-side adjustment creation
 - REFACTOR: Direct account edits detect balance changes and set pending_reconciliation flag for server reconciliation
@@ -38,10 +54,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-8b3ea066: Projection calculation merges phantom events with real events when offline or in full mode
 
 ### Fixed
+- POLISH: Dropdown factory parameter validation - throws clear errors for invalid parameters with type checking
+- POLISH: Dropdown error boundaries - try/catch blocks around all callbacks prevent component crashes, graceful fallback to safe defaults
+- POLISH: XSS protection in error screen - HTML escaping prevents injection attacks in error messages
+- POLISH: Alpine.js timing issue - removed misleading defer attribute from dynamically created script (has no effect, scripts execute async by default)
+- POLISH: Template x-for expression error - changed getDayOptions() to options in event day dropdown (modalDropdown factory provides options getter)
 - REFACTOR: Gap indicator positioning - gaps now appear BEFORE events instead of after (same-day ordering fix)
 - REFACTOR: Duplicate opening balance events eliminated via metadata-based skipping (no database mutations)
 - REFACTOR: Adjustment events persist after sync via pending_reconciliation flag and same-batch update logic
 - REFACTOR: CREATE→UPDATE sequences in offline sessions work correctly (account creation + balance update)
+- POLISH: Stories Management screen Add Story button removed - now uses bottom navbar "+ Add Story" for consistency
+- POLISH: Event modal recurring toggle - replaced radio buttons with styled button toggle, fixed reactivity issues by using type="button" elements with @click handlers
+- POLISH: Bottom navbar Sync button - fixed "Synced undefined" message, now calls incremental sync (manualSync) instead of full sync, shows correct count of synced items
+- POLISH: Conflict notifications - suppressed "X conflicts" message for auto-resolved conflicts (derived_event_overridden), only shows notification for conflicts requiring manual resolution
+- POLISH: Dropdown z-index increased to 5000 - ensures dropdown options always appear above all modal content and UI elements
+- POLISH: Section overflow changed to visible - fixes dropdown options being clipped when extending beyond section boundaries (Settings screen sync interval dropdown)
 
 ## [0.2.0] - 2025-12-28
 

@@ -995,15 +995,18 @@ class StorageAdapter {
 
             const syncData = await response.json();
 
-            // 4. Process sync response
+            // 4. Process sync response (includes auto-resolution of derived event conflicts)
             await this.processSyncResponse(syncData);
 
-            console.log(`[CHAPTR] Sync complete: ${syncData.applied.length} applied, ${syncData.conflicts.length} conflicts`);
+            // Count only unresolved conflicts (auto-resolved conflicts are suppressed)
+            const unresolvedConflicts = await db.getUnresolvedConflicts();
+
+            console.log(`[CHAPTR] Sync complete: ${syncData.applied.length} applied, ${unresolvedConflicts.length} unresolved conflicts (${syncData.conflicts.length} total, ${syncData.conflicts.length - unresolvedConflicts.length} auto-resolved)`);
 
             return {
                 success: true,
                 applied: syncData.applied.length,
-                conflicts: syncData.conflicts.length
+                conflicts: unresolvedConflicts.length
             };
 
         } catch (error) {
