@@ -297,12 +297,29 @@ async def sync(
                 skip_conflict_check = change.entity_id in created_in_batch
 
                 if skip_conflict_check:
-                    # Apply update without conflict detection
-                    update_model_class = get_update_model(change.entity_type.value)
-                    if update_model_class:
-                        update_data = update_model_class(**change.data)
-                        await repo.update(change.entity_id, update_data, current_user=current_user, client_id=request.client_id)
-                        applied.append(change.entity_id)
+                    # SECURITY: Validate entity was actually created recently (within 5 seconds)
+                    # This prevents exploiting same-batch bypass if timing is off
+                    entity = await repo.get(change.entity_id)
+                    if entity:
+                        time_since_create = (sync_start_time - entity.created_at).total_seconds()
+                        if time_since_create > 5:  # More than 5 seconds old - shouldn't happen in same batch
+                            # Fall back to normal conflict detection
+                            skip_conflict_check = False
+
+                    if skip_conflict_check:
+                        # Apply update without conflict detection
+                        update_model_class = get_update_model(change.entity_type.value)
+                        if update_model_class:
+                            update_data = update_model_class(**change.data)
+                            await repo.update(change.entity_id, update_data, current_user=current_user, client_id=request.client_id)
+                            applied.append(change.entity_id)
+                    else:
+                        # Entity too old - use normal conflict detection
+                        conflict = await handle_update(repo, change, current_user, request.client_id)
+                        if conflict:
+                            conflicts.append(conflict)
+                        else:
+                            applied.append(change.entity_id)
                 else:
                     # Normal conflict detection
                     conflict = await handle_update(repo, change, current_user, request.client_id)

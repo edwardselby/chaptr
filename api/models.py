@@ -768,6 +768,30 @@ class ChangeLogEntry(BaseModel):
 
 # ==================== Sync Protocol Models ====================
 
+class SyncChangeMetadata(BaseModel):
+    """
+    Metadata for sync changes, used to track derived events and dependencies.
+
+    Enables server-side detection of client-generated derived events
+    (opening balances, recurring instances) that may be overridden by
+    authoritative server-generated versions.
+    """
+    _derived_from: Optional[str] = Field(
+        default=None,
+        description="Derivation source (e.g., 'account_creation', 'recurring_rule_creation', 'balance_update')"
+    )
+    _optimistic: Optional[bool] = Field(
+        default=None,
+        description="Is this a frontend optimistic guess? (true for derived changes)"
+    )
+    dependencies: Optional[list[str]] = Field(
+        default=None,
+        description="Array of entity IDs this change depends on (for cascade operations)"
+    )
+
+    model_config = ConfigDict(extra='allow')  # Allow additional fields beyond core ones
+
+
 class SyncChange(BaseModel):
     """
     Client change to push to server during sync.
@@ -789,7 +813,7 @@ class SyncChange(BaseModel):
         default=None,
         description="Client's last known updated_at for conflict detection (updates/deletes only)"
     )
-    metadata: Optional[dict] = Field(
+    metadata: Optional[SyncChangeMetadata] = Field(
         default=None,
         description="Queue metadata: _derived_from, _optimistic, dependencies (for derived event detection)"
     )
