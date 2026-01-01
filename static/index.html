@@ -457,31 +457,17 @@
 
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
-                                        x-data="{
-                                            dropdownId: 'base-currency',
-                                            open: false,
-                                            options: [
+                                        x-data="window.settingsDropdown(
+                                            'base-currency',
+                                            [
                                                 { value: 'GBP', label: 'GBP (£)' },
                                                 { value: 'USD', label: 'USD ($)' },
                                                 { value: 'EUR', label: 'EUR (€)' },
                                                 { value: 'CAD', label: 'CAD ($)' }
                                             ],
-                                            getSelectedLabel() {
-                                                const opt = this.options.find(o => o.value === settingsForm.base_currency);
-                                                return opt ? opt.label : 'Select...';
-                                            },
-                                            selectOption(value) {
-                                                settingsForm.base_currency = value;
-                                                updateSettings();
-                                                this.open = false;
-                                            },
-                                            toggleOpen() {
-                                                this.open = !this.open;
-                                                if (this.open) {
-                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
-                                                }
-                                            }
-                                        }"
+                                            () => settingsForm.base_currency,
+                                            (value) => { settingsForm.base_currency = value; updateSettings(); }
+                                        )"
                                         @click.away="open = false"
                                         @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
@@ -506,30 +492,16 @@
 
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
-                                        x-data="{
-                                            dropdownId: 'date-format',
-                                            open: false,
-                                            options: [
+                                        x-data="window.settingsDropdown(
+                                            'date-format',
+                                            [
                                                 { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
                                                 { value: 'MMM DD', label: 'MMM DD (Dec 18)' },
                                                 { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-18)' }
                                             ],
-                                            getSelectedLabel() {
-                                                const opt = this.options.find(o => o.value === settingsForm.date_format);
-                                                return opt ? opt.label : 'Select...';
-                                            },
-                                            selectOption(value) {
-                                                settingsForm.date_format = value;
-                                                updateSettings();
-                                                this.open = false;
-                                            },
-                                            toggleOpen() {
-                                                this.open = !this.open;
-                                                if (this.open) {
-                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
-                                                }
-                                            }
-                                        }"
+                                            () => settingsForm.date_format,
+                                            (value) => { settingsForm.date_format = value; updateSettings(); }
+                                        )"
                                         @click.away="open = false"
                                         @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
@@ -627,30 +599,16 @@
 
                                     <!-- Custom Dropdown -->
                                     <div class="custom-select"
-                                        x-data="{
-                                            dropdownId: 'sync-interval',
-                                            open: false,
-                                            options: [
+                                        x-data="window.settingsDropdown(
+                                            'sync-interval',
+                                            [
                                                 { value: 300, label: 'Every 5 minutes' },
                                                 { value: 3600, label: 'Every hour' },
                                                 { value: 86400, label: 'Every day' }
                                             ],
-                                            getSelectedLabel() {
-                                                const opt = this.options.find(o => o.value === Number(settingsForm.auto_sync_interval));
-                                                return opt ? opt.label : 'Select...';
-                                            },
-                                            selectOption(value) {
-                                                settingsForm.auto_sync_interval = Number(value);
-                                                updateSettings();
-                                                this.open = false;
-                                            },
-                                            toggleOpen() {
-                                                this.open = !this.open;
-                                                if (this.open) {
-                                                    $dispatch('dropdown-opened', { id: this.dropdownId });
-                                                }
-                                            }
-                                        }"
+                                            () => Number(settingsForm.auto_sync_interval),
+                                            (value) => { settingsForm.auto_sync_interval = Number(value); updateSettings(); }
+                                        )"
                                         @click.away="open = false"
                                         @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
 
@@ -964,21 +922,15 @@
 
                     <!-- Custom Dropdown -->
                     <div class="custom-select"
-                        x-data="{
-                            options: [
+                        x-data="window.modalDropdown(
+                            [
                                 { value: 'projected', label: 'Projected (use calculated balance)' },
                                 { value: 'fixed', label: 'Fixed (specific amount)' },
                                 { value: 'projected_plus', label: 'Projected + Adjustment' }
                             ],
-                            getSelectedLabel() {
-                                const opt = this.options.find(o => o.value === storyForm.funding_mode);
-                                return opt ? opt.label : 'Select...';
-                            },
-                            selectOption(value) {
-                                storyForm.funding_mode = value;
-                                storyFundingModeDropdownOpen = false;
-                            }
-                        }"
+                            () => storyForm.funding_mode,
+                            (value) => { storyForm.funding_mode = value; storyFundingModeDropdownOpen = false; }
+                        )"
                         @click.stop
                         @click.away="storyFundingModeDropdownOpen = false">
 
@@ -1017,21 +969,16 @@
 
                     <!-- Custom Dropdown -->
                     <div class="custom-select"
-                        x-data="{
-                            options: [
+                        x-data="window.modalDropdown(
+                            [
                                 { value: 'none', label: '-- No Goal --' },
                                 { value: 'spend_up_to', label: 'Spend Up To (budget limit)' },
                                 { value: 'end_with_at_least', label: 'End With At Least (target balance)' }
                             ],
-                            getSelectedLabel() {
-                                const opt = this.options.find(o => o.value === storyForm.goal_type);
-                                return opt ? opt.label : '-- No Goal --';
-                            },
-                            selectOption(value) {
-                                storyForm.goal_type = value;
-                                storyGoalTypeDropdownOpen = false;
-                            }
-                        }"
+                            () => storyForm.goal_type,
+                            (value) => { storyForm.goal_type = value; storyGoalTypeDropdownOpen = false; },
+                            '-- No Goal --'
+                        )"
                         @click.stop
                         @click.away="storyGoalTypeDropdownOpen = false">
 
@@ -1434,26 +1381,21 @@
 
                         <!-- Custom Dropdown -->
                         <div class="custom-select"
-                            x-data="{
-                                options: [
+                            x-data="window.modalDropdown(
+                                [
                                     { value: '', label: '-- Select frequency --' },
                                     { value: 'weekly', label: 'Weekly' },
                                     { value: 'monthly', label: 'Monthly' },
                                     { value: 'annual', label: 'Annual' }
                                 ],
-                                getSelectedLabel() {
-                                    const opt = this.options.find(o => o.value === eventForm.frequency);
-                                    return opt ? opt.label : '-- Select frequency --';
-                                },
-                                selectOption(value) {
+                                () => eventForm.frequency,
+                                (value) => {
                                     eventForm.frequency = value;
-                                    // Clear anniversary_date when switching away from annual
-                                    if (value !== 'annual') {
-                                        eventForm.anniversary_date = '';
-                                    }
+                                    if (value !== 'annual') { eventForm.anniversary_date = ''; }
                                     eventFrequencyDropdownOpen = false;
-                                }
-                            }"
+                                },
+                                '-- Select frequency --'
+                            )"
                             @click.stop
                             @click.away="eventFrequencyDropdownOpen = false">
 
@@ -1484,9 +1426,8 @@
                         <!-- Custom Dropdown (for weekly/monthly) -->
                         <div class="custom-select"
                             x-show="eventForm.frequency === 'weekly' || eventForm.frequency === 'monthly'"
-                            x-data="{
-                                get selectedValue() { return eventForm.day; },
-                                getDayOptions() {
+                            x-data="window.modalDropdown(
+                                () => {
                                     if (eventForm.frequency === 'weekly') {
                                         return [
                                             { value: '', label: '-- Select day --' },
@@ -1507,16 +1448,10 @@
                                     }
                                     return [{ value: '', label: '-- Select day --' }];
                                 },
-                                getSelectedLabel() {
-                                    const options = this.getDayOptions();
-                                    const opt = options.find(o => o.value === this.selectedValue);
-                                    return opt ? opt.label : '-- Select day --';
-                                },
-                                selectOption(value) {
-                                    eventForm.day = value;
-                                    eventDayDropdownOpen = false;
-                                }
-                            }"
+                                () => eventForm.day,
+                                (value) => { eventForm.day = value; eventDayDropdownOpen = false; },
+                                '-- Select day --'
+                            )"
                             @click.stop
                             @click.away="eventDayDropdownOpen = false">
 
@@ -1526,7 +1461,7 @@
                             </button>
 
                             <ul class="select-dropdown" x-show="eventDayDropdownOpen" x-cloak x-transition>
-                                <template x-for="opt in getDayOptions()" :key="opt.value">
+                                <template x-for="opt in options" :key="opt.value">
                                     <li @click="selectOption(opt.value)"
                                         :class="{ 'selected': selectedValue === opt.value, 'placeholder': opt.value === '' }"
                                         x-text="opt.label"></li>
@@ -1546,7 +1481,7 @@
 
                         <span class="form-hint" x-show="eventForm.frequency === 'weekly'">Which day of the week (1=Monday, 7=Sunday)</span>
                         <span class="form-hint" x-show="eventForm.frequency === 'monthly'">Which day of the month (1-31)</span>
-                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">When this event occurs each year (e.g., Jan 1st for annual insurance)</span>
+                        <span class="form-hint" x-show="eventForm.frequency === 'annual'">When this event occurs each year (e.g., Jan 1st for annual renewals)</span>
                     </div>
 
                     <!-- Start Date -->
@@ -1901,57 +1836,12 @@
         </div>
     </div>
 
-    <!-- Scripts - Load Dexie first (needed by modules) -->
+    <!-- Scripts -->
+    <!-- Load Dexie first (required by modules) -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
 
-    <!-- Load app modules and Alpine -->
-    <script type="module">
-        // Import app.js which will set window.app
-        await import('/static/js/app.js');
-
-        // Wait for app to be defined
-        if (typeof window.app !== 'function') {
-            console.error('app() not defined after importing app.js');
-        }
-
-        // Dynamically load Alpine after app is ready
-        const alpineScript = document.createElement('script');
-        alpineScript.src = 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js';
-        // Remove defer to prevent double initialization
-        document.head.appendChild(alpineScript);
-    </script>
-
-    <!-- Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('[CHAPTR] Service Worker registered:', registration.scope);
-
-                        // Listen for background sync messages
-                        navigator.serviceWorker.addEventListener('message', event => {
-                            if (event.data.type === 'BACKGROUND_SYNC') {
-                                console.log('[CHAPTR] Background sync triggered');
-                                // Trigger Alpine.js manual sync if app is available
-                                if (window.Alpine && window.Alpine.store) {
-                                    const appInstance = document.querySelector('[x-data]');
-                                    if (appInstance) {
-                                        appInstance.__x.$data.manualSync();
-                                    }
-                                }
-                            }
-                        });
-                    })
-                    .catch(error => {
-                        console.warn('[CHAPTR] Service Worker registration failed:', error.message);
-                        console.warn('[CHAPTR] Static assets won\'t cache - app will still work');
-                    });
-            });
-        } else {
-            console.warn('[CHAPTR] Service Worker not supported - static assets won\'t cache');
-        }
-    </script>
+    <!-- Modular initialization: loads app, dropdowns, Alpine, and service worker -->
+    <script type="module" src="/static/js/init.js"></script>
 
 </body>
 </html>
