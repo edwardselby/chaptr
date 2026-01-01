@@ -631,16 +631,16 @@
                                             dropdownId: 'sync-interval',
                                             open: false,
                                             options: [
-                                                { value: '300', label: 'Every 5 minutes' },
-                                                { value: '3600', label: 'Every hour' },
-                                                { value: '86400', label: 'Every day' }
+                                                { value: 300, label: 'Every 5 minutes' },
+                                                { value: 3600, label: 'Every hour' },
+                                                { value: 86400, label: 'Every day' }
                                             ],
                                             getSelectedLabel() {
-                                                const opt = this.options.find(o => o.value === String(settingsForm.auto_sync_interval));
+                                                const opt = this.options.find(o => o.value === Number(settingsForm.auto_sync_interval));
                                                 return opt ? opt.label : 'Select...';
                                             },
                                             selectOption(value) {
-                                                settingsForm.auto_sync_interval = value;
+                                                settingsForm.auto_sync_interval = Number(value);
                                                 updateSettings();
                                                 this.open = false;
                                             },
@@ -662,7 +662,7 @@
                                         <ul class="select-dropdown" x-show="open" x-cloak x-transition>
                                             <template x-for="opt in options" :key="opt.value">
                                                 <li @click="selectOption(opt.value)"
-                                                    :class="{ 'selected': String(settingsForm.auto_sync_interval) === opt.value }"
+                                                    :class="{ 'selected': Number(settingsForm.auto_sync_interval) === opt.value }"
                                                     x-text="opt.label"></li>
                                             </template>
                                         </ul>
@@ -1447,6 +1447,10 @@
                                 },
                                 selectOption(value) {
                                     eventForm.frequency = value;
+                                    // Clear anniversary_date when switching away from annual
+                                    if (value !== 'annual') {
+                                        eventForm.anniversary_date = '';
+                                    }
                                     eventFrequencyDropdownOpen = false;
                                 }
                             }"

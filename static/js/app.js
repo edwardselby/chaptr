@@ -2237,7 +2237,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: today,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2286,7 +2287,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: defaultDate,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2328,7 +2330,8 @@ window.app = function() {
                 frequency: '',
                 day: null,
                 start_date: event.event_date,
-                end_date: ''
+                end_date: '',
+                anniversary_date: ''
             };
 
             this.showEventModal = true;
@@ -2358,6 +2361,13 @@ window.app = function() {
          * @param {Object} rule - Recurring rule object
          */
         async editRecurringRule(rule) {
+            // Populate anniversary_date for annual recurring rules
+            let anniversaryDate = '';
+            if (rule.frequency === 'annual' && rule.start_date) {
+                // Use start_date as the anniversary date (contains month/day)
+                anniversaryDate = rule.start_date;
+            }
+
             // Populate form with existing rule data
             this.eventForm = {
                 id: rule.id,
@@ -2377,7 +2387,8 @@ window.app = function() {
                 frequency: rule.frequency,
                 day: rule.day,
                 start_date: rule.start_date,
-                end_date: rule.end_date || ''
+                end_date: rule.end_date || '',
+                anniversary_date: anniversaryDate
             };
 
             this.showEventModal = true;
