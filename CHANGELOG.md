@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2025-12-31
+
+### Added
 - POLISH: Production-ready initialization system with visual loading indicator, performance monitoring, automatic CDN retry, and environment-aware logging
 - POLISH: Loading indicator with animated progress bar during app initialization (300ms smooth fade transition)
 - POLISH: Modular dropdown factory system extracted to dedicated module (static/js/dropdown-factories.js) with comprehensive input validation and error boundaries
