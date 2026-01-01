@@ -11,6 +11,7 @@ import {
     formatRelativeTime,
     isToday,
     isPast,
+    parseISODate,
     apiRequest,
     getClientId,
     clearAuth,
@@ -1923,10 +1924,10 @@ window.app = function() {
                 // Multiple stories cover today - prefer smallest date range
                 selectedStory = coveringStories.reduce((smallest, story) => {
                     const storyRange = story.end_date
-                        ? new Date(story.end_date) - new Date(story.start_date)
+                        ? parseISODate(story.end_date) - parseISODate(story.start_date)
                         : Infinity;
                     const smallestRange = smallest.end_date
-                        ? new Date(smallest.end_date) - new Date(smallest.start_date)
+                        ? parseISODate(smallest.end_date) - parseISODate(smallest.start_date)
                         : Infinity;
 
                     return storyRange < smallestRange ? story : smallest;

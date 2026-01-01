@@ -13,7 +13,7 @@ import { parseISODate, daysBetween, toLocalISODate } from './utils.js';
  * @param {number} rateToBase - Conversion rate (1 native = X base)
  * @returns {number} Amount in base currency
  */
-function convertToBaseCurrency(amount, rateToBase) {
+export function convertToBaseCurrency(amount, rateToBase) {
     return Math.round(amount * rateToBase * 100) / 100;
 }
 
@@ -25,7 +25,7 @@ function convertToBaseCurrency(amount, rateToBase) {
  * @param {object} rates - Current conversion rates
  * @returns {number} Amount in display currency
  */
-function convertFromBaseCurrency(baseAmount, displayCurrency, baseCurrency, rates) {
+export function convertFromBaseCurrency(baseAmount, displayCurrency, baseCurrency, rates) {
     if (displayCurrency === baseCurrency) {
         return baseAmount;
     }
