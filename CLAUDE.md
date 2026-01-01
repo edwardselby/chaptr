@@ -204,30 +204,39 @@ All planning and specification documents are located in `/docs`:
 
 | Document | Description | Reference |
 |----------|-------------|-----------|
-| `chaptr-spec-v2.8.md` | Complete technical specification including data models, business logic, and architecture | Primary spec reference |
-| `chaptr-implementation-plan.md` | 7-phase back-to-front implementation approach with detailed tasks | Development roadmap |
-| `chaptr-mockup-explanation-v1.2.md` | Detailed walkthrough of UI mockup with example scenarios | UX reference |
-| `chaptr-v4-mockup.html` | Interactive HTML mockup showing all screens and flows | Visual reference |
+| `chaptr-spec.md` | Complete technical specification including data models, business logic, sync protocol, and progressive enhancement | Primary spec reference |
+| `chaptr-implementation-guide.md` | 7-phase implementation roadmap + UI/UX walkthrough | Development & design guide |
+| `chaptr-mockup.html` | Interactive HTML mockup showing all screens and flows | Visual reference |
+| `testing-guide.md` | Comprehensive manual testing guide (API, sync, offline, queue-as-state) | Testing procedures |
+| `README.md` | Documentation index and navigation guide | Quick reference |
 
 ### When Implementing Tasks
 
 **Always reference the specification documents:**
 
-1. **For data models and business logic** → See `chaptr-spec-v2.8.md`
-   - Core Concepts section for entity definitions
-   - Technical Architecture for implementation details
-   - Projection Engine for calculation algorithms
-   - Sync Protocol for change log and conflicts
+1. **For data models and business logic** → See `chaptr-spec.md`
+   - Part I: Core Concepts for entity definitions
+   - Part I: Projection Engine for calculation algorithms
+   - Part II: Sync Protocol for change log and conflicts
+   - Part II: Progressive Enhancement for storage modes
 
-2. **For implementation sequence** → See `chaptr-implementation-plan.md`
+2. **For implementation sequence** → See `chaptr-implementation-guide.md`
+   - Part I: 7-phase implementation roadmap
    - Phase deliverables and validation criteria
    - Project structure and file organization
    - Testing requirements per phase
 
-3. **For UI/UX implementation** → See `chaptr-mockup-explanation-v1.2.md` and `chaptr-v4-mockup.html`
-   - Screen layouts and component structure
+3. **For UI/UX implementation** → See `chaptr-implementation-guide.md` and `chaptr-mockup.html`
+   - Part II: UI/UX Walkthrough for screen layouts and flows
    - User flows and interactions
    - Visual design (terminal aesthetic: #4af626 on black, JetBrains Mono)
+   - Interactive mockup for visual reference
+
+4. **For testing procedures** → See `testing-guide.md`
+   - Part I: Backend API testing with curl commands
+   - Part II: Sync protocol and multi-client testing
+   - Part III: Offline and progressive enhancement testing
+   - Part IV: Queue-as-state architecture validation
 
 ### Task Description References
 
@@ -277,10 +286,11 @@ Follow the **back-to-front** approach outlined in the implementation plan:
 ```
 /chaptr
 ├── /docs                      # All planning and specification documents
-│   ├── chaptr-spec-v2.8.md
-│   ├── chaptr-implementation-plan.md
-│   ├── chaptr-mockup-explanation-v1.2.md
-│   └── chaptr-v4-mockup.html
+│   ├── README.md              # Documentation index
+│   ├── chaptr-spec.md         # Complete specification (2,922 lines)
+│   ├── chaptr-implementation-guide.md  # Implementation roadmap + UI walkthrough
+│   ├── chaptr-mockup.html     # Interactive visual mockup
+│   └── testing-guide.md       # Manual testing procedures
 ├── /api                       # FastAPI backend (to be created)
 │   ├── main.py
 │   ├── config.py
@@ -921,9 +931,11 @@ After that, I added validation. Let me explain each validator in detail...
 ## Support
 
 For questions about:
-- **Business logic** → Check `chaptr-spec-v2.8.md`
-- **Implementation order** → Check `chaptr-implementation-plan.md`
-- **UI/UX** → Check `chaptr-mockup-explanation-v1.2.md` and mockup HTML
+- **Business logic** → Check `chaptr-spec.md`
+- **Implementation order** → Check `chaptr-implementation-guide.md` (Part I)
+- **UI/UX** → Check `chaptr-implementation-guide.md` (Part II) and `chaptr-mockup.html`
+- **Testing procedures** → Check `testing-guide.md`
+- **Documentation navigation** → Check `docs/README.md`
 - **Task management** → Use Taskwarrior commands above
 
 **Document version**: Created December 2024
