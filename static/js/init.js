@@ -191,6 +191,27 @@ async function initServiceWorker() {
             logger.info('Service Worker registered:', registration.scope);
             logger.perf('Service Worker registration');
 
+            // Check for updates on registration
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                logger.info('[SW] Update found, new service worker installing...');
+
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // New service worker installed but old one still controlling
+                        // Reload to activate new service worker with updated precache
+                        logger.info('[SW] New service worker installed, reloading page...');
+                        window.location.reload();
+                    }
+                });
+            });
+
+            // Also check for waiting service worker on page load
+            if (registration.waiting && navigator.serviceWorker.controller) {
+                logger.info('[SW] Service worker update waiting, reloading page...');
+                window.location.reload();
+            }
+
             // Listen for background sync messages
             navigator.serviceWorker.addEventListener('message', event => {
                 if (event.data?.type === 'BACKGROUND_SYNC') {
