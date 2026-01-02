@@ -5,6 +5,32 @@ All notable changes to CHAPTR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Service worker version endpoint (/sw-version) with content-hash based versioning for automatic cache invalidation on file changes
+- "Updating application..." message during service worker reload (instead of generic "Loading application...")
+- Content-hash based SW versioning: version changes automatically when any precached file changes (no server restart needed)
+- Production validator agent comprehensive PWA architecture review with priority-based issue tracking
+
+### Changed
+- Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
+- Service worker lifecycle: removed manual skipWaiting() from install event (Workbox controls install, client controls activation)
+- Controllerchange event listener: added debounce guard flag and 100ms delay to prevent reload loops
+- Cache whitelist: preserve Workbox precache caches (workbox-*) during activation cleanup
+- Refactored precache file listing: extracted get_precache_files() shared function used by /sw-version and /sw.js endpoints (DRY)
+
+### Fixed
+- PR #63 review feedback: Resolved all HIGH, MEDIUM, and LOW priority issues from code review
+- Double reload on hard refresh: removed duplicate SKIP_WAITING message triggers (updatefound + waiting check race condition)
+- Workbox precache race condition: removed skipWaiting() from install event preventing cache population before activation
+- Missing Workbox precache cache: cache whitelist now excludes workbox-* caches from deletion
+- Service worker update detection: removed aggressive registration.update() call (unnecessary with version-based URL)
+- Storage adapter tests: Opening balance conflict resolution now tests actual logic instead of calling inaccessible processSyncResponse()
+- ESC key modal dismiss: Fixed Alpine.js context loss in debounce closure by capturing appContext before event listener
+- Empty state messages: Added styled <span class="key"> tags to [Manage] button references for visual consistency
+- Server version validation: Added required field validation (id, account_id, amount, date) before Dexie put() operation
+
 ## [0.4.0] - 2026-01-02
 
 ### Added

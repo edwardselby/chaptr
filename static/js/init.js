@@ -51,6 +51,15 @@ const logger = {
 const loadingIndicator = {
     show() {
         if (!document.getElementById('chaptr-init-loader')) {
+            // Check if reloading due to service worker update
+            const isUpdating = sessionStorage.getItem('chaptr-sw-updating') === 'true';
+            const loadingMessage = isUpdating ? 'Updating application...' : 'Loading application...';
+
+            // Clear the flag immediately (before showing loader)
+            if (isUpdating) {
+                sessionStorage.removeItem('chaptr-sw-updating');
+            }
+
             const loader = document.createElement('div');
             loader.id = 'chaptr-init-loader';
             loader.style.cssText = `
@@ -69,7 +78,7 @@ const loadingIndicator = {
             loader.innerHTML = `
                 <div style="text-align: center;">
                     <div style="color: #4af626; font-size: 2rem; margin-bottom: 1rem; font-weight: 600;">CHAPTR</div>
-                    <div style="color: #888; font-size: 0.9rem;">Loading application...</div>
+                    <div style="color: #888; font-size: 0.9rem;">${loadingMessage}</div>
                     <div style="width: 200px; height: 2px; background: #1a1a1a; margin: 1.5rem auto; overflow: hidden;">
                         <div style="height: 100%; background: #4af626; animation: progress 1.5s ease-in-out infinite;"></div>
                     </div>
@@ -187,18 +196,16 @@ async function initServiceWorker() {
 
     const registerSW = async () => {
         try {
-            const registration = await navigator.serviceWorker.register('/sw.js', {
+            // Fetch SW version to force browser to check for updates
+            // This ensures browser treats SW as a new URL when version changes
+            const versionResponse = await fetch('/sw-version');
+            const { version } = await versionResponse.json();
+
+            const registration = await navigator.serviceWorker.register(`/sw.js?v=${version}`, {
                 updateViaCache: 'none'  // Always fetch SW from network, never use HTTP cache
             });
-            logger.info('Service Worker registered:', registration.scope);
+            logger.info('Service Worker registered:', registration.scope, `(version: ${version})`);
             logger.perf('Service Worker registration');
-
-            // Force update check on every page load to detect precache changes
-            registration.update().then(() => {
-                logger.info('[SW] Update check completed');
-            }).catch(err => {
-                logger.error('[SW] Update check failed:', err);
-            });
 
             // Check for updates on registration
             registration.addEventListener('updatefound', () => {
@@ -217,16 +224,19 @@ async function initServiceWorker() {
             });
 
             // Listen for controlling service worker change (reload only here)
+            // Debounced to prevent reload loops in edge cases
+            let controllerChangeHandled = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                logger.info('[SW] Controller changed, reloading page...');
-                window.location.reload();
-            });
+                if (!controllerChangeHandled) {
+                    controllerChangeHandled = true;
+                    logger.info('[SW] Controller changed, reloading page...');
 
-            // Also check for waiting service worker on page load
-            if (registration.waiting && navigator.serviceWorker.controller) {
-                logger.info('[SW] Service worker update waiting, activating...');
-                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-            }
+                    // Set flag to show "Updating Application..." on next load
+                    sessionStorage.setItem('chaptr-sw-updating', 'true');
+
+                    setTimeout(() => window.location.reload(), 100);
+                }
+            });
 
             // Listen for background sync messages
             navigator.serviceWorker.addEventListener('message', event => {
