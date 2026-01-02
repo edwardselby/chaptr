@@ -187,9 +187,18 @@ async function initServiceWorker() {
 
     const registerSW = async () => {
         try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
+            const registration = await navigator.serviceWorker.register('/sw.js', {
+                updateViaCache: 'none'  // Always fetch SW from network, never use HTTP cache
+            });
             logger.info('Service Worker registered:', registration.scope);
             logger.perf('Service Worker registration');
+
+            // Force update check on every page load to detect precache changes
+            registration.update().then(() => {
+                logger.info('[SW] Update check completed');
+            }).catch(err => {
+                logger.error('[SW] Update check failed:', err);
+            });
 
             // Check for updates on registration
             registration.addEventListener('updatefound', () => {
@@ -199,17 +208,24 @@ async function initServiceWorker() {
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                         // New service worker installed but old one still controlling
-                        // Reload to activate new service worker with updated precache
-                        logger.info('[SW] New service worker installed, reloading page...');
-                        window.location.reload();
+                        // Tell it to skip waiting (will trigger controllerchange)
+                        logger.info('[SW] New service worker installed, activating...');
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        // Don't reload here - wait for controllerchange event
                     }
                 });
             });
 
+            // Listen for controlling service worker change (reload only here)
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                logger.info('[SW] Controller changed, reloading page...');
+                window.location.reload();
+            });
+
             // Also check for waiting service worker on page load
             if (registration.waiting && navigator.serviceWorker.controller) {
-                logger.info('[SW] Service worker update waiting, reloading page...');
-                window.location.reload();
+                logger.info('[SW] Service worker update waiting, activating...');
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
             }
 
             // Listen for background sync messages

@@ -229,6 +229,7 @@ window.app = function() {
 
             // Setup ESC key handler to close modals (with debounce to prevent double-close)
             // Encapsulated in closure to avoid scope pollution
+            const appContext = this; // Capture Alpine context
             window.addEventListener('keydown', (() => {
                 let escDebounceTimer = null; // Enclosed in closure
                 return (event) => {
@@ -249,8 +250,8 @@ window.app = function() {
                         ];
 
                         for (const modalName of modalPriority) {
-                            if (this[modalName] === true) {
-                                this[modalName] = false;
+                            if (appContext[modalName] === true) {
+                                appContext[modalName] = false;
                                 break; // Only close one modal per ESC press
                             }
                         }

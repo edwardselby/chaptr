@@ -420,6 +420,16 @@ self.addEventListener('install', (event) => {{
 }});
 
 /**
+ * Message event - handle SKIP_WAITING command
+ */
+self.addEventListener('message', (event) => {{
+    if (event.data?.type === 'SKIP_WAITING') {{
+        console.log('[SW] Received SKIP_WAITING message, activating new service worker...');
+        self.skipWaiting();
+    }}
+}});
+
+/**
  * Activate event - clean old caches
  */
 self.addEventListener('activate', (event) => {{
