@@ -64,3 +64,37 @@ async def create_change_log_indexes(db: AsyncIOMotorDatabase) -> None:
         logger.warning(f"⚠ Failed to create change_log indexes: {e}")
         # Don't fail startup if index creation fails
         # Indexes are performance optimization, not required for functionality
+
+
+async def create_conflicts_indexes(db: AsyncIOMotorDatabase) -> None:
+    """
+    Create indexes for conflicts collection to optimize sync conflict queries.
+
+    Indexes Created:
+    1. entity_conflict_idx: Composite index (entity_id ASC, conflict_type ASC)
+       - Optimizes queries filtering by entity and conflict type
+       - Supports: { entity_id: uuid, conflict_type: "derived_event_overridden" }
+
+    :param db: MongoDB database instance
+    :type db: AsyncIOMotorDatabase
+    :return: None
+    :rtype: None
+
+    :Example:
+
+    >>> from api.config import MongoDB
+    >>> db = MongoDB.get_database()
+    >>> await create_conflicts_indexes(db)
+    """
+    try:
+        # Composite index for entity + conflict type queries
+        await db["conflicts"].create_index(
+            [("entity_id", 1), ("conflict_type", 1)],
+            name="entity_conflict_idx"
+        )
+        logger.info("✓ Created composite index on conflicts (entity_id, conflict_type)")
+
+    except Exception as e:
+        logger.warning(f"⚠ Failed to create conflicts indexes: {e}")
+        # Don't fail startup if index creation fails
+        # Indexes are performance optimization, not required for functionality

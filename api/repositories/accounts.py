@@ -83,15 +83,14 @@ class AccountRepository(BaseRepository[Account]):
         if is_first_account:
             data.is_default = True
 
-        # If setting as default, unset other accounts
+        # If setting as default, check if another default exists
         if data.is_default:
-            await self.collection.update_many(
-                {"is_default": True},
-                {"$set": {
-                    "is_default": False,
-                    "updated_at": utc_now().isoformat()
-                }}
-            )
+            existing_default = await self.collection.find_one({"is_default": True})
+            if existing_default:
+                raise ResourceConflictError(
+                    f"Cannot set account as default. Another account ('{existing_default['name']}') is already the default. "
+                    f"Please unset the existing default account first."
+                )
 
         # Use provided entity_id (from sync) or generate new ID
         account_id = entity_id if entity_id is not None else generate_id()
@@ -169,15 +168,17 @@ class AccountRepository(BaseRepository[Account]):
         # Prepare update dictionary
         update_dict = data.model_dump(exclude_unset=True)
 
-        # If setting as default, unset other accounts
+        # If setting as default, check if another default exists
         if update_dict.get('is_default') is True:
-            await self.collection.update_many(
-                {"is_default": True, "id": {"$ne": to_str(account_id)}},
-                {"$set": {
-                    "is_default": False,
-                    "updated_at": utc_now().isoformat()
-                }}
-            )
+            existing_default = await self.collection.find_one({
+                "is_default": True,
+                "id": {"$ne": to_str(account_id)}
+            })
+            if existing_default:
+                raise ResourceConflictError(
+                    f"Cannot set account as default. Another account ('{existing_default['name']}') is already the default. "
+                    f"Please unset the existing default account first."
+                )
 
         # If balance updated, set pending_reconciliation and update timestamp
         if 'current_balance' in update_dict:

@@ -8,12 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Event creation: Currency button list (replaces text input) for easier currency selection
+- Story creation: Display currency dropdown (replaces text input) populated from settings
+- Event creation: "Use Global Default" option with dynamic hint showing default account name
+- Event creation: Validation preventing event creation when no accounts exist
+- Validation test suite: 68 comprehensive tests covering HTML5 validation system (validation-helpers.js, dropdown-factories.js)
+- tests/validation-helpers.test.js: 49 unit tests for all 6 validation helper functions (resetFormErrors, validateHTML5, validateCustomDropdown, validateDateRange, validateCurrencyCode, validateConditionalRequired, countErrors)
+- tests/form-validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
+- tests/dropdown-validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
+- Validation helpers module: static/js/validation-helpers.js - centralized validation functions for HTML5 + business logic validation across all forms
 
 ### Changed
+- Default account enforcement: Show error when trying to set second default account (requires manually unsetting existing default first)
+- Performance: Added compound index on conflicts collection (entity_id + conflict_type) - MongoDB and Dexie
+- Account deletion: Requires typing account name for confirmation (case-insensitive) to prevent accidental deletions
+- Event creation: HTML5 validation proof of concept - leverages native Constraint Validation API with terminal-style arrow feedback on Description, Event Date, Amount, and Start Date fields
+- Event creation: Visual validation feedback with terminal-style arrows (> field <) positioned in modal margins using @invalid.prevent to intercept browser UI, with conditional negative margins applied only when errors are present
 
 ### Fixed
+- Validation arrows: Fixed incorrect margins on fields without validation errors by conditionally applying negative margins only when arrows are visible
 - Pydantic v2 compatibility: Renamed SyncChangeMetadata fields (_derived_from, _optimistic) to use aliases for underscore-prefixed JSON keys
 - Sync endpoint AttributeError: Changed dictionary-style access to attribute access for SyncChangeMetadata model
+- Validation helpers: validateCurrencyCode auto-conversion bug - removed .toUpperCase() call so lowercase/mixed case codes correctly fail validation (e.g., "gbp", "Gbp" now invalid)
+- Validation helpers: validateCustomDropdown falsy value bug - changed to explicit null/undefined check so numeric zero is now a valid dropdown selection
+- Validation helpers: validateConditionalRequired falsy value bug - changed to explicit null/undefined check so numeric zero and boolean false are now valid when conditionally required
 
 ## [0.3.0] - 2025-12-31
 

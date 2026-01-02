@@ -1600,6 +1600,57 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     width: 100%;
 }
 
+/* Validation error state */
+.custom-select.validation-error .select-trigger {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red);
+}
+
+.form-input.validation-error {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red);
+}
+
+.amount-input-wrapper.validation-error .amount-input {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red);
+}
+
+/* Field with arrows wrapper */
+.field-with-arrows {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Only apply negative margins when arrows are visible */
+.field-with-arrows.has-arrows {
+    margin-left: -16px;
+    margin-right: -16px;
+}
+
+.field-with-arrows .custom-select,
+.field-with-arrows .amount-input-wrapper,
+.field-with-arrows .form-input {
+    flex: 1;
+}
+
+/* Validation arrows */
+.validation-arrow-left,
+.validation-arrow-right {
+    color: var(--red);
+    font-weight: bold;
+    font-size: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    animation: pulse 1.5s ease-in-out infinite;
+    user-select: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .select-trigger {
     width: 100%;
     background: var(--bg-primary);
