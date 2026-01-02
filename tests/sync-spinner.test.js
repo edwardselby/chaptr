@@ -16,6 +16,10 @@ class MockAlpineComponent {
         this.syncButtonSpinner = false;
         this.syncQueueCount = 0;
         this.notifications = [];
+
+        // Sync Configuration Constants (matching app.js)
+        this.SYNC_TIMEOUT_MS = 30000;        // Maximum 30 seconds for sync operation
+        this.MIN_SPINNER_DURATION_MS = 1000; // Minimum 1 second for spinner visibility
     }
 
     // Mock methods
@@ -34,28 +38,30 @@ class MockAlpineComponent {
     /**
      * Simplified version of triggerManualSync for testing
      * Includes all defensive programming features
+     * UPDATED: Matches PR review fix - check queue before starting spinner
      */
     async triggerManualSync(mockStorage, mockDb) {
         if (this.isSyncing) return;
 
+        // DEFENSIVE FIX: Check queue before starting spinner to avoid early return bypassing minimum duration
+        await this.updateSyncQueueCount();
+
+        if (this.syncQueueCount === 0) {
+            this.showNotification('Nothing to sync', 'info');
+            return;
+        }
+
+        // Start spinner and track start time
         this.isSyncing = true;
         this.syncButtonSpinner = true;
         const spinnerStartTime = Date.now();
 
-        // DEFENSIVE: Timeout guard - force sync to complete within 30 seconds
-        const syncTimeout = 30000;
+        // DEFENSIVE: Timeout guard - force sync to complete within configured timeout
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Sync timeout after 30s')), syncTimeout);
+            setTimeout(() => reject(new Error('Sync timeout after 30s')), this.SYNC_TIMEOUT_MS);
         });
 
         try {
-            await this.updateSyncQueueCount();
-
-            if (this.syncQueueCount === 0) {
-                this.showNotification('Nothing to sync', 'info');
-                return;
-            }
-
             // Perform incremental sync with timeout guard
             const syncPromise = (async () => {
                 const result = await mockStorage.manualSync();
@@ -85,11 +91,10 @@ class MockAlpineComponent {
                 this.showNotification('Sync failed', 'error');
             }
         } finally {
-            // Ensure spinner shows for minimum 1 second
+            // Ensure spinner shows for minimum configured duration
             const elapsed = Date.now() - spinnerStartTime;
-            const minDuration = 1000;
-            if (elapsed < minDuration) {
-                await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+            if (elapsed < this.MIN_SPINNER_DURATION_MS) {
+                await new Promise(resolve => setTimeout(resolve, this.MIN_SPINNER_DURATION_MS - elapsed));
             }
 
             this.isSyncing = false;
@@ -138,7 +143,10 @@ describe('Sync Spinner Defensive Programming', () => {
             // Start sync (completes instantly)
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
 
-            // Spinner should be active immediately
+            // Wait for queue check to complete (PR review fix - queue check happens first)
+            await vi.advanceTimersByTimeAsync(0);
+
+            // Spinner should be active after queue check
             expect(component.syncButtonSpinner).toBe(true);
 
             // Advance time by 500ms (less than minimum)
@@ -166,6 +174,10 @@ describe('Sync Spinner Defensive Programming', () => {
             });
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
+
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
+
             const startTime = Date.now();
 
             // Advance time to complete the sync
@@ -191,11 +203,11 @@ describe('Sync Spinner Defensive Programming', () => {
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
 
-            // Advance time to timeout
-            await vi.advanceTimersByTimeAsync(30000);
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
 
-            // Wait for minimum duration
-            await vi.advanceTimersByTimeAsync(1000);
+            // Advance time to timeout (30s + 1s minimum duration)
+            await vi.advanceTimersByTimeAsync(31000);
 
             await syncPromise;
 
@@ -219,11 +231,11 @@ describe('Sync Spinner Defensive Programming', () => {
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
 
-            // Advance time to complete sync
-            await vi.advanceTimersByTimeAsync(5000);
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
 
-            // Wait for minimum duration
-            await vi.advanceTimersByTimeAsync(1000);
+            // Advance time to complete sync (5s + 1s minimum duration)
+            await vi.advanceTimersByTimeAsync(6000);
 
             await syncPromise;
 
@@ -246,6 +258,9 @@ describe('Sync Spinner Defensive Programming', () => {
             mockStorage.manualSync = vi.fn().mockRejectedValue(new Error('Network error'));
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
+
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
 
             // Advance time for minimum duration
             await vi.advanceTimersByTimeAsync(1000);
@@ -272,6 +287,10 @@ describe('Sync Spinner Defensive Programming', () => {
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
 
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
+
+            // Advance time for minimum duration
             await vi.advanceTimersByTimeAsync(1000);
             await syncPromise;
 
@@ -307,6 +326,9 @@ describe('Sync Spinner Defensive Programming', () => {
             // Start first sync
             const firstSync = component.triggerManualSync(mockStorage, mockDb);
 
+            // Wait for queue check to complete
+            await vi.advanceTimersByTimeAsync(0);
+
             // Try to start second sync while first is running
             const secondSync = component.triggerManualSync(mockStorage, mockDb);
 
@@ -329,12 +351,10 @@ describe('Sync Spinner Defensive Programming', () => {
     });
 
     describe('Nothing to Sync', () => {
-        it('shows info notification and stops spinner when queue is empty', async () => {
+        it('shows info notification without starting spinner when queue is empty', async () => {
             component.syncQueueCount = 0;
 
             const syncPromise = component.triggerManualSync(mockStorage, mockDb);
-
-            await vi.advanceTimersByTimeAsync(1000);
             await syncPromise;
 
             // Should show info notification
@@ -345,8 +365,9 @@ describe('Sync Spinner Defensive Programming', () => {
             // Should not call manualSync
             expect(mockStorage.manualSync).not.toHaveBeenCalled();
 
-            // Spinner should be stopped
+            // Spinner should never have started (PR review fix)
             expect(component.syncButtonSpinner).toBe(false);
+            expect(component.isSyncing).toBe(false);
         });
     });
 });

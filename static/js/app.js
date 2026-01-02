@@ -66,6 +66,10 @@ window.app = function() {
         syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
 
+        // Sync Configuration Constants
+        SYNC_TIMEOUT_MS: 30000,        // Maximum 30 seconds for sync operation
+        MIN_SPINNER_DURATION_MS: 1000, // Minimum 1 second for spinner visibility
+
         // Notification State
         currentNotification: null,      // { message: string, type: string }
         notificationTimeout: null,       // Timeout ID for auto-dismiss
@@ -1778,24 +1782,25 @@ window.app = function() {
         async triggerManualSync() {
             if (this.isSyncing) return;
 
-            this.isSyncing = true;
-            this.syncButtonSpinner = true; // Show spinner
-            const spinnerStartTime = Date.now(); // Track start time for minimum duration
+            // DEFENSIVE FIX: Check queue before starting spinner to avoid early return bypassing minimum duration
+            await this.updateSyncQueueCount();
 
-            // DEFENSIVE: Timeout guard - force sync to complete within 30 seconds
-            const syncTimeout = 30000;
+            if (this.syncQueueCount === 0) {
+                this.showNotification('Nothing to sync', 'info');
+                return;
+            }
+
+            // Start spinner and track start time
+            this.isSyncing = true;
+            this.syncButtonSpinner = true;
+            const spinnerStartTime = Date.now();
+
+            // DEFENSIVE: Timeout guard - force sync to complete within configured timeout
             const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Sync timeout after 30s')), syncTimeout);
+                setTimeout(() => reject(new Error('Sync timeout after 30s')), this.SYNC_TIMEOUT_MS);
             });
 
             try {
-                await this.updateSyncQueueCount();
-
-                if (this.syncQueueCount === 0) {
-                    this.showNotification('Nothing to sync', 'info');
-                    return;
-                }
-
                 // Perform incremental sync with timeout guard
                 const syncPromise = (async () => {
                     const result = await storage.manualSync();
@@ -1827,15 +1832,14 @@ window.app = function() {
                     this.showNotification('Sync failed', 'error');
                 }
             } finally {
-                // Ensure spinner shows for minimum 1 second
+                // Ensure spinner shows for minimum configured duration
                 const elapsed = Date.now() - spinnerStartTime;
-                const minDuration = 1000;
-                if (elapsed < minDuration) {
-                    await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+                if (elapsed < this.MIN_SPINNER_DURATION_MS) {
+                    await new Promise(resolve => setTimeout(resolve, this.MIN_SPINNER_DURATION_MS - elapsed));
                 }
 
                 this.isSyncing = false;
-                this.syncButtonSpinner = false; // Hide spinner
+                this.syncButtonSpinner = false;
                 await this.updateSyncQueueCount(); // Refresh count
             }
         },

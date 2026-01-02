@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation helpers: validateCurrencyCode auto-conversion bug - removed .toUpperCase() call so lowercase/mixed case codes correctly fail validation (e.g., "gbp", "Gbp" now invalid)
 - Validation helpers: validateCustomDropdown falsy value bug - changed to explicit null/undefined check so numeric zero is now a valid dropdown selection
 - Validation helpers: validateConditionalRequired falsy value bug - changed to explicit null/undefined check so numeric zero and boolean false are now valid when conditionally required
+- Sync spinner: Fixed empty queue bypass - check queue count before starting spinner to ensure consistent minimum duration behavior (PR review feedback)
 
 ## [0.3.0] - 2025-12-31
 
