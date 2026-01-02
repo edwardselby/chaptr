@@ -186,6 +186,10 @@ window.app = function() {
         async init() {
             console.log('CHAPTR initializing...');
 
+            // DEFENSIVE: Reset sync state on initialization (catches stuck spinners from crashes/refresh)
+            this.isSyncing = false;
+            this.syncButtonSpinner = false;
+
             // Check authentication first
             await this.checkAuth();
 
@@ -222,6 +226,21 @@ window.app = function() {
                 if (this.syncQueueCount > 0) {
                     await this.manualSync();
                 }
+            });
+
+            // DEFENSIVE: Reset spinner if page becomes visible (catches tab switching/background)
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && this.syncButtonSpinner) {
+                    console.warn('Page became visible with spinner active - resetting sync state');
+                    this.isSyncing = false;
+                    this.syncButtonSpinner = false;
+                }
+            });
+
+            // DEFENSIVE: Reset spinner before page unload (catches navigation/refresh)
+            window.addEventListener('beforeunload', () => {
+                this.isSyncing = false;
+                this.syncButtonSpinner = false;
             });
 
             // Expose notification method globally for utils.js and storage-adapter.js
@@ -1761,6 +1780,13 @@ window.app = function() {
 
             this.isSyncing = true;
             this.syncButtonSpinner = true; // Show spinner
+            const spinnerStartTime = Date.now(); // Track start time for minimum duration
+
+            // DEFENSIVE: Timeout guard - force sync to complete within 30 seconds
+            const syncTimeout = 30000;
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Sync timeout after 30s')), syncTimeout);
+            });
 
             try {
                 await this.updateSyncQueueCount();
@@ -1770,29 +1796,44 @@ window.app = function() {
                     return;
                 }
 
-                // Perform incremental sync
-                const result = await storage.manualSync();
+                // Perform incremental sync with timeout guard
+                const syncPromise = (async () => {
+                    const result = await storage.manualSync();
 
-                // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
-                const unresolvedConflicts = await db.getUnresolvedConflicts();
-                if (unresolvedConflicts.length > 0) {
-                    this.showNotification(
-                        `${unresolvedConflicts.length} conflicts`,
-                        'warning'
-                    );
-                } else if (result.applied && result.applied > 0) {
-                    this.showNotification(`Synced ${result.applied}`, 'success');
-                } else {
-                    this.showNotification('Sync complete', 'success');
-                }
+                    // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
+                    const unresolvedConflicts = await db.getUnresolvedConflicts();
+                    if (unresolvedConflicts.length > 0) {
+                        this.showNotification(
+                            `${unresolvedConflicts.length} conflicts`,
+                            'warning'
+                        );
+                    } else if (result.applied && result.applied > 0) {
+                        this.showNotification(`Synced ${result.applied}`, 'success');
+                    } else {
+                        this.showNotification('Sync complete', 'success');
+                    }
 
-                // Reload data to reflect server changes
-                await this.loadData();
+                    // Reload data to reflect server changes
+                    await this.loadData();
+                })();
+
+                await Promise.race([syncPromise, timeoutPromise]);
 
             } catch (error) {
                 console.error('Sync error:', error);
-                this.showNotification('Sync failed', 'error');
+                if (error.message === 'Sync timeout after 30s') {
+                    this.showNotification('Sync timeout', 'error');
+                } else {
+                    this.showNotification('Sync failed', 'error');
+                }
             } finally {
+                // Ensure spinner shows for minimum 1 second
+                const elapsed = Date.now() - spinnerStartTime;
+                const minDuration = 1000;
+                if (elapsed < minDuration) {
+                    await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+                }
+
                 this.isSyncing = false;
                 this.syncButtonSpinner = false; // Hide spinner
                 await this.updateSyncQueueCount(); // Refresh count
