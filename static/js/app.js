@@ -3038,6 +3038,15 @@ window.app = function() {
         },
 
         /**
+         * Get default account name for event form hint
+         * Returns the name of the global default account or null if none exists
+         */
+        getDefaultAccountName() {
+            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
+            return defaultAccount ? defaultAccount.name : null;
+        },
+
+        /**
          * Handle story selection change
          * Auto-updates account and currency based on story defaults
          */

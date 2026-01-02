@@ -329,6 +329,38 @@ function showErrorScreen(error) {
 }
 
 /**
+ * Check if service worker update is available
+ * Returns true if update needed, false otherwise
+ */
+async function checkForServiceWorkerUpdate() {
+    if (!('serviceWorker' in navigator)) {
+        return false;
+    }
+
+    try {
+        // Get current SW version from server
+        const versionResponse = await fetch('/sw-version');
+        const { version: newVersion } = await versionResponse.json();
+
+        // Check if we have an active SW with different version
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration?.active) {
+            const currentUrl = registration.active.scriptURL;
+            const currentVersion = new URL(currentUrl).searchParams.get('v');
+
+            if (currentVersion && currentVersion !== newVersion) {
+                logger.info(`[SW] Update available: ${currentVersion} → ${newVersion}`);
+                return true;
+            }
+        }
+    } catch (error) {
+        logger.warn('[SW] Version check failed:', error);
+    }
+
+    return false;
+}
+
+/**
  * Main initialization sequence
  */
 async function init() {
@@ -336,34 +368,48 @@ async function init() {
         logger.info('Starting initialization...');
         loadingIndicator.show();
 
-        // Step 1: Import app module (sets window.app)
-        await import('./app.js');
-        logger.perf('App module import');
+        // Step 0: Check for SW update BEFORE loading app
+        // If update available, skip loading and go straight to SW registration
+        const updateAvailable = await checkForServiceWorkerUpdate();
 
-        if (typeof window.app !== 'function') {
-            throw new Error('app() function not defined after importing app.js');
+        if (!updateAvailable) {
+            // No update - load app normally
+            // Step 1: Import app module (sets window.app)
+            await import('./app.js');
+            logger.perf('App module import');
+
+            if (typeof window.app !== 'function') {
+                throw new Error('app() function not defined after importing app.js');
+            }
+            logger.info('App module loaded ✓');
+
+            // Step 2: Register global components
+            registerGlobals();
+
+            // Step 3: Load Alpine.js (with retry)
+            await loadAlpine();
+        } else {
+            logger.info('[SW] Skipping app load, update will trigger reload');
         }
-        logger.info('App module loaded ✓');
 
-        // Step 2: Register global components
-        registerGlobals();
-
-        // Step 3: Load Alpine.js (with retry)
-        await loadAlpine();
-
-        // Step 4: Initialize service worker (non-blocking)
+        // Step 4: Initialize service worker (always run, triggers reload if update)
         await initServiceWorker();
 
-        // Complete
-        const totalTime = (performance.now() - perf.start).toFixed(2);
-        logger.info(`Initialization complete ✓ (${totalTime}ms)`);
+        // Complete (only hide loader if no update pending)
+        if (!updateAvailable) {
+            const totalTime = (performance.now() - perf.start).toFixed(2);
+            logger.info(`Initialization complete ✓ (${totalTime}ms)`);
 
-        if (isDevelopment) {
-            console.table(perf.marks);
+            if (isDevelopment) {
+                console.table(perf.marks);
+            }
+
+            // Hide loading indicator
+            loadingIndicator.hide();
+        } else {
+            logger.info('[SW] Waiting for service worker update to trigger reload...');
+            // Keep loader visible - will reload soon
         }
-
-        // Hide loading indicator
-        loadingIndicator.hide();
 
     } catch (error) {
         loadingIndicator.hide();
