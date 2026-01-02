@@ -779,11 +779,13 @@ class SyncChangeMetadata(BaseModel):
     derived_from: Optional[str] = Field(
         default=None,
         alias='_derived_from',
+        serialization_alias='_derived_from',
         description="Derivation source (e.g., 'account_creation', 'recurring_rule_creation', 'balance_update')"
     )
     optimistic: Optional[bool] = Field(
         default=None,
         alias='_optimistic',
+        serialization_alias='_optimistic',
         description="Is this a frontend optimistic guess? (true for derived changes)"
     )
     dependencies: Optional[list[str]] = Field(
