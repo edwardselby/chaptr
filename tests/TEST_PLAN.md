@@ -2,7 +2,7 @@
 
 **Purpose:** Comprehensive testing of all "low hanging fruit" - fundamental functions with simple, testable logic.
 
-**Status:** 113/113 tests passing ✅
+**Status:** 212/212 tests passing ✅
 
 ---
 
@@ -25,6 +25,39 @@
 - ✅ Complex transactions
 - ✅ Helper functions (getStoryEvents, queueChange)
 - ✅ IndexedDB features (bulk operations, atomic transactions)
+
+### `tests/validation-helpers.test.js` (49 tests)
+- ✅ `resetFormErrors()` - 3 tests (reset all flags, empty object, no new properties)
+- ✅ `validateHTML5()` - 7 tests (return values, edge cases, safe hasOwnProperty)
+- ✅ `validateCustomDropdown()` - 8 tests (required/optional, null/undefined, zero handling)
+- ✅ `validateDateRange()` - 10 tests (before/after/equal, null handling, custom error field)
+- ✅ `validateCurrencyCode()` - 9 tests (uppercase validation, length, special chars, common codes)
+- ✅ `validateConditionalRequired()` - 8 tests (condition checking, zero/false handling, complex conditions)
+- ✅ `countErrors()` - 4 tests (counting, empty object, mixed truthy/falsy)
+
+### `tests/form-validation.test.js` (8 tests)
+- ✅ Integration tests for `validateHTML5()` with real DOM elements
+- ✅ Map HTML5 validation failures to error object
+- ✅ Handle multiple invalid fields
+- ✅ Parse x-model with dot notation (accountForm.name)
+- ✅ Parse x-model with nested paths (form.nested.field)
+- ✅ Parse x-model without dots (username)
+- ✅ Handle mixed valid/invalid inputs
+- ✅ Query all form input types (input, select, textarea)
+- ✅ Handle deeply nested x-model paths
+
+### `tests/dropdown-validation.test.js` (11 tests)
+- ✅ `modalDropdown` with errorState - 8 tests
+  - hasError getter (initial false, true when flagged)
+  - Clear error on selection
+  - Null errorState handling
+  - Missing fieldName handling
+  - selectedValue getter
+  - getSelectedLabel() with selection/default
+- ✅ `settingsDropdown` - 3 tests
+  - getSelectedLabel() returns correct label
+  - onSelect callback invoked
+  - Dropdown closes after selection
 
 ---
 
@@ -132,12 +165,16 @@
 - db.js: 95% (24 tests covering all operations + helpers) ✅
 - event-helpers.js: 100% (26 tests covering all 4 exports) ✅
 - projection.js: 100% (15 tests covering all pure functions) ✅
+- validation-helpers.js: 100% (49 unit + 8 integration tests) ✅
+- dropdown-factories.js: 100% (11 tests covering both factory functions) ✅
 
 **Target Coverage:** ✅ ACHIEVED
 - utils.js: 100% (48 tests) ✅
 - db.js: 95% (24 tests) ✅
 - event-helpers.js: 100% (26 tests) ✅
 - projection.js: 100% (15 tests) ✅
+- validation-helpers.js: 100% (57 tests) ✅
+- dropdown-factories.js: 100% (11 tests) ✅
 
 ---
 
@@ -157,6 +194,13 @@
 3. ✅ **Low Priority:** Expanded `tests/utils.test.js` (48 tests total)
    - Filled all gaps in coverage
    - Sanity checks complete
+
+4. ✅ **Validation System:** HTML5 + Business Logic Validation (68 tests)
+   - `tests/validation-helpers.test.js` (49 unit tests)
+   - `tests/form-validation.test.js` (8 integration tests)
+   - `tests/dropdown-validation.test.js` (11 component tests)
+   - Fixed 3 implementation bugs discovered during testing
+   - 100% coverage of validation module
 
 ---
 

@@ -15,7 +15,7 @@ import hashlib
 from pathlib import Path
 
 from api.config import settings, MongoDB
-from api.utils.indexes import create_change_log_indexes
+from api.utils.indexes import create_change_log_indexes, create_conflicts_indexes
 from api.utils.db import utc_now
 
 # Configure logging
@@ -80,6 +80,9 @@ async def lifespan(app: FastAPI):
 
             # Create change_log indexes for sync protocol
             await create_change_log_indexes(db)
+
+            # Create conflicts indexes for sync conflict queries
+            await create_conflicts_indexes(db)
         except Exception as e:
             logger.warning(f"⚠ Failed to create indexes: {e}")
     else:
