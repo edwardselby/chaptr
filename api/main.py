@@ -274,15 +274,13 @@ async def serve_service_worker():
     static_dir = Path("static")
 
     # Files to precache with automatic revision hashing
+    # Automatically discover all JavaScript files
+    js_files = sorted([str(p) for p in static_dir.glob("js/*.js")])
+
     precache_files = [
         "static/index.html",
         "static/css/style.css",
-        "static/js/app.js",
-        "static/js/db.js",
-        "static/js/storage-adapter.js",
-        "static/js/utils.js",
-        "static/js/projection.js"
-    ]
+    ] + js_files
 
     # Generate revision hashes for each file
     precache_entries = []

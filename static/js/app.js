@@ -227,6 +227,40 @@ window.app = function() {
             // Expose notification method globally for utils.js and storage-adapter.js
             window.showNotification = this.showNotification.bind(this);
 
+            // Setup ESC key handler to close modals (with debounce to prevent double-close)
+            let escDebounceTimer = null;
+            window.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !escDebounceTimer) {
+                    // Find and close the topmost modal
+                    const modalPriority = [
+                        'showPasswordModal',
+                        'showInputModal',
+                        'showConfirmModal',
+                        'showConflictModal',
+                        'showDatabaseToolsModal',
+                        'showBalanceModal',
+                        'showHelpModal',
+                        'showUserModal',
+                        'showEventModal',
+                        'showStoryModal',
+                        'showAccountModal'
+                    ];
+
+                    for (const modalName of modalPriority) {
+                        if (this[modalName] === true) {
+                            this[modalName] = false;
+                            console.log(`[CHAPTR] Closed ${modalName} via ESC key`);
+                            break; // Only close one modal per ESC press
+                        }
+                    }
+
+                    // Debounce 250ms to prevent accidental double-close
+                    escDebounceTimer = setTimeout(() => {
+                        escDebounceTimer = null;
+                    }, 250);
+                }
+            });
+
             console.log('CHAPTR ready!');
         },
 

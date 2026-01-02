@@ -1087,6 +1087,14 @@ class StorageAdapter {
                 // Delete client's optimistic version
                 await db.events.delete(conflict.entity_id);
 
+                // Apply server's authoritative version immediately
+                if (conflict.server_version) {
+                    await db.events.put(conflict.server_version);
+                    console.log(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id} (applied server version)`);
+                } else {
+                    console.warn(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id} (no server version provided)`);
+                }
+
                 // Remove from queue (no longer needs to be synced)
                 await db.sync_queue.where({ entity_id: conflict.entity_id }).delete();
 
@@ -1094,9 +1102,6 @@ class StorageAdapter {
                 await db.conflicts
                     .where({ entity_id: conflict.entity_id, conflict_type: 'derived_event_overridden' })
                     .modify({ resolved_at: new Date().toISOString() });
-
-                console.log(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id}`);
-                // Server version will be applied via server_changes (next section)
             }
         }
 
