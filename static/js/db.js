@@ -15,6 +15,7 @@ const db = new Dexie('CHAPTR');
  * Version 3: Enhanced sync_queue for queue-as-state architecture
  *            - Added _derived_from index for derived event tracking
  *            - Queue fields: dependencies, _derived_from, _optimistic (non-indexed)
+ * Version 4: Added compound index on conflicts (entity_id + conflict_type)
  */
 db.version(1).stores({
     // Core entities
@@ -77,6 +78,23 @@ db.version(3).stores({
     });
 
     console.log('[CHAPTR] Schema v3 upgrade complete');
+});
+
+db.version(4).stores({
+    // Core entities (unchanged)
+    accounts: 'id, currency, is_default, is_archived',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical, is_opening_balance, is_auto_adjustment, recurring_rule_id',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Conflicts: Added compound index [entity_id+conflict_type] for performance
+    conflicts: 'id, entity_type, [entity_id+conflict_type], resolved_at',
+
+    // Sync protocol (unchanged)
+    sync_queue: '++id, entity_type, entity_id, queued_at, action, _derived_from',
+    sync_meta: 'id'
 });
 
 /**

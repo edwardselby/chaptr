@@ -28,30 +28,60 @@
                 <p class="login-subtitle">Personal Finance Projection</p>
             </div>
 
-            <form class="login-form" @submit.prevent="handleLogin">
+            <form x-ref="loginFormElement" class="login-form" @submit.prevent="handleLogin">
                 <div class="form-group">
                     <label for="username" class="form-label">Username</label>
-                    <input
-                        type="text"
-                        id="username"
-                        class="form-input"
-                        x-model="loginForm.username"
-                        placeholder="Enter username"
-                        required
-                        autofocus
-                    >
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': loginFormErrors.username }">
+                        <span class="validation-arrow-left" x-show="loginFormErrors.username" x-cloak>&gt;</span>
+
+                        <input
+                            type="text"
+                            id="username"
+                            class="form-input"
+                            :class="{ 'validation-error': loginFormErrors.username }"
+                            x-model="loginForm.username"
+                            placeholder="Enter username"
+                            required
+                            minlength="3"
+                            autofocus
+                            @invalid.prevent="loginFormErrors.username = true"
+                            @input="loginFormErrors.username = false"
+                        >
+
+                        <span class="validation-arrow-right" x-show="loginFormErrors.username" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="loginFormErrors.username" style="color: var(--red)">⚠️ Username is required (min 3 characters)</span>
+                    </span>
                 </div>
 
                 <div class="form-group">
                     <label for="password" class="form-label">Password</label>
-                    <input
-                        type="password"
-                        id="password"
-                        class="form-input"
-                        x-model="loginForm.password"
-                        placeholder="Enter password"
-                        required
-                    >
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': loginFormErrors.password }">
+                        <span class="validation-arrow-left" x-show="loginFormErrors.password" x-cloak>&gt;</span>
+
+                        <input
+                            type="password"
+                            id="password"
+                            class="form-input"
+                            :class="{ 'validation-error': loginFormErrors.password }"
+                            x-model="loginForm.password"
+                            placeholder="Enter password"
+                            required
+                            minlength="6"
+                            @invalid.prevent="loginFormErrors.password = true"
+                            @input="loginFormErrors.password = false"
+                        >
+
+                        <span class="validation-arrow-right" x-show="loginFormErrors.password" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="loginFormErrors.password" style="color: var(--red)">⚠️ Password is required (min 6 characters)</span>
+                    </span>
                 </div>
 
                 <div class="form-error" x-show="loginError" x-text="loginError" x-cloak></div>
@@ -744,42 +774,87 @@
                 <h2 x-text="accountForm.id ? 'Edit Account' : 'Add Account'"></h2>
                 <button class="modal-close" @click="showAccountModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveAccount" class="modal-body">
+            <form x-ref="accountFormElement" @submit.prevent="saveAccount" class="modal-body">
                 <div class="form-group">
                     <label for="account-name">Account Name</label>
-                    <input
-                        id="account-name"
-                        type="text"
-                        x-model="accountForm.name"
-                        placeholder="e.g., Monzo, HSBC"
-                        required
-                        class="form-input">
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.name }">
+                        <span class="validation-arrow-left" x-show="accountFormErrors.name" x-cloak>&gt;</span>
+
+                        <input
+                            id="account-name"
+                            type="text"
+                            x-model="accountForm.name"
+                            placeholder="e.g., Monzo, HSBC, Cash"
+                            required
+                            minlength="2"
+                            maxlength="50"
+                            class="form-input"
+                            :class="{ 'validation-error': accountFormErrors.name }"
+                            @invalid.prevent="accountFormErrors.name = true"
+                            @input="accountFormErrors.name = false">
+
+                        <span class="validation-arrow-right" x-show="accountFormErrors.name" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="accountFormErrors.name" style="color: var(--red)">⚠️ Account name is required (2-50 characters)</span>
+                        <span x-show="!accountFormErrors.name">Name of your account or cash wallet</span>
+                    </span>
                 </div>
                 <div class="form-group">
                     <label for="account-currency">Currency</label>
-                    <input
-                        id="account-currency"
-                        type="text"
-                        x-model="accountForm.currency"
-                        pattern="[A-Z]{3}"
-                        placeholder="GBP, USD, EUR"
-                        maxlength="3"
-                        required
-                        class="form-input"
-                        style="text-transform: uppercase">
-                    <span class="form-hint">3-letter currency code (e.g., GBP)</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.currency }">
+                        <span class="validation-arrow-left" x-show="accountFormErrors.currency" x-cloak>&gt;</span>
+
+                        <input
+                            id="account-currency"
+                            type="text"
+                            x-model="accountForm.currency"
+                            placeholder="GBP"
+                            required
+                            pattern="[A-Z]{3}"
+                            maxlength="3"
+                            class="form-input"
+                            :class="{ 'validation-error': accountFormErrors.currency }"
+                            style="text-transform: uppercase"
+                            @invalid.prevent="accountFormErrors.currency = true"
+                            @input="accountFormErrors.currency = false; accountForm.currency = accountForm.currency.toUpperCase()">
+
+                        <span class="validation-arrow-right" x-show="accountFormErrors.currency" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="accountFormErrors.currency" style="color: var(--red)">⚠️ Currency must be 3 uppercase letters (e.g., GBP, USD, EUR)</span>
+                        <span x-show="!accountFormErrors.currency">3-letter ISO code (GBP, USD, EUR)</span>
+                    </span>
                 </div>
                 <div class="form-group">
                     <label for="account-balance">Current Balance</label>
-                    <input
-                        id="account-balance"
-                        type="number"
-                        x-model="accountForm.current_balance"
-                        step="0.01"
-                        placeholder="0.00"
-                        required
-                        class="form-input">
-                    <span class="form-hint">Negative values allowed for overdrafts</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.current_balance }">
+                        <span class="validation-arrow-left" x-show="accountFormErrors.current_balance" x-cloak>&gt;</span>
+
+                        <input
+                            id="account-balance"
+                            type="number"
+                            x-model.number="accountForm.current_balance"
+                            step="0.01"
+                            placeholder="0.00"
+                            required
+                            class="form-input"
+                            :class="{ 'validation-error': accountFormErrors.current_balance }"
+                            @invalid.prevent="accountFormErrors.current_balance = true"
+                            @input="accountFormErrors.current_balance = false">
+
+                        <span class="validation-arrow-right" x-show="accountFormErrors.current_balance" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="accountFormErrors.current_balance" style="color: var(--red)">⚠️ Current balance is required</span>
+                        <span x-show="!accountFormErrors.current_balance">Current balance (can be negative)</span>
+                    </span>
                 </div>
                 <div class="form-group">
                     <label class="form-checkbox">
@@ -805,11 +880,13 @@
         <div class="modal" @click.stop
             x-data="{
                 storyDefaultAccountDropdownOpen: false,
+                storyDisplayCurrencyDropdownOpen: false,
                 storyFundingModeDropdownOpen: false,
                 storyGoalTypeDropdownOpen: false,
                 toggleDropdown(dropdownName) {
                     // Close all dropdowns
                     this.storyDefaultAccountDropdownOpen = false;
+                    this.storyDisplayCurrencyDropdownOpen = false;
                     this.storyFundingModeDropdownOpen = false;
                     this.storyGoalTypeDropdownOpen = false;
                     // Open the requested dropdown
@@ -821,6 +898,7 @@
             @dropdown-opened.window="
                 if (!$event.detail.id.startsWith('story')) {
                     storyDefaultAccountDropdownOpen = false;
+                    storyDisplayCurrencyDropdownOpen = false;
                     storyFundingModeDropdownOpen = false;
                     storyGoalTypeDropdownOpen = false;
                 }
@@ -829,40 +907,89 @@
                 <h2 x-text="storyForm.id ? 'Edit Story' : 'Add Story'"></h2>
                 <button class="modal-close" @click="showStoryModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveStory" class="modal-body"
-                @click="storyDefaultAccountDropdownOpen = false; storyFundingModeDropdownOpen = false; storyGoalTypeDropdownOpen = false">
+            <form x-ref="storyFormElement" @submit.prevent="saveStory" class="modal-body"
+                @click="storyDefaultAccountDropdownOpen = false; storyDisplayCurrencyDropdownOpen = false; storyFundingModeDropdownOpen = false; storyGoalTypeDropdownOpen = false">
 
                 <!-- Story Name (Required) -->
                 <div class="form-group">
                     <label for="story-name">Story Name</label>
-                    <input id="story-name" type="text" x-model="storyForm.name"
-                        placeholder="e.g., canada-trip, volvo, skiing" required class="form-input">
-                    <span class="form-hint">Short descriptive name (lowercase-with-dashes)</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.name }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.name" x-cloak>&gt;</span>
+
+                        <input id="story-name" type="text" x-model="storyForm.name"
+                            placeholder="e.g., canada-trip, volvo, skiing"
+                            required
+                            minlength="3"
+                            maxlength="100"
+                            class="form-input"
+                            :class="{ 'validation-error': storyFormErrors.name }"
+                            @invalid.prevent="storyFormErrors.name = true"
+                            @input="storyFormErrors.name = false">
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.name" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.name" style="color: var(--red)">⚠️ Story name is required (3-100 characters)</span>
+                        <span x-show="!storyFormErrors.name">Short descriptive name (lowercase-with-dashes)</span>
+                    </span>
                 </div>
 
                 <!-- Start Date (Required) -->
                 <div class="form-group">
                     <label for="story-start-date">Start Date</label>
-                    <input id="story-start-date" type="date" x-model="storyForm.start_date"
-                        required class="form-input">
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.start_date }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.start_date" x-cloak>&gt;</span>
+
+                        <input id="story-start-date" type="date" x-model="storyForm.start_date"
+                            required
+                            class="form-input"
+                            :class="{ 'validation-error': storyFormErrors.start_date }"
+                            @invalid.prevent="storyFormErrors.start_date = true"
+                            @input="storyFormErrors.start_date = false">
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.start_date" x-cloak>&lt;</span>
+                    </div>
+
                     <div class="date-quick-buttons">
                         <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.start_date')">Yesterday</button>
                         <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.start_date')">Today</button>
                         <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.start_date')">Tomorrow</button>
                     </div>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.start_date" style="color: var(--red)">⚠️ Start date is required</span>
+                    </span>
                 </div>
 
                 <!-- End Date (Optional) -->
                 <div class="form-group">
                     <label for="story-end-date">End Date</label>
-                    <input id="story-end-date" type="date" x-model="storyForm.end_date"
-                        class="form-input">
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.end_date }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.end_date" x-cloak>&gt;</span>
+
+                        <input id="story-end-date" type="date" x-model="storyForm.end_date"
+                            class="form-input"
+                            :class="{ 'validation-error': storyFormErrors.end_date }"
+                            @invalid.prevent="storyFormErrors.end_date = true"
+                            @input="storyFormErrors.end_date = false">
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.end_date" x-cloak>&lt;</span>
+                    </div>
+
                     <div class="date-quick-buttons">
                         <button type="button" class="btn-quick-date" @click="setDateToYesterday('storyForm.end_date')">Yesterday</button>
                         <button type="button" class="btn-quick-date" @click="setDateToToday('storyForm.end_date')">Today</button>
                         <button type="button" class="btn-quick-date" @click="setDateToTomorrow('storyForm.end_date')">Tomorrow</button>
                     </div>
-                    <span class="form-hint">Leave blank for ongoing stories</span>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.end_date" style="color: var(--red)">⚠️ End date must be after start date</span>
+                        <span x-show="!storyFormErrors.end_date">Leave blank for ongoing stories</span>
+                    </span>
                 </div>
 
                 <!-- Default Account (Optional) -->
@@ -910,10 +1037,62 @@
                 <!-- Display Currency (Optional) -->
                 <div class="form-group">
                     <label for="story-display-currency">Display Currency</label>
-                    <input id="story-display-currency" type="text" x-model="storyForm.display_currency"
-                        pattern="[A-Z]{3}" placeholder="GBP, USD, CAD" maxlength="3"
-                        class="form-input" style="text-transform: uppercase">
-                    <span class="form-hint">Leave blank to use base currency</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.display_currency }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.display_currency" x-cloak>&gt;</span>
+
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            :class="{ 'validation-error': storyFormErrors.display_currency }"
+                            x-data="{
+                                get selectedValue() { return storyForm.display_currency; },
+                                getSelectedLabel() {
+                                    if (!this.selectedValue) return `-- Base Currency (${settings.base_currency}) --`;
+                                    return this.selectedValue;
+                                },
+                                selectOption(value) {
+                                    storyForm.display_currency = value;
+                                    storyFormErrors.display_currency = false;
+                                    storyDisplayCurrencyDropdownOpen = false;
+                                },
+                            getCurrencies() {
+                                const currencies = [settings.base_currency];
+                                Object.keys(settings.currency_rates || {}).forEach(curr => {
+                                    if (curr !== settings.base_currency) {
+                                        currencies.push(curr);
+                                    }
+                                });
+                                return currencies;
+                            }
+                        }"
+                        @click.stop
+                        @click.away="storyDisplayCurrencyDropdownOpen = false">
+
+                        <button type="button" class="select-trigger" @click="toggleDropdown('storyDisplayCurrencyDropdownOpen')">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': storyDisplayCurrencyDropdownOpen }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="storyDisplayCurrencyDropdownOpen" x-cloak x-transition>
+                            <li @click="selectOption('')"
+                                :class="{ 'selected': selectedValue === '', 'placeholder': true }"
+                                x-text="`-- Base Currency (${settings.base_currency}) --`"></li>
+                            <template x-for="curr in getCurrencies()" :key="curr">
+                                <li @click="selectOption(curr)"
+                                    :class="{ 'selected': selectedValue === curr }"
+                                    x-text="curr"
+                                    x-show="curr !== ''"></li>
+                            </template>
+                        </ul>
+                    </div>
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.display_currency" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.display_currency" style="color: var(--red)">⚠️ Invalid currency code</span>
+                        <span x-show="!storyFormErrors.display_currency">Currency to display this story's events in</span>
+                    </span>
                 </div>
 
                 <!-- Funding Mode (Required) -->
@@ -957,10 +1136,26 @@
                         <span x-show="storyForm.funding_mode === 'fixed'">Starting Amount</span>
                         <span x-show="storyForm.funding_mode === 'projected_plus'">Adjustment Amount</span>
                     </label>
-                    <input id="story-funding-amount" type="number" x-model="storyForm.funding_amount"
-                        step="0.01" placeholder="0.00" class="form-input">
-                    <span class="form-hint" x-show="storyForm.funding_mode === 'fixed'">Fixed starting balance for this story</span>
-                    <span class="form-hint" x-show="storyForm.funding_mode === 'projected_plus'">Amount to add/subtract from projected balance</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.funding_amount }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.funding_amount" x-cloak>&gt;</span>
+
+                        <input id="story-funding-amount" type="number" x-model="storyForm.funding_amount"
+                            step="0.01"
+                            placeholder="0.00"
+                            class="form-input"
+                            :class="{ 'validation-error': storyFormErrors.funding_amount }"
+                            @invalid.prevent="storyFormErrors.funding_amount = true"
+                            @input="storyFormErrors.funding_amount = false">
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.funding_amount" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.funding_amount" style="color: var(--red)">⚠️ Funding amount is required for this mode</span>
+                        <span x-show="!storyFormErrors.funding_amount && storyForm.funding_mode === 'fixed'">Fixed starting balance for this story</span>
+                        <span x-show="!storyFormErrors.funding_amount && storyForm.funding_mode === 'projected_plus'">Amount to add/subtract from projected balance</span>
+                    </span>
                 </div>
 
                 <!-- Goal Type (Optional) -->
@@ -1002,10 +1197,26 @@
                 <!-- Goal Amount (Conditional: goal_type set) -->
                 <div class="form-group" x-show="storyForm.goal_type && storyForm.goal_type !== 'none'">
                     <label for="story-goal-amount">Goal Amount</label>
-                    <input id="story-goal-amount" type="number" x-model="storyForm.goal_amount"
-                        step="0.01" placeholder="0.00" class="form-input">
-                    <span class="form-hint" x-show="storyForm.goal_type === 'spend_up_to'">Maximum spending for this story</span>
-                    <span class="form-hint" x-show="storyForm.goal_type === 'end_with_at_least'">Minimum balance to end with</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': storyFormErrors.goal_amount }">
+                        <span class="validation-arrow-left" x-show="storyFormErrors.goal_amount" x-cloak>&gt;</span>
+
+                        <input id="story-goal-amount" type="number" x-model="storyForm.goal_amount"
+                            step="0.01"
+                            placeholder="0.00"
+                            class="form-input"
+                            :class="{ 'validation-error': storyFormErrors.goal_amount }"
+                            @invalid.prevent="storyFormErrors.goal_amount = true"
+                            @input="storyFormErrors.goal_amount = false">
+
+                        <span class="validation-arrow-right" x-show="storyFormErrors.goal_amount" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="storyFormErrors.goal_amount" style="color: var(--red)">⚠️ Goal amount is required when goal type is set</span>
+                        <span x-show="!storyFormErrors.goal_amount && storyForm.goal_type === 'spend_up_to'">Maximum spending for this story</span>
+                        <span x-show="!storyFormErrors.goal_amount && storyForm.goal_type === 'end_with_at_least'">Minimum balance to end with</span>
+                    </span>
                 </div>
 
                 <!-- Modal Actions -->
@@ -1040,47 +1251,60 @@
                 <button class="modal-close" @click="showBalanceModal = false">✕</button>
             </div>
 
-            <form @submit.prevent="saveBalanceUpdate" class="modal-body"
+            <form x-ref="balanceFormElement" @submit.prevent="saveBalanceUpdate" class="modal-body"
                 @click="balanceAccountDropdownOpen = false">
                 <!-- Account Selection -->
                 <div class="form-group">
                     <label for="balance-account">Account</label>
 
-                    <!-- Custom Dropdown -->
-                    <div class="custom-select"
-                        x-data="{
-                            get selectedValue() { return balanceForm.account_id; },
-                            getSelectedLabel() {
-                                if (!this.selectedValue) return '-- Select Account --';
-                                const account = accounts.find(a => a.id === this.selectedValue);
-                                return account ? account.name : '-- Select Account --';
-                            },
-                            selectOption(value) {
-                                balanceForm.account_id = value;
-                                calculateBalanceDrift();
-                                balanceAccountDropdownOpen = false;
-                            }
-                        }"
-                        @click.stop
-                        @click.away="balanceAccountDropdownOpen = false">
+                    <div class="field-with-arrows" :class="{ 'has-arrows': balanceFormErrors.account_id }">
+                        <span class="validation-arrow-left" x-show="balanceFormErrors.account_id" x-cloak>&gt;</span>
 
-                        <button type="button" class="select-trigger" @click="toggleDropdown('balanceAccountDropdownOpen')">
-                            <span x-text="getSelectedLabel()"></span>
-                            <span class="chevron" :class="{ 'open': balanceAccountDropdownOpen }">▼</span>
-                        </button>
+                        <!-- Custom Dropdown -->
+                        <div class="custom-select"
+                            :class="{ 'validation-error': balanceFormErrors.account_id }"
+                            x-data="{
+                                get selectedValue() { return balanceForm.account_id; },
+                                getSelectedLabel() {
+                                    if (!this.selectedValue) return '-- Select Account --';
+                                    const account = accounts.find(a => a.id === this.selectedValue);
+                                    return account ? account.name : '-- Select Account --';
+                                },
+                                selectOption(value) {
+                                    balanceForm.account_id = value;
+                                    balanceFormErrors.account_id = false;
+                                    calculateBalanceDrift();
+                                    balanceAccountDropdownOpen = false;
+                                }
+                            }"
+                            @click.stop
+                            @click.away="balanceAccountDropdownOpen = false">
 
-                        <ul class="select-dropdown" x-show="balanceAccountDropdownOpen" x-cloak x-transition>
-                            <li @click="selectOption('')"
-                                :class="{ 'selected': selectedValue === '', 'placeholder': true }">
-                                -- Select Account --
-                            </li>
-                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                                <li @click="selectOption(account.id)"
-                                    :class="{ 'selected': selectedValue === account.id }"
-                                    x-text="account.name"></li>
-                            </template>
-                        </ul>
+                            <button type="button" class="select-trigger" @click="toggleDropdown('balanceAccountDropdownOpen')">
+                                <span x-text="getSelectedLabel()"></span>
+                                <span class="chevron" :class="{ 'open': balanceAccountDropdownOpen }">▼</span>
+                            </button>
+
+                            <ul class="select-dropdown" x-show="balanceAccountDropdownOpen" x-cloak x-transition>
+                                <li @click="selectOption('')"
+                                    :class="{ 'selected': selectedValue === '', 'placeholder': true }">
+                                    -- Select Account --
+                                </li>
+                                <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                    <li @click="selectOption(account.id)"
+                                        :class="{ 'selected': selectedValue === account.id }"
+                                        x-text="account.name"></li>
+                                </template>
+                            </ul>
+                        </div>
+
+                        <span class="validation-arrow-right" x-show="balanceFormErrors.account_id" x-cloak>&lt;</span>
                     </div>
+
+                    <span class="form-hint">
+                        <span x-show="balanceFormErrors.account_id" style="color: var(--red)">⚠️ Please select an account</span>
+                        <span x-show="!balanceFormErrors.account_id">Choose account to reconcile</span>
+                    </span>
                 </div>
 
                 <!-- Current Projected Balance (read-only) -->
@@ -1096,15 +1320,28 @@
                 <!-- Actual Balance (user input) -->
                 <div class="form-group">
                     <label for="balance-actual">Actual Balance</label>
-                    <input id="balance-actual"
-                        type="number"
-                        step="0.01"
-                        x-model="balanceForm.actual_balance"
-                        @input="calculateBalanceDrift()"
-                        :placeholder="balanceForm.projected_balance"
-                        required
-                        class="form-input">
-                    <span class="form-hint">Enter the actual balance from your bank</span>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': balanceFormErrors.actual_balance }">
+                        <span class="validation-arrow-left" x-show="balanceFormErrors.actual_balance" x-cloak>&gt;</span>
+
+                        <input id="balance-actual"
+                            type="number"
+                            step="0.01"
+                            x-model="balanceForm.actual_balance"
+                            @input="balanceFormErrors.actual_balance = false; calculateBalanceDrift()"
+                            @invalid.prevent="balanceFormErrors.actual_balance = true"
+                            :placeholder="balanceForm.projected_balance"
+                            required
+                            class="form-input"
+                            :class="{ 'validation-error': balanceFormErrors.actual_balance }">
+
+                        <span class="validation-arrow-right" x-show="balanceFormErrors.actual_balance" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="balanceFormErrors.actual_balance" style="color: var(--red)">⚠️ Actual balance is required</span>
+                        <span x-show="!balanceFormErrors.actual_balance">Enter the actual balance from your bank</span>
+                    </span>
                 </div>
 
                 <!-- Drift Calculation -->
@@ -1185,7 +1422,7 @@
                 <h2 x-text="eventForm.id ? 'Edit Event' : 'Add Event'"></h2>
                 <button class="modal-close" @click="showEventModal = false">✕</button>
             </div>
-            <form @submit.prevent="saveEvent" class="modal-body"
+            <form x-ref="eventFormElement" @submit.prevent="saveEvent" class="modal-body"
                 @click="eventAccountDropdownOpen = false; eventStoryDropdownOpen = false; eventFrequencyDropdownOpen = false; eventDayDropdownOpen = false">
 
                 <!-- Event Type Toggle -->
@@ -1205,74 +1442,142 @@
                     <!-- Event Date (Required) -->
                     <div class="form-group">
                         <label for="event-date">Event Date</label>
-                        <input
-                            id="event-date"
-                            type="date"
-                            x-model="eventForm.event_date"
-                            :required="!eventForm.is_recurring"
-                            class="form-input">
+
+                        <div class="field-with-arrows" :class="{ 'has-arrows': eventFormErrors.event_date }">
+                            <span class="validation-arrow-left" x-show="eventFormErrors.event_date" x-cloak>&gt;</span>
+
+                            <input
+                                id="event-date"
+                                type="date"
+                                x-model="eventForm.event_date"
+                                :required="!eventForm.is_recurring"
+                                class="form-input"
+                                :class="{ 'validation-error': eventFormErrors.event_date }"
+                                @invalid.prevent="eventFormErrors.event_date = true"
+                                @input="eventFormErrors.event_date = false">
+
+                            <span class="validation-arrow-right" x-show="eventFormErrors.event_date" x-cloak>&lt;</span>
+                        </div>
+
                         <div class="date-quick-buttons">
                             <button type="button" class="btn-quick-date" @click="setDateToYesterday('eventForm.event_date')">Yesterday</button>
                             <button type="button" class="btn-quick-date" @click="setDateToToday('eventForm.event_date')">Today</button>
                             <button type="button" class="btn-quick-date" @click="setDateToTomorrow('eventForm.event_date')">Tomorrow</button>
                         </div>
+
+                        <span class="form-hint">
+                            <span x-show="eventFormErrors.event_date" style="color: var(--red)">⚠️ Event date is required</span>
+                            <span x-show="!eventFormErrors.event_date">When did/will this event occur</span>
+                        </span>
                     </div>
                 </div>
 
                 <!-- Description (Required) -->
                 <div class="form-group">
                     <label for="event-description">Description</label>
-                    <input
-                        id="event-description"
-                        type="text"
-                        x-model="eventForm.description"
-                        placeholder="e.g., Car rental, Hotel deposit, Salary"
-                        required
-                        class="form-input">
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': eventFormErrors.description }">
+                        <span class="validation-arrow-left" x-show="eventFormErrors.description" x-cloak>&gt;</span>
+
+                        <input
+                            id="event-description"
+                            type="text"
+                            x-model="eventForm.description"
+                            placeholder="e.g., Car rental, Hotel deposit, Salary"
+                            required
+                            minlength="1"
+                            class="form-input"
+                            :class="{ 'validation-error': eventFormErrors.description }"
+                            @invalid.prevent="eventFormErrors.description = true"
+                            @input="eventFormErrors.description = false">
+
+                        <span class="validation-arrow-right" x-show="eventFormErrors.description" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="eventFormErrors.description" style="color: var(--red)">⚠️ Description is required</span>
+                        <span x-show="!eventFormErrors.description">Brief description of the transaction</span>
+                    </span>
                 </div>
 
                 <!-- Amount (Required) -->
                 <div class="form-group">
                     <label for="event-amount">Amount</label>
-                    <div class="amount-input-wrapper">
-                        <input
-                            id="event-amount"
-                            type="number"
-                            x-model.number="eventForm.amount"
-                            @input="eventForm.amount = Math.abs(eventForm.amount || 0)"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            required
-                            class="form-input amount-input"
-                            :style="{ color: eventForm.amountIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
-                        <div class="amount-toggle-buttons">
-                            <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = true" title="Expense (deduction)">−</button>
-                            <button type="button" class="btn-amount-toggle" :class="{ active: !eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = false" title="Income (addition)">+</button>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': eventFormErrors.amount }">
+                        <span class="validation-arrow-left" x-show="eventFormErrors.amount" x-cloak>&gt;</span>
+
+                        <div class="amount-input-wrapper" :class="{ 'validation-error': eventFormErrors.amount }">
+                            <input
+                                id="event-amount"
+                                type="number"
+                                x-model.number="eventForm.amount"
+                                @input="eventForm.amount = Math.abs(eventForm.amount || 0); eventFormErrors.amount = false"
+                                @invalid.prevent="eventFormErrors.amount = true"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                required
+                                class="form-input amount-input"
+                                :style="{ color: eventForm.amountIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
+                            <div class="amount-toggle-buttons">
+                                <button type="button" class="btn-amount-toggle" :class="{ active: eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = true" title="Expense (deduction)">−</button>
+                                <button type="button" class="btn-amount-toggle" :class="{ active: !eventForm.amountIsNegative }" @click="eventForm.amountIsNegative = false" title="Income (addition)">+</button>
+                            </div>
                         </div>
+
+                        <span class="validation-arrow-right" x-show="eventFormErrors.amount" x-cloak>&lt;</span>
                     </div>
+
                     <span class="form-hint">
-                        <span x-show="eventForm.amountIsNegative" style="color: var(--red)">Expense (deduction)</span>
-                        <span x-show="!eventForm.amountIsNegative" style="color: var(--green-bright)">Income (addition)</span>
+                        <span x-show="eventFormErrors.amount" style="color: var(--red)">⚠️ Amount is required</span>
+                        <span x-show="!eventFormErrors.amount && eventForm.amountIsNegative" style="color: var(--red)">Expense (deduction)</span>
+                        <span x-show="!eventFormErrors.amount && !eventForm.amountIsNegative" style="color: var(--green-bright)">Income (addition)</span>
                     </span>
+                    <!-- Currency Selection Buttons -->
+                    <div class="date-quick-buttons">
+                        <button type="button"
+                            class="btn-quick-date"
+                            :class="{ 'active': eventForm.currency === settings.base_currency }"
+                            @click="eventForm.currency = settings.base_currency"
+                            x-text="settings.base_currency"></button>
+                        <template x-for="curr in Object.keys(settings.currency_rates || {})" :key="curr">
+                            <button type="button"
+                                class="btn-quick-date"
+                                :class="{ 'active': eventForm.currency === curr }"
+                                @click="eventForm.currency = curr"
+                                x-text="curr"
+                                x-show="curr !== settings.base_currency"></button>
+                        </template>
+                    </div>
                 </div>
 
                 <!-- Account Selection (Resolved via hierarchy) -->
                 <div class="form-group">
                     <label for="event-account">Account</label>
 
-                    <!-- Custom Dropdown Component -->
-                    <div class="custom-select"
+                    <!-- Field with validation arrows -->
+                    <div class="field-with-arrows" :class="{ 'has-arrows': eventFormErrors.account }">
+                        <span class="validation-arrow-left" x-show="eventFormErrors.account" x-cloak>&gt;</span>
+
+                        <!-- Custom Dropdown Component -->
+                        <div class="custom-select"
+                            :class="{ 'validation-error': eventFormErrors.account }"
+                            @click="eventFormErrors.account = false"
                         x-data="{
                             get selectedValue() { return eventForm.account_id; },
                             getSelectedLabel() {
-                                if (!this.selectedValue) return '-- Auto (use hierarchy) --';
+                                if (!this.selectedValue) return '-- Use Global Default --';
                                 const account = accounts.find(a => a.id === this.selectedValue);
-                                return account ? `${account.name} (${account.currency})` : '-- Auto (use hierarchy) --';
+                                return account ? `${account.name} (${account.currency})` : '-- Use Global Default --';
                             },
                             selectOption(value) {
                                 eventForm.account_id = value;
                                 eventAccountDropdownOpen = false;
+                            },
+                            getDefaultAccountName() {
+                                const defaultAccount = accounts.find(a => a.is_default);
+                                return defaultAccount ? defaultAccount.name : null;
                             }
                         }"
                         @click.stop
@@ -1288,7 +1593,7 @@
                         <ul class="select-dropdown" x-show="eventAccountDropdownOpen" x-cloak x-transition>
                             <li @click="selectOption('')"
                                 :class="{ 'selected': selectedValue === '', 'placeholder': true }">
-                                -- Auto (use hierarchy) --
+                                -- Use Global Default --
                             </li>
                             <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
                                 <li @click="selectOption(account.id)"
@@ -1297,25 +1602,26 @@
                                 </li>
                             </template>
                         </ul>
+                        </div>
+
+                        <span class="validation-arrow-right" x-show="eventFormErrors.account" x-cloak>&lt;</span>
                     </div>
 
-                    <span class="form-hint" x-text="getAccountHierarchyHint()"></span>
-                </div>
-
-                <!-- Currency (Auto-set from account) -->
-                <div class="form-group">
-                    <label for="event-currency">Currency</label>
-                    <input
-                        id="event-currency"
-                        type="text"
-                        x-model="eventForm.currency"
-                        pattern="[A-Z]{3}"
-                        placeholder="GBP, USD, EUR"
-                        maxlength="3"
-                        required
-                        class="form-input"
-                        style="text-transform: uppercase">
-                    <span class="form-hint">Auto-set from account or enter manually</span>
+                    <!-- Error message below field -->
+                    <span class="form-hint">
+                        <template x-if="eventFormErrors.account">
+                            <span style="color: var(--red)">⚠️ No accounts exist - create an account before creating events</span>
+                        </template>
+                        <template x-if="!eventFormErrors.account && !eventForm.account_id && getDefaultAccountName()">
+                            <span x-text="`Use the default account (${getDefaultAccountName()})`"></span>
+                        </template>
+                        <template x-if="!eventFormErrors.account && !eventForm.account_id && !getDefaultAccountName()">
+                            <span style="color: var(--red)">⚠️ No default account exists. Create an account before creating events.</span>
+                        </template>
+                        <template x-if="!eventFormErrors.account && eventForm.account_id">
+                            <span>Using selected account</span>
+                        </template>
+                    </span>
                 </div>
 
                 <!-- Simple Event Only Fields -->
@@ -1487,13 +1793,27 @@
                     <!-- Start Date -->
                     <div class="form-group">
                         <label for="event-start-date">Start Date</label>
-                        <input
-                            id="event-start-date"
-                            type="date"
-                            x-model="eventForm.start_date"
-                            :required="eventForm.is_recurring"
-                            class="form-input">
-                        <span class="form-hint">When this recurring event starts</span>
+
+                        <div class="field-with-arrows" :class="{ 'has-arrows': eventFormErrors.start_date }">
+                            <span class="validation-arrow-left" x-show="eventFormErrors.start_date" x-cloak>&gt;</span>
+
+                            <input
+                                id="event-start-date"
+                                type="date"
+                                x-model="eventForm.start_date"
+                                :required="eventForm.is_recurring"
+                                class="form-input"
+                                :class="{ 'validation-error': eventFormErrors.start_date }"
+                                @invalid.prevent="eventFormErrors.start_date = true"
+                                @input="eventFormErrors.start_date = false">
+
+                            <span class="validation-arrow-right" x-show="eventFormErrors.start_date" x-cloak>&lt;</span>
+                        </div>
+
+                        <span class="form-hint">
+                            <span x-show="eventFormErrors.start_date" style="color: var(--red)">⚠️ Start date is required for recurring events</span>
+                            <span x-show="!eventFormErrors.start_date">When this recurring event starts</span>
+                        </span>
                     </div>
 
                     <!-- End Date (optional) -->

@@ -74,10 +74,11 @@ export const settingsDropdown = (dropdownId, options, getSelected, onSelect) => 
  * @param {Function} getSelected - Function that returns current selected value
  * @param {Function} onSelect - Callback when option is selected
  * @param {string} [defaultLabel='Select...'] - Label shown when nothing selected
+ * @param {object} [errorState=null] - Optional validation state { errorObject, fieldName }
  * @returns {object} Alpine.js component
  * @throws {Error} If required parameters are invalid
  */
-export const modalDropdown = (options, getSelected, onSelect, defaultLabel = 'Select...') => {
+export const modalDropdown = (options, getSelected, onSelect, defaultLabel = 'Select...', errorState = null) => {
     // Validate required parameters
     if (!options || (typeof options !== 'function' && !Array.isArray(options))) {
         throw new Error('modalDropdown: options must be an array or function');
@@ -109,6 +110,20 @@ export const modalDropdown = (options, getSelected, onSelect, defaultLabel = 'Se
             }
         },
 
+        get hasError() {
+            try {
+                // Only access the specific property we need (limits reactivity tracking)
+                if (!errorState || !errorState.errorObject || !errorState.fieldName) {
+                    return false;
+                }
+                const fieldName = errorState.fieldName;
+                return Boolean(errorState.errorObject[fieldName]);
+            } catch (error) {
+                console.error('[Modal Dropdown] Error checking error state:', error);
+                return false;
+            }
+        },
+
         getSelectedLabel() {
             try {
                 const opt = this.options?.find(o => o.value === this.selectedValue);
@@ -122,6 +137,10 @@ export const modalDropdown = (options, getSelected, onSelect, defaultLabel = 'Se
         selectOption(value) {
             try {
                 onSelect(value);
+                // Clear validation error when user selects an option
+                if (errorState && errorState.errorObject && errorState.fieldName) {
+                    errorState.errorObject[errorState.fieldName] = false;
+                }
             } catch (error) {
                 console.error('[Modal Dropdown] Error selecting option:', error);
             }

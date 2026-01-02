@@ -25,6 +25,7 @@ import { storage } from './storage-adapter.js';
 import { calculateProjection } from './projection.js';
 import { createOpeningBalanceEventData, generateRecurringInstances } from './event-helpers.js';
 import { applyDerivedChange, applyDerivedChangesBatch } from './queue-helpers.js';
+import { ValidationHelpers } from './validation-helpers.js';
 
 /**
  * Main Alpine.js app component
@@ -109,6 +110,37 @@ window.app = function() {
         accountForm: {},
         storyForm: {},
         eventForm: {},
+        eventFormErrors: {
+            description: false,
+            amount: false,
+            account: false,
+            event_date: false,
+            currency: false,
+            frequency: false,
+            day: false,
+            start_date: false
+        },
+        accountFormErrors: {
+            name: false,
+            currency: false,
+            current_balance: false
+        },
+        storyFormErrors: {
+            name: false,
+            start_date: false,
+            end_date: false,
+            funding_amount: false,
+            goal_amount: false,
+            display_currency: false
+        },
+        balanceFormErrors: {
+            account_id: false,
+            actual_balance: false
+        },
+        loginFormErrors: {
+            username: false,
+            password: false
+        },
         userForm: {},
         settingsForm: {},
         balanceForm: {
@@ -729,6 +761,7 @@ window.app = function() {
          * Open account modal for adding new account
          */
         openAccountModal() {
+            ValidationHelpers.resetFormErrors(this.accountFormErrors);
             this.accountForm = {
                 name: '',
                 currency: this.settings.base_currency || 'GBP',
@@ -743,6 +776,7 @@ window.app = function() {
          * @param {string} accountId - Account UUID
          */
         viewAccountDetails(accountId) {
+            ValidationHelpers.resetFormErrors(this.accountFormErrors);
             const account = this.accounts.find(a => a.id === accountId);
             if (account) {
                 this.accountForm = { ...account };
@@ -754,9 +788,49 @@ window.app = function() {
          * Save account (create or update)
          */
         async saveAccount() {
-            try {
-                const isEdit = !!this.accountForm.id;
+            // Reset errors
+            ValidationHelpers.resetFormErrors(this.accountFormErrors);
 
+            // HTML5 validation
+            const form = this.$refs.accountFormElement;
+            if (!form) {
+                console.error('Account form ref not found');
+                return;
+            }
+
+            if (!ValidationHelpers.validateHTML5(form, this.accountFormErrors)) {
+                const count = ValidationHelpers.countErrors(this.accountFormErrors);
+                this.showNotification(`Please fix ${count} field(s)`, 'error');
+                return;
+            }
+
+            // Business logic: currency pattern validation
+            if (!ValidationHelpers.validateCurrencyCode(
+                this.accountForm.currency,
+                this.accountFormErrors,
+                'currency'
+            )) {
+                this.showNotification('Invalid currency code (must be 3 uppercase letters)', 'error');
+                return;
+            }
+
+            // Business logic: default account uniqueness
+            const isEdit = !!this.accountForm.id;
+            if (this.accountForm.is_default) {
+                const existingDefault = this.accounts.find(a =>
+                    a.is_default && (!isEdit || a.id !== this.accountForm.id)
+                );
+                if (existingDefault) {
+                    this.showNotification(
+                        `Cannot set as default. "${existingDefault.name}" is already the default account. Please unset it first.`,
+                        'error'
+                    );
+                    return;
+                }
+            }
+
+            // Existing save logic
+            try {
                 if (isEdit) {
                     await this.updateAccount();
                 } else {
@@ -853,34 +927,46 @@ window.app = function() {
 
         /**
          * Delete account (via storage adapter)
+         * Requires typing account name for confirmation (case-insensitive)
          */
         async deleteAccount() {
-            this.showConfirm(
-                'Delete Account',
-                `Delete account "${this.accountForm.name}"?\n\nThis action cannot be undone.`,
-                async () => {
-                    try {
-                        const accountId = this.accountForm.id;
+            const accountName = this.accountForm.name;
 
-                        // Use storage adapter (handles all 3 modes)
-                        await storage.deleteAccount(accountId);
-
-                        // Update sync queue count for UI indicator
-                        await this.updateSyncQueueCount();
-
-                        this.showAccountModal = false;
-
-                        // Reload data
-                        await this.loadData();
-
-                    } catch (error) {
-                        console.error('Error deleting account:', error);
-                        this.showNotification('Delete failed', 'error');
-                    }
-                },
-                'Delete',
-                'danger'
+            // Prompt user to type account name for confirmation
+            const userInput = window.prompt(
+                `⚠️  DELETE ACCOUNT\n\nTo confirm deletion, please type the account name:\n\n"${accountName}"\n\nThis action cannot be undone.`
             );
+
+            // Check if user cancelled or input doesn't match (case-insensitive)
+            if (!userInput || userInput.trim().toLowerCase() !== accountName.toLowerCase()) {
+                if (userInput !== null) {
+                    // User tried but got it wrong
+                    this.showNotification('Account name did not match. Deletion cancelled.', 'error');
+                }
+                return; // Exit without deleting
+            }
+
+            // Name matched - proceed with deletion
+            try {
+                const accountId = this.accountForm.id;
+
+                // Use storage adapter (handles all 3 modes)
+                await storage.deleteAccount(accountId);
+
+                // Update sync queue count for UI indicator
+                await this.updateSyncQueueCount();
+
+                this.showAccountModal = false;
+
+                // Reload data
+                await this.loadData();
+
+                this.showNotification('Account deleted', 'success');
+
+            } catch (error) {
+                console.error('Error deleting account:', error);
+                this.showNotification('Delete failed', 'error');
+            }
         },
 
         // ===== STORIES =====
@@ -889,6 +975,7 @@ window.app = function() {
          * Open story modal for adding new story
          */
         openStoryModal() {
+            ValidationHelpers.resetFormErrors(this.storyFormErrors);
             this.storyForm = {
                 name: '',
                 start_date: toLocalISODate(new Date()),
@@ -908,6 +995,7 @@ window.app = function() {
          * @param {string} storyId - Story UUID
          */
         viewStoryDetails(storyId) {
+            ValidationHelpers.resetFormErrors(this.storyFormErrors);
             const story = this.stories.find(s => s.id === storyId);
             if (story) {
                 this.storyForm = {
@@ -928,25 +1016,71 @@ window.app = function() {
          * Save story (create or update)
          */
         async saveStory() {
-            // Validation
-            if (this.storyForm.end_date && this.storyForm.end_date < this.storyForm.start_date) {
-                this.showNotification('Invalid date range', 'error');
+            // Reset errors
+            ValidationHelpers.resetFormErrors(this.storyFormErrors);
+
+            // HTML5 validation
+            const form = this.$refs.storyFormElement;
+            if (!form) {
+                console.error('Story form ref not found');
                 return;
             }
 
-            if ((this.storyForm.funding_mode === 'fixed' || this.storyForm.funding_mode === 'projected_plus')
-                && !this.storyForm.funding_amount) {
-                this.showNotification('Funding required', 'error');
+            if (!ValidationHelpers.validateHTML5(form, this.storyFormErrors)) {
+                const count = ValidationHelpers.countErrors(this.storyFormErrors);
+                this.showNotification(`Please fix ${count} field(s)`, 'error');
                 return;
             }
 
-            if (this.storyForm.goal_type && this.storyForm.goal_type !== 'none' && !this.storyForm.goal_amount) {
-                this.showNotification('Goal amount required', 'error');
+            // Cross-field validation: end_date >= start_date
+            if (!ValidationHelpers.validateDateRange(
+                this.storyForm.start_date,
+                this.storyForm.end_date,
+                this.storyFormErrors,
+                'end_date'
+            )) {
+                this.showNotification('End date must be after start date', 'error');
                 return;
             }
 
-            if (this.storyForm.display_currency && !/^[A-Z]{3}$/.test(this.storyForm.display_currency.toUpperCase())) {
-                this.showNotification('Invalid currency', 'error');
+            // Conditional required: funding_amount
+            const fundingRequired =
+                this.storyForm.funding_mode === 'fixed' ||
+                this.storyForm.funding_mode === 'projected_plus';
+
+            if (!ValidationHelpers.validateConditionalRequired(
+                fundingRequired,
+                this.storyForm.funding_amount,
+                this.storyFormErrors,
+                'funding_amount'
+            )) {
+                this.showNotification('Funding amount required for this funding mode', 'error');
+                return;
+            }
+
+            // Conditional required: goal_amount
+            const goalRequired =
+                this.storyForm.goal_type &&
+                this.storyForm.goal_type !== 'none';
+
+            if (!ValidationHelpers.validateConditionalRequired(
+                goalRequired,
+                this.storyForm.goal_amount,
+                this.storyFormErrors,
+                'goal_amount'
+            )) {
+                this.showNotification('Goal amount required when goal type is set', 'error');
+                return;
+            }
+
+            // Optional currency validation
+            if (this.storyForm.display_currency &&
+                !ValidationHelpers.validateCurrencyCode(
+                    this.storyForm.display_currency,
+                    this.storyFormErrors,
+                    'display_currency'
+                )) {
+                this.showNotification('Invalid currency code (must be 3 uppercase letters)', 'error');
                 return;
             }
 
@@ -1969,6 +2103,9 @@ window.app = function() {
          * Triggered by $ button in command bar
          */
         openBalanceModal() {
+            // Reset validation errors
+            ValidationHelpers.resetFormErrors(this.balanceFormErrors);
+
             // Pre-select first account if only one exists
             const activeAccounts = this.accounts.filter(a => !a.is_archived);
 
@@ -2084,7 +2221,32 @@ window.app = function() {
          * Server may override with authoritative version via conflict resolution
          */
         async saveBalanceUpdate() {
+            // Reset errors
+            ValidationHelpers.resetFormErrors(this.balanceFormErrors);
+
+            // Custom dropdown validation for account selection
+            if (!ValidationHelpers.validateCustomDropdown(
+                this.balanceForm.account_id,
+                'account_id',
+                this.balanceFormErrors,
+                true
+            )) {
+                this.showNotification('Please select an account', 'error');
+                return;
+            }
+
+            // Validate actual_balance is provided
+            if (this.balanceForm.actual_balance === null ||
+                this.balanceForm.actual_balance === undefined ||
+                this.balanceForm.actual_balance === '') {
+                this.balanceFormErrors.actual_balance = true;
+                this.showNotification('Please enter the actual balance', 'error');
+                return;
+            }
+
+            // If drift is zero, no adjustment needed
             if (this.balanceForm.drift === 0) {
+                this.showNotification('Balance matches projection - no adjustment needed', 'info');
                 this.showBalanceModal = false;
                 return;
             }
@@ -2092,7 +2254,8 @@ window.app = function() {
             try {
                 const account = this.accounts.find(a => a.id === this.balanceForm.account_id);
                 if (!account) {
-                    throw new Error('Account not found');
+                    this.showNotification('Account not found', 'error');
+                    return;
                 }
 
                 const drift = this.balanceForm.drift;
@@ -2221,6 +2384,9 @@ window.app = function() {
         openEventModal() {
             const today = toLocalISODate(new Date());
 
+            // Reset validation errors
+            this.eventFormErrors.account = false;
+
             this.eventForm = {
                 id: null,
                 event_date: today,
@@ -2255,6 +2421,9 @@ window.app = function() {
                 this.showNotification('Story not found', 'error');
                 return;
             }
+
+            // Reset validation errors
+            this.eventFormErrors.account = false;
 
             const today = toLocalISODate(new Date());
 
@@ -2397,22 +2566,29 @@ window.app = function() {
 
         /**
          * Save event (create or update) with validation
+         * Uses HTML5 Constraint Validation API + custom business logic
          */
         async saveEvent() {
-            // Description and Amount are required for both simple and recurring
-            if (!this.eventForm.description || this.eventForm.description.trim() === '') {
-                this.showNotification('Description required', 'error');
+            // Reset validation errors
+            ValidationHelpers.resetFormErrors(this.eventFormErrors);
+
+            // HTML5 validation
+            const form = this.$refs.eventFormElement;
+            if (!form) {
+                console.error('Event form ref not found');
                 return;
             }
 
-            if (this.eventForm.amount === null || this.eventForm.amount === undefined) {
-                this.showNotification('Amount required', 'error');
+            if (!ValidationHelpers.validateHTML5(form, this.eventFormErrors)) {
+                const count = ValidationHelpers.countErrors(this.eventFormErrors);
+                this.showNotification(`Please fix ${count} field(s)`, 'error');
                 return;
             }
 
-            // Validation: Currency format
-            if (this.eventForm.currency && !/^[A-Z]{3}$/.test(this.eventForm.currency)) {
-                this.showNotification('Invalid currency', 'error');
+            // Custom business logic validations (beyond HTML5)
+            if (this.accounts.length === 0) {
+                this.eventFormErrors.account = true;
+                this.showNotification('No accounts exist. Create an account before creating events.', 'error');
                 return;
             }
 
@@ -3345,7 +3521,23 @@ window.app = function() {
          * Handle login form submission
          */
         async handleLogin() {
+            // Reset errors
+            ValidationHelpers.resetFormErrors(this.loginFormErrors);
             this.loginError = '';
+
+            // HTML5 validation
+            const form = this.$refs.loginFormElement;
+            if (!form) {
+                console.error('Login form ref not found');
+                return;
+            }
+
+            if (!ValidationHelpers.validateHTML5(form, this.loginFormErrors)) {
+                const count = ValidationHelpers.countErrors(this.loginFormErrors);
+                this.loginError = `Please fix ${count} field(s)`;
+                return;
+            }
+
             this.isLoggingIn = true;
 
             try {
