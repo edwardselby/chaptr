@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tests/form-validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
 - tests/dropdown-validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
 - Validation helpers module: static/js/validation-helpers.js - centralized validation functions for HTML5 + business logic validation across all forms
+- Sync spinner defensive programming: 5-layer protection system to prevent stuck/perpetual spinners (state recovery on init, page visibility listener, beforeunload handler, 30-second timeout guard, minimum 1-second display duration)
+- tests/sync-spinner.test.js: 12 comprehensive tests covering all defensive programming layers (timeout guard, minimum duration, error handling, state recovery, page lifecycle handlers)
 
 ### Changed
 - Default account enforcement: Show error when trying to set second default account (requires manually unsetting existing default first)
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Account deletion: Requires typing account name for confirmation (case-insensitive) to prevent accidental deletions
 - Event creation: HTML5 validation proof of concept - leverages native Constraint Validation API with terminal-style arrow feedback on Description, Event Date, Amount, and Start Date fields
 - Event creation: Visual validation feedback with terminal-style arrows (> field <) positioned in modal margins using @invalid.prevent to intercept browser UI, with conditional negative margins applied only when errors are present
+- Sync button icon: Replaced emoji (🔄) with terminal-friendly clockwise arrow (↻) to maintain ASCII aesthetic consistency with other navbar buttons (+, $, ?)
 
 ### Fixed
 - Validation arrows: Fixed incorrect margins on fields without validation errors by conditionally applying negative margins only when arrows are visible
@@ -58,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation helpers: validateCurrencyCode auto-conversion bug - removed .toUpperCase() call so lowercase/mixed case codes correctly fail validation (e.g., "gbp", "Gbp" now invalid)
 - Validation helpers: validateCustomDropdown falsy value bug - changed to explicit null/undefined check so numeric zero is now a valid dropdown selection
 - Validation helpers: validateConditionalRequired falsy value bug - changed to explicit null/undefined check so numeric zero and boolean false are now valid when conditionally required
+- Sync spinner: Fixed empty queue bypass - check queue count before starting spinner to ensure consistent minimum duration behavior (PR review feedback)
 
 ## [0.3.0] - 2025-12-31
 

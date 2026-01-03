@@ -66,6 +66,10 @@ window.app = function() {
         syncButtonSpinner: false,
         syncQueueCount: 0, // Track pending changes for UI indicator
 
+        // Sync Configuration Constants
+        SYNC_TIMEOUT_MS: 30000,        // Maximum 30 seconds for sync operation
+        MIN_SPINNER_DURATION_MS: 1000, // Minimum 1 second for spinner visibility
+
         // Notification State
         currentNotification: null,      // { message: string, type: string }
         notificationTimeout: null,       // Timeout ID for auto-dismiss
@@ -186,6 +190,10 @@ window.app = function() {
         async init() {
             console.log('CHAPTR initializing...');
 
+            // DEFENSIVE: Reset sync state on initialization (catches stuck spinners from crashes/refresh)
+            this.isSyncing = false;
+            this.syncButtonSpinner = false;
+
             // Check authentication first
             await this.checkAuth();
 
@@ -222,6 +230,21 @@ window.app = function() {
                 if (this.syncQueueCount > 0) {
                     await this.manualSync();
                 }
+            });
+
+            // DEFENSIVE: Reset spinner if page becomes visible (catches tab switching/background)
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && this.syncButtonSpinner) {
+                    console.warn('Page became visible with spinner active - resetting sync state');
+                    this.isSyncing = false;
+                    this.syncButtonSpinner = false;
+                }
+            });
+
+            // DEFENSIVE: Reset spinner before page unload (catches navigation/refresh)
+            window.addEventListener('beforeunload', () => {
+                this.isSyncing = false;
+                this.syncButtonSpinner = false;
             });
 
             // Expose notification method globally for utils.js and storage-adapter.js
@@ -1796,42 +1819,64 @@ window.app = function() {
         async triggerManualSync() {
             if (this.isSyncing) return;
 
+            // DEFENSIVE FIX: Check queue before starting spinner to avoid early return bypassing minimum duration
+            await this.updateSyncQueueCount();
+
+            if (this.syncQueueCount === 0) {
+                this.showNotification('Nothing to sync', 'info');
+                return;
+            }
+
+            // Start spinner and track start time
             this.isSyncing = true;
-            this.syncButtonSpinner = true; // Show spinner
+            this.syncButtonSpinner = true;
+            const spinnerStartTime = Date.now();
+
+            // DEFENSIVE: Timeout guard - force sync to complete within configured timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Sync timeout after 30s')), this.SYNC_TIMEOUT_MS);
+            });
 
             try {
-                await this.updateSyncQueueCount();
+                // Perform incremental sync with timeout guard
+                const syncPromise = (async () => {
+                    const result = await storage.manualSync();
 
-                if (this.syncQueueCount === 0) {
-                    this.showNotification('Nothing to sync', 'info');
-                    return;
-                }
+                    // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
+                    const unresolvedConflicts = await db.getUnresolvedConflicts();
+                    if (unresolvedConflicts.length > 0) {
+                        this.showNotification(
+                            `${unresolvedConflicts.length} conflicts`,
+                            'warning'
+                        );
+                    } else if (result.applied && result.applied > 0) {
+                        this.showNotification(`Synced ${result.applied}`, 'success');
+                    } else {
+                        this.showNotification('Sync complete', 'success');
+                    }
 
-                // Perform incremental sync
-                const result = await storage.manualSync();
+                    // Reload data to reflect server changes
+                    await this.loadData();
+                })();
 
-                // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
-                const unresolvedConflicts = await db.getUnresolvedConflicts();
-                if (unresolvedConflicts.length > 0) {
-                    this.showNotification(
-                        `${unresolvedConflicts.length} conflicts`,
-                        'warning'
-                    );
-                } else if (result.applied && result.applied > 0) {
-                    this.showNotification(`Synced ${result.applied}`, 'success');
-                } else {
-                    this.showNotification('Sync complete', 'success');
-                }
-
-                // Reload data to reflect server changes
-                await this.loadData();
+                await Promise.race([syncPromise, timeoutPromise]);
 
             } catch (error) {
                 console.error('Sync error:', error);
-                this.showNotification('Sync failed', 'error');
+                if (error.message === 'Sync timeout after 30s') {
+                    this.showNotification('Sync timeout', 'error');
+                } else {
+                    this.showNotification('Sync failed', 'error');
+                }
             } finally {
+                // Ensure spinner shows for minimum configured duration
+                const elapsed = Date.now() - spinnerStartTime;
+                if (elapsed < this.MIN_SPINNER_DURATION_MS) {
+                    await new Promise(resolve => setTimeout(resolve, this.MIN_SPINNER_DURATION_MS - elapsed));
+                }
+
                 this.isSyncing = false;
-                this.syncButtonSpinner = false; // Hide spinner
+                this.syncButtonSpinner = false;
                 await this.updateSyncQueueCount(); // Refresh count
             }
         },
