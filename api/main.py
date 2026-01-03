@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 import hashlib
 from pathlib import Path
+import time
 
 from api.config import settings, MongoDB
 from api.utils.indexes import create_change_log_indexes, create_conflicts_indexes
@@ -24,6 +25,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Service Worker version will be calculated dynamically from file hashes
+# See get_sw_version() endpoint
 
 
 @asynccontextmanager
@@ -222,6 +226,39 @@ async def root():
     }
 
 
+@app.get("/sw-version")
+async def get_sw_version():
+    """
+    Service Worker version endpoint.
+
+    Returns the current service worker version based on precache file hashes.
+    Frontend uses this to force SW updates by appending version to /sw.js URL.
+
+    This solves the issue where browsers don't detect SW changes because
+    they cache the /sw.js script even with updateViaCache: 'none'.
+
+    The version is calculated from the combined hash of all precached files,
+    so it automatically changes when any file changes (no server restart needed).
+
+    Returns:
+        dict: {"version": "abc12345"}
+    """
+    # Get precache files (shared function with /sw.js endpoint)
+    precache_files = get_precache_files()
+
+    # Calculate combined hash of all precache files
+    combined_hash_input = ""
+    for file_path in precache_files:
+        full_path = Path(file_path)
+        file_hash = generate_file_hash(full_path)
+        combined_hash_input += file_hash
+
+    # Generate version from combined hash
+    version = hashlib.md5(combined_hash_input.encode()).hexdigest()[:8]
+
+    return {"version": version}
+
+
 # Register route modules
 from api.routes import accounts, stories, events, sync, recurring_rules, auth, projection, admin
 from api.routes import settings as settings_routes
@@ -238,6 +275,25 @@ app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 # Mount static files for frontend
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+def get_precache_files() -> list[str]:
+    """
+    Get list of files to precache in service worker.
+
+    Returns list of file paths relative to project root.
+    This is shared between /sw-version and /sw.js endpoints to maintain DRY.
+
+    Returns:
+        list[str]: List of file paths (e.g., ["static/index.html", "static/js/app.js"])
+    """
+    static_dir = Path("static")
+    js_files = sorted([str(p) for p in static_dir.glob("js/*.js")])
+
+    return [
+        "static/index.html",
+        "static/css/style.css",
+    ] + js_files
 
 
 def generate_file_hash(file_path: Path) -> str:
@@ -271,18 +327,8 @@ async def serve_service_worker():
     Returns:
         Response: Service worker JavaScript with hashed revisions
     """
-    static_dir = Path("static")
-
-    # Files to precache with automatic revision hashing
-    precache_files = [
-        "static/index.html",
-        "static/css/style.css",
-        "static/js/app.js",
-        "static/js/db.js",
-        "static/js/storage-adapter.js",
-        "static/js/utils.js",
-        "static/js/projection.js"
-    ]
+    # Get precache files (shared function with /sw-version endpoint)
+    precache_files = get_precache_files()
 
     # Generate revision hashes for each file
     precache_entries = []
@@ -414,11 +460,18 @@ async function notifyClientsToSync() {{
 // ==================== SERVICE WORKER LIFECYCLE ====================
 
 /**
- * Install event - precache app shell
+ * Install event is handled automatically by Workbox precacheAndRoute()
+ * No manual skipWaiting() - client controls activation via message
  */
-self.addEventListener('install', (event) => {{
-    console.log('[SW] Service worker installing...');
-    self.skipWaiting(); // Activate immediately
+
+/**
+ * Message event - handle SKIP_WAITING command from client
+ */
+self.addEventListener('message', (event) => {{
+    if (event.data?.type === 'SKIP_WAITING') {{
+        console.log('[SW] Received SKIP_WAITING message, activating new service worker...');
+        self.skipWaiting();
+    }}
 }});
 
 /**
@@ -433,7 +486,11 @@ self.addEventListener('activate', (event) => {{
         caches.keys().then((cacheNames) => {{
             return Promise.all(
                 cacheNames.map((cacheName) => {{
-                    if (!cacheWhitelist.includes(cacheName)) {{
+                    // Keep whitelisted caches and Workbox precache caches
+                    const isWhitelisted = cacheWhitelist.includes(cacheName);
+                    const isWorkboxCache = cacheName.startsWith('workbox-');
+
+                    if (!isWhitelisted && !isWorkboxCache) {{
                         console.log('[SW] Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }}

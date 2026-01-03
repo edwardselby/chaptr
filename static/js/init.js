@@ -51,6 +51,15 @@ const logger = {
 const loadingIndicator = {
     show() {
         if (!document.getElementById('chaptr-init-loader')) {
+            // Check if reloading due to service worker update
+            const isUpdating = sessionStorage.getItem('chaptr-sw-updating') === 'true';
+            const loadingMessage = isUpdating ? 'Updating application...' : 'Loading application...';
+
+            // Clear the flag immediately (before showing loader)
+            if (isUpdating) {
+                sessionStorage.removeItem('chaptr-sw-updating');
+            }
+
             const loader = document.createElement('div');
             loader.id = 'chaptr-init-loader';
             loader.style.cssText = `
@@ -69,7 +78,7 @@ const loadingIndicator = {
             loader.innerHTML = `
                 <div style="text-align: center;">
                     <div style="color: #4af626; font-size: 2rem; margin-bottom: 1rem; font-weight: 600;">CHAPTR</div>
-                    <div style="color: #888; font-size: 0.9rem;">Loading application...</div>
+                    <div style="color: #888; font-size: 0.9rem;">${loadingMessage}</div>
                     <div style="width: 200px; height: 2px; background: #1a1a1a; margin: 1.5rem auto; overflow: hidden;">
                         <div style="height: 100%; background: #4af626; animation: progress 1.5s ease-in-out infinite;"></div>
                     </div>
@@ -187,9 +196,47 @@ async function initServiceWorker() {
 
     const registerSW = async () => {
         try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
-            logger.info('Service Worker registered:', registration.scope);
+            // Fetch SW version to force browser to check for updates
+            // This ensures browser treats SW as a new URL when version changes
+            const versionResponse = await fetch('/sw-version');
+            const { version } = await versionResponse.json();
+
+            const registration = await navigator.serviceWorker.register(`/sw.js?v=${version}`, {
+                updateViaCache: 'none'  // Always fetch SW from network, never use HTTP cache
+            });
+            logger.info('Service Worker registered:', registration.scope, `(version: ${version})`);
             logger.perf('Service Worker registration');
+
+            // Check for updates on registration
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                logger.info('[SW] Update found, new service worker installing...');
+
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // New service worker installed but old one still controlling
+                        // Tell it to skip waiting (will trigger controllerchange)
+                        logger.info('[SW] New service worker installed, activating...');
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        // Don't reload here - wait for controllerchange event
+                    }
+                });
+            });
+
+            // Listen for controlling service worker change (reload only here)
+            // Debounced to prevent reload loops in edge cases
+            let controllerChangeHandled = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!controllerChangeHandled) {
+                    controllerChangeHandled = true;
+                    logger.info('[SW] Controller changed, reloading page...');
+
+                    // Set flag to show "Updating Application..." on next load
+                    sessionStorage.setItem('chaptr-sw-updating', 'true');
+
+                    setTimeout(() => window.location.reload(), 100);
+                }
+            });
 
             // Listen for background sync messages
             navigator.serviceWorker.addEventListener('message', event => {
@@ -282,6 +329,38 @@ function showErrorScreen(error) {
 }
 
 /**
+ * Check if service worker update is available
+ * Returns true if update needed, false otherwise
+ */
+async function checkForServiceWorkerUpdate() {
+    if (!('serviceWorker' in navigator)) {
+        return false;
+    }
+
+    try {
+        // Get current SW version from server
+        const versionResponse = await fetch('/sw-version');
+        const { version: newVersion } = await versionResponse.json();
+
+        // Check if we have an active SW with different version
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration?.active) {
+            const currentUrl = registration.active.scriptURL;
+            const currentVersion = new URL(currentUrl).searchParams.get('v');
+
+            if (currentVersion && currentVersion !== newVersion) {
+                logger.info(`[SW] Update available: ${currentVersion} → ${newVersion}`);
+                return true;
+            }
+        }
+    } catch (error) {
+        logger.warn('[SW] Version check failed:', error);
+    }
+
+    return false;
+}
+
+/**
  * Main initialization sequence
  */
 async function init() {
@@ -289,34 +368,48 @@ async function init() {
         logger.info('Starting initialization...');
         loadingIndicator.show();
 
-        // Step 1: Import app module (sets window.app)
-        await import('./app.js');
-        logger.perf('App module import');
+        // Step 0: Check for SW update BEFORE loading app
+        // If update available, skip loading and go straight to SW registration
+        const updateAvailable = await checkForServiceWorkerUpdate();
 
-        if (typeof window.app !== 'function') {
-            throw new Error('app() function not defined after importing app.js');
+        if (!updateAvailable) {
+            // No update - load app normally
+            // Step 1: Import app module (sets window.app)
+            await import('./app.js');
+            logger.perf('App module import');
+
+            if (typeof window.app !== 'function') {
+                throw new Error('app() function not defined after importing app.js');
+            }
+            logger.info('App module loaded ✓');
+
+            // Step 2: Register global components
+            registerGlobals();
+
+            // Step 3: Load Alpine.js (with retry)
+            await loadAlpine();
+        } else {
+            logger.info('[SW] Skipping app load, update will trigger reload');
         }
-        logger.info('App module loaded ✓');
 
-        // Step 2: Register global components
-        registerGlobals();
-
-        // Step 3: Load Alpine.js (with retry)
-        await loadAlpine();
-
-        // Step 4: Initialize service worker (non-blocking)
+        // Step 4: Initialize service worker (always run, triggers reload if update)
         await initServiceWorker();
 
-        // Complete
-        const totalTime = (performance.now() - perf.start).toFixed(2);
-        logger.info(`Initialization complete ✓ (${totalTime}ms)`);
+        // Complete (only hide loader if no update pending)
+        if (!updateAvailable) {
+            const totalTime = (performance.now() - perf.start).toFixed(2);
+            logger.info(`Initialization complete ✓ (${totalTime}ms)`);
 
-        if (isDevelopment) {
-            console.table(perf.marks);
+            if (isDevelopment) {
+                console.table(perf.marks);
+            }
+
+            // Hide loading indicator
+            loadingIndicator.hide();
+        } else {
+            logger.info('[SW] Waiting for service worker update to trigger reload...');
+            // Keep loader visible - will reload soon
         }
-
-        // Hide loading indicator
-        loadingIndicator.hide();
 
     } catch (error) {
         loadingIndicator.hide();

@@ -227,6 +227,43 @@ window.app = function() {
             // Expose notification method globally for utils.js and storage-adapter.js
             window.showNotification = this.showNotification.bind(this);
 
+            // Setup ESC key handler to close modals (with debounce to prevent double-close)
+            // Encapsulated in closure to avoid scope pollution
+            const appContext = this; // Capture Alpine context
+            window.addEventListener('keydown', (() => {
+                let escDebounceTimer = null; // Enclosed in closure
+                return (event) => {
+                    if (event.key === 'Escape' && !escDebounceTimer) {
+                        // Find and close the topmost modal
+                        const modalPriority = [
+                            'showPasswordModal',
+                            'showInputModal',
+                            'showConfirmModal',
+                            'showConflictModal',
+                            'showDatabaseToolsModal',
+                            'showBalanceModal',
+                            'showHelpModal',
+                            'showUserModal',
+                            'showEventModal',
+                            'showStoryModal',
+                            'showAccountModal'
+                        ];
+
+                        for (const modalName of modalPriority) {
+                            if (appContext[modalName] === true) {
+                                appContext[modalName] = false;
+                                break; // Only close one modal per ESC press
+                            }
+                        }
+
+                        // Debounce 250ms to prevent accidental double-close
+                        escDebounceTimer = setTimeout(() => {
+                            escDebounceTimer = null;
+                        }, 250);
+                    }
+                };
+            })());
+
             console.log('CHAPTR ready!');
         },
 
@@ -2998,6 +3035,15 @@ window.app = function() {
             }
 
             return '⚠ No default account available - please select one';
+        },
+
+        /**
+         * Get default account name for event form hint
+         * Returns the name of the global default account or null if none exists
+         */
+        getDefaultAccountName() {
+            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
+            return defaultAccount ? defaultAccount.name : null;
         },
 
         /**
