@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Service worker update test suite with 91 comprehensive tests (sw_update_flow.test.js, sw_updating_ux.test.js, init_sequence.test.js, storage_validation.test.js, test_sw_versioning.py)
 - CPTR-171adb6c: testableUtils pattern for mockable window.location.reload() in browser mode testing
 - CPTR-171adb6c: SessionStorage error handling with try/catch wrappers for SecurityError (private browsing mode compatibility)
+- CPTR-171adb6c: Phase 2 HIGH priority test suite with 21 comprehensive tests (default_account.test.js, sw_version_detection.test.js) - 100% passing
+- CPTR-171adb6c: Default account resolution tests - 8 tests covering getDefaultAccountName() logic for event form hints
+- CPTR-171adb6c: SW version detection edge case tests - 13 tests covering timeout, network errors, offline scenarios, and service worker states
 
 ### Changed
 - Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
