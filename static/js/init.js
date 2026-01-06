@@ -52,12 +52,24 @@ const loadingIndicator = {
     show() {
         if (!document.getElementById('chaptr-init-loader')) {
             // Check if reloading due to service worker update
-            const isUpdating = sessionStorage.getItem('chaptr-sw-updating') === 'true';
+            // Handle sessionStorage being disabled (private browsing, SecurityError)
+            let isUpdating = false;
+            try {
+                isUpdating = sessionStorage.getItem('chaptr-sw-updating') === 'true';
+            } catch (e) {
+                // sessionStorage disabled - default to normal loading message
+                logger.info('[Loading] sessionStorage unavailable:', e.message);
+            }
+
             const loadingMessage = isUpdating ? 'Updating application...' : 'Loading application...';
 
             // Clear the flag immediately (before showing loader)
             if (isUpdating) {
-                sessionStorage.removeItem('chaptr-sw-updating');
+                try {
+                    sessionStorage.removeItem('chaptr-sw-updating');
+                } catch (e) {
+                    // sessionStorage disabled - flag can't be cleared but that's OK
+                }
             }
 
             const loader = document.createElement('div');
@@ -232,9 +244,15 @@ async function initServiceWorker() {
                     logger.info('[SW] Controller changed, reloading page...');
 
                     // Set flag to show "Updating Application..." on next load
-                    sessionStorage.setItem('chaptr-sw-updating', 'true');
+                    // Handle sessionStorage being disabled (private browsing, SecurityError)
+                    try {
+                        sessionStorage.setItem('chaptr-sw-updating', 'true');
+                    } catch (e) {
+                        // sessionStorage disabled - UX message won't show but reload still works
+                        logger.info('[SW] sessionStorage unavailable, update message will not show');
+                    }
 
-                    setTimeout(() => window.location.reload(), 100);
+                    setTimeout(() => testableUtils.reloadPage(), 100);
                 }
             });
 
@@ -329,6 +347,19 @@ function showErrorScreen(error) {
 }
 
 /**
+ * Testable utilities - exposed as object properties for mocking
+ * @private
+ */
+const testableUtils = {
+    /**
+     * Wrapper for window.location.reload() that can be mocked in tests
+     */
+    reloadPage() {
+        window.location.reload();
+    }
+};
+
+/**
  * Check if service worker update is available
  * Returns true if update needed, false otherwise
  */
@@ -417,9 +448,21 @@ async function init() {
     }
 }
 
-// Start initialization when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
+// Export functions for testing
+export {
+    checkForServiceWorkerUpdate,
+    initServiceWorker,
+    loadingIndicator,
+    init,
+    logger,
+    testableUtils  // Exported for test mocking
+};
+
+// Start initialization when DOM is ready (skip in test environment)
+if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 }
