@@ -46,12 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Event creation: "Use Global Default" option with dynamic hint showing default account name
 - Event creation: Validation preventing event creation when no accounts exist
 - Validation test suite: 68 comprehensive tests covering HTML5 validation system (validation-helpers.js, dropdown-factories.js)
-- tests/validation-helpers.test.js: 49 unit tests for all 6 validation helper functions (resetFormErrors, validateHTML5, validateCustomDropdown, validateDateRange, validateCurrencyCode, validateConditionalRequired, countErrors)
-- tests/form-validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
-- tests/dropdown-validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
+- tests/validation_helpers.test.js: 49 unit tests for all 6 validation helper functions (resetFormErrors, validateHTML5, validateCustomDropdown, validateDateRange, validateCurrencyCode, validateConditionalRequired, countErrors)
+- tests/form_validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
+- tests/dropdown_validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
 - Validation helpers module: static/js/validation-helpers.js - centralized validation functions for HTML5 + business logic validation across all forms
 - Sync spinner defensive programming: 5-layer protection system to prevent stuck/perpetual spinners (state recovery on init, page visibility listener, beforeunload handler, 30-second timeout guard, minimum 1-second display duration)
-- tests/sync-spinner.test.js: 12 comprehensive tests covering all defensive programming layers (timeout guard, minimum duration, error handling, state recovery, page lifecycle handlers)
+- tests/sync_spinner.test.js: 12 comprehensive tests covering all defensive programming layers (timeout guard, minimum duration, error handling, state recovery, page lifecycle handlers)
 
 ### Changed
 - Default account enforcement: Show error when trying to set second default account (requires manually unsetting existing default first)
@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite: 113 tests covering utils, database, event helpers, and projection logic (100% coverage of pure functions)
 - tests/utils.test.js: 48 tests for utility functions (currency, dates, UUIDs, validation)
 - tests/db.test.js: 24 tests for Dexie database operations (CRUD, transactions, helpers, sync queue)
-- tests/event-helpers.test.js: 26 tests for event creation logic (opening balance, recurring instances, rate calculation)
+- tests/event_helpers.test.js: 26 tests for event creation logic (opening balance, recurring instances, rate calculation)
 - tests/projection.test.js: 15 tests for currency conversion functions
 - tests/TEST_PLAN.md: Comprehensive testing strategy documentation
 - REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)
