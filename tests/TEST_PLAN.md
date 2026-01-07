@@ -2,11 +2,12 @@
 
 **Purpose:** Comprehensive testing of all "low hanging fruit" - fundamental functions with simple, testable logic.
 
-**Status:** 323/323 tests passing ✅ (100% coverage)
+**Status:** 375/375 tests passing ✅ (100% coverage)
 
 **Recent Additions:**
 - Phase 1: Service Worker Update System Tests (91 tests - 100% passing)
 - Phase 2: Default Account & SW Version Detection (21 tests - 100% passing)
+- Phase 3: Loading Indicator, ESC Key Extended & SW Generation (28 tests - 100% passing)
 
 ---
 
@@ -410,10 +411,83 @@ Tests timeout and network error scenarios for SW version detection. Complements 
 
 ---
 
-**Phase 3 - MEDIUM/LOW Priority (16 tests):**
-- `/tests/esc_key_extended.test.js` (5 tests) - ESC key handler in Alpine context
-- `/tests/loading_indicator.test.js` (6 tests) - Loading indicator show/hide
-- `/tests/backend/test_sw_generation.py` (5 tests) - Dynamic SW generation
+## ✅ Phase 3: Loading Indicator, ESC Key Extended & SW Generation (January 2026)
+
+### Overview
+Medium/low-priority tests for loading indicator UX, ESC key handler edge cases, and backend service worker generation. Ensures proper initialization feedback and comprehensive PWA functionality.
+
+**Total Coverage:** 28/28 tests passing (100%)
+
+### `tests/loading_indicator.test.js` ✅ (8/8 passing - 100%)
+**Priority:** 💡 MEDIUM - Ensures proper UX feedback during initialization
+
+Tests the loadingIndicator object that shows/hides the initialization loading screen with appropriate messages.
+
+**show() Method (3 tests):**
+- ✅ Creates loader element with correct ID when none exists
+- ✅ Does not create duplicate loader when called multiple times
+- ✅ Displays "Loading application..." by default
+
+**hide() Method (3 tests):**
+- ✅ Fades out loader with opacity transition
+- ✅ Removes loader from DOM after 300ms delay
+- ✅ Does nothing when no loader exists (graceful handling)
+
+**show/hide Sequence (2 tests):**
+- ✅ Handles complete show → hide cycle
+- ✅ Allows re-showing loader after hiding
+
+**Key Achievement:** Tests loadingIndicator.show() and hide() methods with timing verification using vi.useFakeTimers().
+
+### `tests/esc_key_extended.test.js` ✅ (5/5 passing - 100%)
+**Priority:** 💡 MEDIUM - Additional coverage for production edge cases
+
+Extends the basic ESC key handler tests (app-esc-key.test.js) with additional edge cases and integration scenarios.
+
+**State Consistency (1 test):**
+- ✅ Maintains state consistency when closing multiple modals sequentially
+
+**Debounce Edge Cases (1 test):**
+- ✅ Ignores ESC if debounce timer is active even if modal state changes
+
+**Key Event Edge Cases (2 tests):**
+- ✅ Handles case-sensitive key check correctly ("Escape" vs "escape")
+- ✅ Ignores ESC when debounce timer exists (even if just started)
+
+**Modal Priority Edge Cases (1 test):**
+- ✅ Closes highest priority modal when all modals are open
+
+**Key Achievement:** Comprehensive edge case coverage for ESC key handler debouncing and modal priority logic.
+
+### `tests/backend/test_sw_generation.py` ✅ (15/15 passing - 100%)
+**Priority:** 💡 MEDIUM - Ensures SW is correctly generated for PWA functionality
+
+Tests the /sw.js endpoint that dynamically generates service worker content with automatic revision numbers based on file content hashes.
+
+**Endpoint Tests (5 tests):**
+- ✅ Returns application/javascript content-type
+- ✅ Contains Workbox import from CDN
+- ✅ Contains precache route call
+- ✅ Precache list contains static files (index.html, style.css)
+- ✅ Precache entries have revision hashes (8-char hex)
+
+**Cache Strategies (5 tests):**
+- ✅ Includes CacheFirst strategy for static assets
+- ✅ Includes NetworkFirst strategy for API calls
+- ✅ Includes ExpirationPlugin to limit cache size
+- ✅ Includes CacheableResponsePlugin to filter responses
+- ✅ Includes registerRoute calls for caching strategies (≥2)
+
+**Generated Code Validity (5 tests):**
+- ✅ No syntax errors in template (balanced braces/brackets/parentheses)
+- ✅ Includes cache names for different strategies
+- ✅ Includes documentation comments (JSDoc)
+- ✅ Precache entries are comma-separated
+- ✅ No Python template artifacts in generated code
+
+**Key Achievement:** Comprehensive validation of dynamically generated service worker ensures PWA caching works correctly in production.
+
+---
 
 ### Lessons Learned
 

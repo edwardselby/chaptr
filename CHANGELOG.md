@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Phase 2 HIGH priority test suite with 21 comprehensive tests (default_account.test.js, sw_version_detection.test.js) - 100% passing
 - CPTR-171adb6c: Default account resolution tests - 8 tests covering getDefaultAccountName() logic for event form hints
 - CPTR-171adb6c: SW version detection edge case tests - 13 tests covering timeout, network errors, offline scenarios, and service worker states
+- CPTR-171adb6c: Phase 3 MEDIUM/LOW priority test suite with 28 comprehensive tests (loading_indicator.test.js, esc_key_extended.test.js, test_sw_generation.py) - 100% passing
+- CPTR-171adb6c: Loading indicator tests - 8 tests covering show/hide methods with timing verification (300ms fade transition)
+- CPTR-171adb6c: ESC key extended tests - 5 tests covering edge cases for debouncing, modal priority, and state consistency
+- CPTR-171adb6c: Backend SW generation tests - 15 tests validating dynamically generated service worker content with automatic revision numbers
 
 ### Changed
 - Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
