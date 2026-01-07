@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Phase 2 HIGH priority test suite with 21 comprehensive tests (default_account.test.js, sw_version_detection.test.js) - 100% passing
 - CPTR-171adb6c: Default account resolution tests - 8 tests covering getDefaultAccountName() logic for event form hints
 - CPTR-171adb6c: SW version detection edge case tests - 13 tests covering timeout, network errors, offline scenarios, and service worker states
+- CPTR-171adb6c: Phase 3 MEDIUM/LOW priority test suite with 28 comprehensive tests (loading_indicator.test.js, esc_key_extended.test.js, test_sw_generation.py) - 100% passing
+- CPTR-171adb6c: Loading indicator tests - 8 tests covering show/hide methods with timing verification (300ms fade transition)
+- CPTR-171adb6c: ESC key extended tests - 5 tests covering edge cases for debouncing, modal priority, and state consistency
+- CPTR-171adb6c: Backend SW generation tests - 15 tests validating dynamically generated service worker content with automatic revision numbers
 
 ### Changed
 - Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
@@ -36,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: PR #66 review - Added comprehensive documentation to default_account.test.js explaining mock pattern rationale (Alpine.js component methods cannot be imported in isolation)
 - CPTR-171adb6c: PR #66 review - Documented integration testing approach for Alpine.js components (verified through browser-mode tests and manual testing)
 - CPTR-171adb6c: PR #66 review - Changed sw_version_detection.test.js timing test to use vi.useFakeTimers() for deterministic timing control
+- CPTR-171adb6c: PR #67 review - Added comprehensive JSDoc documentation to init.js exports (451-475) explaining test-only usage and production impact (none - tree-shaking removes unused exports)
+- CPTR-171adb6c: PR #67 review - Added clarifying comment in loading_indicator.test.js about 300ms timer matching production timing (instant due to fake timers)
+- CPTR-171adb6c: PR #67 review - Documented rationale for separate ESC key test files (phase-based organization: basic tests vs edge cases)
 - PR #63 review feedback: Resolved all HIGH, MEDIUM, and LOW priority issues from code review
 - Double reload on hard refresh: removed duplicate SKIP_WAITING message triggers (updatefound + waiting check race condition)
 - Workbox precache race condition: removed skipWaiting() from install event preventing cache population before activation
