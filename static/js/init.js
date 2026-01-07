@@ -448,14 +448,30 @@ async function init() {
     }
 }
 
-// Export functions for testing
+/**
+ * Module Exports
+ *
+ * Note: These exports are primarily for testing purposes. ES modules do not support
+ * conditional exports, so all functions remain exported in production. In production
+ * bundles, tree-shaking will remove unused exports.
+ *
+ * Export Categories:
+ * - TEST-ONLY: testableUtils - Required for mocking window.location.reload() in tests
+ * - TEST-ONLY: checkForServiceWorkerUpdate - Unit testing SW version detection
+ * - TEST-ONLY: initServiceWorker - Unit testing SW registration logic
+ * - TEST-ONLY: loadingIndicator - Unit testing loader show/hide behavior
+ * - TEST-ONLY: logger - Unit testing log output
+ * - INTERNAL: init - Main initialization function (called automatically, exported for test access)
+ *
+ * Production Impact: None - init() auto-runs, other functions unused in production code
+ */
 export {
     checkForServiceWorkerUpdate,
     initServiceWorker,
     loadingIndicator,
     init,
     logger,
-    testableUtils  // Exported for test mocking
+    testableUtils
 };
 
 // Start initialization when DOM is ready (skip in test environment)

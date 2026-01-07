@@ -135,7 +135,7 @@ describe('Loading Indicator - Show/Hide', () => {
             loader = document.getElementById('chaptr-init-loader');
             expect(loader).toBeTruthy();
 
-            // Fast-forward 300ms
+            // Fast-forward 300ms (matches production timing, instant due to fake timers)
             vi.advanceTimersByTime(300);
 
             // Loader should now be removed

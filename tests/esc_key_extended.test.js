@@ -1,9 +1,18 @@
 /**
  * ESC Key Handler - Extended Edge Cases
  *
- * Extends the basic ESC key handler tests (app-esc-key.test.js) with additional
+ * Extends the basic ESC key handler tests (app_esc_key.test.js) with additional
  * edge cases and integration scenarios. Tests focus on scenarios that could
  * occur in production but are less common.
+ *
+ * File Organization Note:
+ * This file is intentionally separate from app_esc_key.test.js to maintain
+ * phase-based test organization (Phase 1: basic tests, Phase 3: extended tests).
+ * Keeping them separate:
+ * - Preserves the distinction between basic and edge case coverage
+ * - Follows the TEST_PLAN.md phase structure
+ * - Prevents a single 13-test file from mixing fundamental with advanced scenarios
+ * - Makes it clear which tests are essential vs additional coverage
  *
  * Key scenarios:
  * - All modals closed simultaneously
