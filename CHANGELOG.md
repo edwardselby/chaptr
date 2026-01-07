@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Storage validation test - added entity_id index to sync_queue Dexie schema preventing SchemaError on atomic operations
 - CPTR-171adb6c: Backend versioning test - refactored to use temporary files instead of complex Path mocking for reliable file I/O testing
 - CPTR-171adb6c: Init sequence tests - refactored to test observable behavior (loader visibility, error logging) instead of unreliable ES module spies due to browser mode limitations
+- CPTR-171adb6c: PR #65 review - Changed logger.info to logger.warn for sessionStorage errors (init.js:61, 252) for production visibility
+- CPTR-171adb6c: PR #65 review - Standardized all test files to snake_case naming (8 files: app_esc_key, dropdown_validation, event_helpers, form_validation, queue_helpers, storage_adapter, sync_spinner, validation_helpers)
+- CPTR-171adb6c: PR #66 review - Added comprehensive documentation to default_account.test.js explaining mock pattern rationale (Alpine.js component methods cannot be imported in isolation)
+- CPTR-171adb6c: PR #66 review - Documented integration testing approach for Alpine.js components (verified through browser-mode tests and manual testing)
+- CPTR-171adb6c: PR #66 review - Changed sw_version_detection.test.js timing test to use vi.useFakeTimers() for deterministic timing control
 - CPTR-171adb6c: PR #67 review - Added comprehensive JSDoc documentation to init.js exports (451-475) explaining test-only usage and production impact (none - tree-shaking removes unused exports)
 - CPTR-171adb6c: PR #67 review - Added clarifying comment in loading_indicator.test.js about 300ms timer matching production timing (instant due to fake timers)
 - CPTR-171adb6c: PR #67 review - Documented rationale for separate ESC key test files (phase-based organization: basic tests vs edge cases)
@@ -56,12 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Event creation: "Use Global Default" option with dynamic hint showing default account name
 - Event creation: Validation preventing event creation when no accounts exist
 - Validation test suite: 68 comprehensive tests covering HTML5 validation system (validation-helpers.js, dropdown-factories.js)
-- tests/validation-helpers.test.js: 49 unit tests for all 6 validation helper functions (resetFormErrors, validateHTML5, validateCustomDropdown, validateDateRange, validateCurrencyCode, validateConditionalRequired, countErrors)
-- tests/form-validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
-- tests/dropdown-validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
+- tests/validation_helpers.test.js: 49 unit tests for all 6 validation helper functions (resetFormErrors, validateHTML5, validateCustomDropdown, validateDateRange, validateCurrencyCode, validateConditionalRequired, countErrors)
+- tests/form_validation.test.js: 8 integration tests for validateHTML5 with real DOM elements and HTML5 Constraint Validation API
+- tests/dropdown_validation.test.js: 11 component tests for modalDropdown and settingsDropdown error state integration
 - Validation helpers module: static/js/validation-helpers.js - centralized validation functions for HTML5 + business logic validation across all forms
 - Sync spinner defensive programming: 5-layer protection system to prevent stuck/perpetual spinners (state recovery on init, page visibility listener, beforeunload handler, 30-second timeout guard, minimum 1-second display duration)
-- tests/sync-spinner.test.js: 12 comprehensive tests covering all defensive programming layers (timeout guard, minimum duration, error handling, state recovery, page lifecycle handlers)
+- tests/sync_spinner.test.js: 12 comprehensive tests covering all defensive programming layers (timeout guard, minimum duration, error handling, state recovery, page lifecycle handlers)
 
 ### Changed
 - Default account enforcement: Show error when trying to set second default account (requires manually unsetting existing default first)
@@ -97,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite: 113 tests covering utils, database, event helpers, and projection logic (100% coverage of pure functions)
 - tests/utils.test.js: 48 tests for utility functions (currency, dates, UUIDs, validation)
 - tests/db.test.js: 24 tests for Dexie database operations (CRUD, transactions, helpers, sync queue)
-- tests/event-helpers.test.js: 26 tests for event creation logic (opening balance, recurring instances, rate calculation)
+- tests/event_helpers.test.js: 26 tests for event creation logic (opening balance, recurring instances, rate calculation)
 - tests/projection.test.js: 15 tests for currency conversion functions
 - tests/TEST_PLAN.md: Comprehensive testing strategy documentation
 - REFACTOR: Metadata field to SyncChange model for derived event detection (_derived_from, _optimistic, dependencies)

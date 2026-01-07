@@ -9,6 +9,18 @@
  * - Find account where is_default = true AND is_archived = false
  * - Return account.name if found, null otherwise
  *
+ * Testing Approach:
+ * This test uses a mock pattern instead of importing the actual function from app.js
+ * because getDefaultAccountName() is defined as a method within an Alpine.js component
+ * (window.app function in app.js:3089-3092). Alpine.js component methods cannot be
+ * easily imported or tested in isolation. This mock replicates the exact production
+ * logic to validate correctness.
+ *
+ * Integration Testing:
+ * The Alpine.js component integration (method availability in app context) is verified
+ * through browser-mode tests and manual testing. This unit test focuses on the logical
+ * behavior of the account resolution algorithm.
+ *
  * Priority: 🔍 HIGH - Ensures correct account resolution in event creation
  * Coverage Target: 100% of getDefaultAccountName() logic
  */
@@ -20,6 +32,7 @@ describe('getDefaultAccountName()', () => {
 
     beforeEach(() => {
         // Mock the Alpine.js app context
+        // This replicates the exact logic from app.js:3089-3092
         mockApp = {
             accounts: [],
             getDefaultAccountName() {
