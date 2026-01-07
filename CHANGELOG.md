@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Service worker update test suite with 91 comprehensive tests (sw_update_flow.test.js, sw_updating_ux.test.js, init_sequence.test.js, storage_validation.test.js, test_sw_versioning.py)
 - CPTR-171adb6c: testableUtils pattern for mockable window.location.reload() in browser mode testing
 - CPTR-171adb6c: SessionStorage error handling with try/catch wrappers for SecurityError (private browsing mode compatibility)
+- CPTR-171adb6c: Phase 2 HIGH priority test suite with 21 comprehensive tests (default_account.test.js, sw_version_detection.test.js) - 100% passing
+- CPTR-171adb6c: Default account resolution tests - 8 tests covering getDefaultAccountName() logic for event form hints
+- CPTR-171adb6c: SW version detection edge case tests - 13 tests covering timeout, network errors, offline scenarios, and service worker states
 
 ### Changed
 - Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
@@ -30,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Init sequence tests - refactored to test observable behavior (loader visibility, error logging) instead of unreliable ES module spies due to browser mode limitations
 - CPTR-171adb6c: PR #65 review - Changed logger.info to logger.warn for sessionStorage errors (init.js:61, 252) for production visibility
 - CPTR-171adb6c: PR #65 review - Standardized all test files to snake_case naming (8 files: app_esc_key, dropdown_validation, event_helpers, form_validation, queue_helpers, storage_adapter, sync_spinner, validation_helpers)
+- CPTR-171adb6c: PR #66 review - Added comprehensive documentation to default_account.test.js explaining mock pattern rationale (Alpine.js component methods cannot be imported in isolation)
+- CPTR-171adb6c: PR #66 review - Documented integration testing approach for Alpine.js components (verified through browser-mode tests and manual testing)
+- CPTR-171adb6c: PR #66 review - Changed sw_version_detection.test.js timing test to use vi.useFakeTimers() for deterministic timing control
 - PR #63 review feedback: Resolved all HIGH, MEDIUM, and LOW priority issues from code review
 - Double reload on hard refresh: removed duplicate SKIP_WAITING message triggers (updatefound + waiting check race condition)
 - Workbox precache race condition: removed skipWaiting() from install event preventing cache population before activation
