@@ -58,7 +58,7 @@ const loadingIndicator = {
                 isUpdating = sessionStorage.getItem('chaptr-sw-updating') === 'true';
             } catch (e) {
                 // sessionStorage disabled - default to normal loading message
-                logger.info('[Loading] sessionStorage unavailable:', e.message);
+                logger.warn('[Loading] sessionStorage unavailable:', e.message);
             }
 
             const loadingMessage = isUpdating ? 'Updating application...' : 'Loading application...';
@@ -249,7 +249,7 @@ async function initServiceWorker() {
                         sessionStorage.setItem('chaptr-sw-updating', 'true');
                     } catch (e) {
                         // sessionStorage disabled - UX message won't show but reload still works
-                        logger.info('[SW] sessionStorage unavailable, update message will not show');
+                        logger.warn('[SW] sessionStorage unavailable, update message will not show');
                     }
 
                     setTimeout(() => testableUtils.reloadPage(), 100);

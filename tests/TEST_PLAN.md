@@ -30,7 +30,7 @@
 - ✅ Helper functions (getStoryEvents, queueChange)
 - ✅ IndexedDB features (bulk operations, atomic transactions)
 
-### `tests/validation-helpers.test.js` (49 tests)
+### `tests/validation_helpers.test.js` (49 tests)
 - ✅ `resetFormErrors()` - 3 tests (reset all flags, empty object, no new properties)
 - ✅ `validateHTML5()` - 7 tests (return values, edge cases, safe hasOwnProperty)
 - ✅ `validateCustomDropdown()` - 8 tests (required/optional, null/undefined, zero handling)
@@ -39,7 +39,7 @@
 - ✅ `validateConditionalRequired()` - 8 tests (condition checking, zero/false handling, complex conditions)
 - ✅ `countErrors()` - 4 tests (counting, empty object, mixed truthy/falsy)
 
-### `tests/form-validation.test.js` (8 tests)
+### `tests/form_validation.test.js` (8 tests)
 - ✅ Integration tests for `validateHTML5()` with real DOM elements
 - ✅ Map HTML5 validation failures to error object
 - ✅ Handle multiple invalid fields
@@ -50,7 +50,7 @@
 - ✅ Query all form input types (input, select, textarea)
 - ✅ Handle deeply nested x-model paths
 
-### `tests/dropdown-validation.test.js` (11 tests)
+### `tests/dropdown_validation.test.js` (11 tests)
 - ✅ `modalDropdown` with errorState - 8 tests
   - hasError getter (initial false, true when flagged)
   - Clear error on selection
@@ -63,7 +63,7 @@
   - onSelect callback invoked
   - Dropdown closes after selection
 
-### `tests/sync-spinner.test.js` (12 tests)
+### `tests/sync_spinner.test.js` (12 tests)
 - ✅ **Minimum Spinner Duration** - 2 tests
   - Shows spinner for at least 1 second even if sync completes instantly
   - Does not add extra delay if sync takes longer than 1 second
@@ -88,7 +88,7 @@
 
 ## 🎯 High Priority - Add Tests
 
-### `tests/event-helpers.test.js` (✅ COMPLETE - 26 tests)
+### `tests/event_helpers.test.js` (✅ COMPLETE - 26 tests)
 
 **Pure functions for event data creation:**
 
@@ -513,7 +513,7 @@ Tests timeout and network error scenarios for SW version detection. Complements 
 
 ✅ **COMPLETED - All priorities implemented:**
 
-1. ✅ **High Priority:** `tests/event-helpers.test.js` (26 tests)
+1. ✅ **High Priority:** `tests/event_helpers.test.js` (26 tests)
    - Core business logic for event creation
    - Pure functions - easy to test
    - Recurring event logic validated
@@ -527,13 +527,13 @@ Tests timeout and network error scenarios for SW version detection. Complements 
    - Sanity checks complete
 
 4. ✅ **Validation System:** HTML5 + Business Logic Validation (68 tests)
-   - `tests/validation-helpers.test.js` (49 unit tests)
-   - `tests/form-validation.test.js` (8 integration tests)
-   - `tests/dropdown-validation.test.js` (11 component tests)
+   - `tests/validation_helpers.test.js` (49 unit tests)
+   - `tests/form_validation.test.js` (8 integration tests)
+   - `tests/dropdown_validation.test.js` (11 component tests)
    - Fixed 3 implementation bugs discovered during testing
    - 100% coverage of validation module
 
-5. ✅ **Sync Spinner Defensive Programming:** `tests/sync-spinner.test.js` (12 tests)
+5. ✅ **Sync Spinner Defensive Programming:** `tests/sync_spinner.test.js` (12 tests)
    - Minimum spinner duration (1 second)
    - Timeout guard (30 second maximum)
    - Error handling and recovery
