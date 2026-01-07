@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Storage validation test - added entity_id index to sync_queue Dexie schema preventing SchemaError on atomic operations
 - CPTR-171adb6c: Backend versioning test - refactored to use temporary files instead of complex Path mocking for reliable file I/O testing
 - CPTR-171adb6c: Init sequence tests - refactored to test observable behavior (loader visibility, error logging) instead of unreliable ES module spies due to browser mode limitations
+- CPTR-171adb6c: PR #66 review - Added comprehensive documentation to default_account.test.js explaining mock pattern rationale (Alpine.js component methods cannot be imported in isolation)
+- CPTR-171adb6c: PR #66 review - Documented integration testing approach for Alpine.js components (verified through browser-mode tests and manual testing)
+- CPTR-171adb6c: PR #66 review - Changed sw_version_detection.test.js timing test to use vi.useFakeTimers() for deterministic timing control
 - PR #63 review feedback: Resolved all HIGH, MEDIUM, and LOW priority issues from code review
 - Double reload on hard refresh: removed duplicate SKIP_WAITING message triggers (updatefound + waiting check race condition)
 - Workbox precache race condition: removed skipWaiting() from install event preventing cache population before activation
