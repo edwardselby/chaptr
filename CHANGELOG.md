@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Storage validation test - added entity_id index to sync_queue Dexie schema preventing SchemaError on atomic operations
 - CPTR-171adb6c: Backend versioning test - refactored to use temporary files instead of complex Path mocking for reliable file I/O testing
 - CPTR-171adb6c: Init sequence tests - refactored to test observable behavior (loader visibility, error logging) instead of unreliable ES module spies due to browser mode limitations
+- CPTR-171adb6c: PR #67 review - Added comprehensive JSDoc documentation to init.js exports (451-475) explaining test-only usage and production impact (none - tree-shaking removes unused exports)
+- CPTR-171adb6c: PR #67 review - Added clarifying comment in loading_indicator.test.js about 300ms timer matching production timing (instant due to fake timers)
+- CPTR-171adb6c: PR #67 review - Documented rationale for separate ESC key test files (phase-based organization: basic tests vs edge cases)
 - PR #63 review feedback: Resolved all HIGH, MEDIUM, and LOW priority issues from code review
 - Double reload on hard refresh: removed duplicate SKIP_WAITING message triggers (updatefound + waiting check race condition)
 - Workbox precache race condition: removed skipWaiting() from install event preventing cache population before activation
