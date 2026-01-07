@@ -115,6 +115,9 @@ describe('SW Version Detection - Network Edge Cases', () => {
         });
 
         it('should not block initialization indefinitely on very slow response', async () => {
+            // Use fake timers for deterministic timing control
+            vi.useFakeTimers();
+
             // Simulate extremely slow server (10+ seconds) - but we'll abort the test early
             let responseResolve;
             const delayedPromise = new Promise(resolve => {
@@ -128,8 +131,9 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // Start check in background
             const checkPromise = checkForServiceWorkerUpdate();
 
-            // Wait a short time to ensure fetch was called
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait a short time to ensure fetch was called (deterministic with fake timers)
+            vi.advanceTimersByTime(100);
+            await Promise.resolve(); // Flush microtasks
 
             // Reject the delayed promise to allow test to complete
             responseResolve({
@@ -141,6 +145,9 @@ describe('SW Version Detection - Network Edge Cases', () => {
 
             // Should return false on JSON parse error
             expect(result).toBe(false);
+
+            // Restore real timers
+            vi.useRealTimers();
         });
     });
 
