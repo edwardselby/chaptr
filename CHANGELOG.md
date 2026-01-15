@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Historical events gap indicator: Shows count and net total of events that occurred before projection window as gap indicator at top of timeline (projection.js:82-83,113-114,135-136,358-380; index.html:266-276; style.css:826-840,1052-1059,1136-1143)
+
+### Changed
+- Story status symbols: Replaced emoji (✓ and ⚠) with terminal-friendly [OK] and [!!] indicators for consistency with terminal aesthetic (app.js:411,413,439,441)
+- Story badge colors: Now correctly show red (status-warn) for OVER budget/SHORT of goal states and green (status-ok) for positive states (app.js:807-813)
+- Drift display logic: Changed from confusing percentage-based thresholds to clear sign-based colors (positive drift = green, negative drift = red) with directional arrows (↑/↓) replacing + prefix (app.js:3362-3377)
+- Projection panel values: Today and End of Month now colored appropriately based on positive/negative balance (green for positive, red for negative) (index.html:218,222)
+- Desktop font sizes: Increased all text by ~50% for screens ≥769px (base 13px → 20px, ~80 properties adjusted) - significantly improved readability (style.css:2842-3172)
+- Settings button size: Doubled from 18px to 36px for better visibility without affecting header height (style.css:197)
+- Sync notification size: Doubled font size from 11px to 22px for pending count and notification messages (style.css:160,170,183)
+- Dashboard accounts display: Now shows all accounts instead of limiting to first 3 (index.html:190)
+- Starting balance color logic: Now shows red for negative balances, green for positive (index.html:258)
+
+### Fixed
+- Starting balance NaN display: Fixed calculation to skip gap indicators (both regular and historical) when extracting starting balance from projection rows (app.js:717-724)
+
 ## [0.5.0] - 2026-01-15
 
 ### Added

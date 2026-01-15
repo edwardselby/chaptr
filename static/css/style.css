@@ -157,7 +157,7 @@ body::before {
     display: flex;
     align-items: center;
     gap: 2px;
-    font-size: 11px;
+    font-size: 22px; /* Doubled from 11px for better visibility */
     color: var(--text-dim);
     background: transparent;
     border: none;
@@ -167,7 +167,7 @@ body::before {
 
 .sync-pending-count {
     font-weight: 400;
-    font-size: 11px;
+    font-size: 22px; /* Doubled from 11px for better visibility */
     color: var(--text-dim);
 }
 
@@ -180,7 +180,7 @@ body::before {
 .notification-area {
     display: flex;
     align-items: center;
-    font-size: 11px;
+    font-size: 22px; /* Doubled from 11px for better visibility */
     padding: 4px 8px;
     background: transparent;
     max-width: 200px;
@@ -194,7 +194,7 @@ body::before {
     background: none;
     border: none;
     color: var(--green-bright);
-    font-size: 18px;
+    font-size: 36px; /* Doubled from 18px for better visibility */
     cursor: pointer;
     padding: 4px;
 }
@@ -823,6 +823,22 @@ body::before {
     padding: 0 12px;
 }
 
+/* Historical Events Gap Indicator (events before projection window) */
+.historical-events-gap {
+    height: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    overflow: visible; /* Allow content to extend beyond 0-height container */
+}
+
+.historical-events-gap .gap-content {
+    background: var(--bg-primary);
+    padding: 0 12px;
+}
+
 .gap-count {
     font-style: italic;
     padding: 0 8px;
@@ -1033,6 +1049,15 @@ body::before {
         margin: 4px 0;
     }
 
+    .historical-events-gap {
+        height: auto; /* Override desktop height: 0 */
+        padding: 8px 12px;
+        display: block;
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
     /* Hide decorative gap lines on mobile - too cluttered */
     .gap-line {
         display: none;
@@ -1100,6 +1125,15 @@ body::before {
     }
 
     .hidden-events-gap {
+        height: auto;
+        padding: 8px 12px;
+        display: block;
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
+    .historical-events-gap {
         height: auto;
         padding: 8px 12px;
         display: block;
@@ -2836,5 +2870,337 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     .section-badge {
         font-size: 10px;
         padding: 6px 10px;
+    }
+}
+
+/* ===== DESKTOP MODE - 50% FONT SIZE INCREASE ===== */
+@media (min-width: 769px) {
+    /* Base font size */
+    body {
+        font-size: 20px; /* Was 13px, increased by ~54% */
+    }
+
+    /* Header elements */
+    .logo-text {
+        font-size: 24px; /* Was 16px */
+    }
+
+    .logo-context {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .btn-back {
+        font-size: 30px; /* Was 20px */
+    }
+
+    /* Section headers */
+    .section-header h2 {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .section-action-text {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Story items */
+    .story-name {
+        font-size: 20px; /* Was 13px */
+    }
+
+    .story-dates {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .story-status {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .story-balance {
+        font-size: 21px; /* Was 14px */
+    }
+
+    /* Account items */
+    .account-name {
+        font-size: 20px; /* Was 13px */
+    }
+
+    .account-updated {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .account-balance {
+        font-size: 21px; /* Was 14px */
+    }
+
+    /* Tags */
+    .tag {
+        font-size: 15px; /* Was 10px */
+    }
+
+    /* Projection summary */
+    .summary-label {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .summary-value {
+        font-size: 21px; /* Was 14px */
+    }
+
+    /* Timeline */
+    .timeline-row {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .timeline-row.header {
+        font-size: 15px; /* Was 10px */
+    }
+
+    .timeline-date {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .timeline-amount,
+    .timeline-balance {
+        font-size: 18px; /* Inherit from row */
+    }
+
+    /* Gap indicators */
+    .gap-content {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .gap-amount {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .gap-count {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Forms and modals */
+    .modal-header h2 {
+        font-size: 27px; /* Was 18px */
+    }
+
+    .form-group label {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .form-input,
+    .form-textarea,
+    .select-trigger {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .form-hint {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Buttons */
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger,
+    .btn-nav {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .btn-close {
+        font-size: 36px; /* Was 24px */
+    }
+
+    /* Dropdown options */
+    .select-option {
+        font-size: 21px; /* Was 14px */
+    }
+
+    /* Command bar */
+    .cmd-key {
+        font-size: 24px; /* Was 16px */
+    }
+
+    .cmd-label {
+        font-size: 14px; /* Was 9px */
+    }
+
+    /* Empty state */
+    .empty-state p {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Drift display */
+    .drift-label {
+        font-size: 17px; /* Inherits, was ~11-12px */
+    }
+
+    .drift-value {
+        font-size: 18px; /* Inherits */
+    }
+
+    .drift-note {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .drift-amount {
+        font-size: 30px; /* Was 20px */
+    }
+
+    /* Account meta */
+    .account-meta {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Pending indicator */
+    .pending-indicator {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Story meta */
+    .story-meta {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Section subtitle */
+    .section-subtitle {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* User meta */
+    .user-meta {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Help section */
+    .help-section h3 {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .help-section p {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Validation arrows */
+    .validation-arrow-left,
+    .validation-arrow-right {
+        font-size: 30px; /* Was 20px */
+    }
+
+    /* Projection panel */
+    .projection-title {
+        font-size: 24px; /* Was 16px */
+    }
+
+    .projection-dates {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .balance-label {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .balance-value {
+        font-size: 27px; /* Was 18px */
+    }
+
+    /* Warning boxes */
+    .warning-box {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Filter buttons */
+    .filter-btn,
+    .btn-view {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Table elements */
+    .table-header {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .table-col {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Runtime info */
+    .runtime-info h3 {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .info-row {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Mode display */
+    .mode-display {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Toast notifications */
+    .toast {
+        font-size: 20px; /* Was 13px */
+    }
+
+    /* Mode warning */
+    .mode-3-warning {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .mode-3-warning .warning-icon {
+        font-size: 24px; /* Was 16px */
+    }
+
+    /* Queue limit warning */
+    .queue-limit-warning .warning-icon {
+        font-size: 36px; /* Was 24px */
+    }
+
+    .queue-limit-warning p {
+        font-size: 21px; /* Was 14px */
+    }
+
+    /* Database tools */
+    .tool-header h4 {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .tool-tag {
+        font-size: 15px; /* Was 10px */
+    }
+
+    .tool-description {
+        font-size: 20px; /* Was 13px */
+    }
+
+    .tool-details li {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .section-badge {
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Login screen */
+    .login-title {
+        font-size: 48px; /* Was 32px */
+    }
+
+    .login-subtitle {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .login-form .form-label {
+        font-size: 18px; /* Was 12px */
+    }
+
+    .login-form .form-input {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .form-error {
+        font-size: 20px; /* Was 13px */
+    }
+
+    .btn-login {
+        font-size: 21px; /* Was 14px */
     }
 }

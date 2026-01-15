@@ -187,7 +187,7 @@
                         <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="accounts-list">
-                        <template x-for="account in accounts.slice(0, 3)" :key="account.id">
+                        <template x-for="account in accounts" :key="account.id">
                             <div class="account-item">
                                 <div class="account-item-left">
                                     <div class="account-name">
@@ -215,11 +215,11 @@
                     <div class="projection-summary">
                         <div class="summary-item">
                             <div class="summary-label">Today</div>
-                            <div class="summary-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></div>
+                            <div class="summary-value" :class="projectionToday >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projectionToday, settings.base_currency)"></div>
                         </div>
                         <div class="summary-item">
                             <div class="summary-label">End of Month</div>
-                            <div class="summary-value" x-text="formatCurrency(projectionEndOfMonth, settings.base_currency)"></div>
+                            <div class="summary-value" :class="projectionEndOfMonth >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projectionEndOfMonth, settings.base_currency)"></div>
                         </div>
                         <div class="summary-item">
                             <div class="summary-label">Drift</div>
@@ -255,7 +255,7 @@
                     <div class="projection-dates" x-text="formatDateRange(projectionStartDate, projectionEndDate)"></div>
                     <div class="projection-balance">
                         <span class="balance-label">Starting:</span>
-                        <span class="balance-value" x-text="formatCurrency(projectionStartingBalance, displayCurrency || settings.base_currency)"></span>
+                        <span class="balance-value" :class="projectionStartingBalance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projectionStartingBalance, displayCurrency || settings.base_currency)"></span>
                     </div>
                 </div>
 
@@ -263,6 +263,18 @@
                 <div class="timeline">
                     <template x-for="row in projectionRows" :key="row.id || row.event_date + row.description">
                         <div>
+                            <!-- Historical Events Gap Indicator (events before projection window) -->
+                            <div class="historical-events-gap" x-show="row.isHistoricalGap">
+                                <div class="gap-line"></div>
+                                <div class="gap-content">
+                                    <span class="gap-count" x-text="row.hidden_event_count + ' historical event' + (row.hidden_event_count > 1 ? 's' : '')"></span>
+                                    <span class="gap-delta"
+                                          :class="row.delta_display >= 0 ? 'positive' : 'negative'"
+                                          x-text="formatCurrency(row.delta_display, row.display_currency)"></span>
+                                </div>
+                                <div class="gap-line"></div>
+                            </div>
+
                             <!-- Hidden Events Gap Indicator BEFORE event (story views only) -->
                             <div class="hidden-events-gap" x-show="row.gap_indicator && row.gap_indicator.position === 'before'">
                                 <div class="gap-line"></div>
@@ -278,7 +290,7 @@
                             <!-- Regular Event Row -->
                             <div
                                 class="timeline-row"
-                                x-show="!row.isGap"
+                                x-show="!row.isGap && !row.isHistoricalGap"
                                 :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">

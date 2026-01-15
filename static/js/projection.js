@@ -79,6 +79,8 @@ export async function calculateProjection(
         // - Opening balance events (is_opening_balance=true) - ALWAYS included regardless of date
         // - All other events before startDate
         let startingBalance = 0;
+        let historicalEventsCount = 0;
+        let historicalEventsTotal = 0;
 
         // Get ALL events (we'll filter below)
         const allEvents = await db.events.toArray();
@@ -108,6 +110,8 @@ export async function calculateProjection(
                 const rateToBase = parseFloat(event.rate_to_base || 1.0);
                 const baseAmount = convertToBaseCurrency(amount, rateToBase);
                 startingBalance += baseAmount;
+                historicalEventsCount++;
+                historicalEventsTotal += baseAmount;
             }
         }
 
@@ -128,6 +132,8 @@ export async function calculateProjection(
                 const rateToBase = parseFloat(event.rate_to_base || 1.0);
                 const baseAmount = convertToBaseCurrency(amount, rateToBase);
                 startingBalance += baseAmount;
+                historicalEventsCount++;
+                historicalEventsTotal += baseAmount;
             }
         }
 
@@ -347,6 +353,31 @@ export async function calculateProjection(
 
         // Step 5: Insert gap indicators and virtual drift rows (threshold: 7 days)
         const rowsWithGaps = insertGapIndicators(results, 7, virtualDrifts);
+
+        // Step 6: Prepend historical events indicator if there are historical events
+        if (historicalEventsCount > 0) {
+            // Convert historical total to display currency if needed
+            let historicalDisplayTotal = historicalEventsTotal;
+            if (displayCurrency && displayCurrency !== settings.base_currency) {
+                historicalDisplayTotal = convertFromBaseCurrency(
+                    historicalEventsTotal,
+                    displayCurrency,
+                    settings.base_currency,
+                    settings.rates
+                );
+            }
+
+            // Create historical events indicator row
+            const historicalIndicator = {
+                isHistoricalGap: true,
+                hidden_event_count: historicalEventsCount,
+                delta_display: historicalDisplayTotal,
+                display_currency: displayCurrency || settings.base_currency
+            };
+
+            // Prepend to results
+            rowsWithGaps.unshift(historicalIndicator);
+        }
 
         return rowsWithGaps;
 

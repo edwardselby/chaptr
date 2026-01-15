@@ -408,9 +408,9 @@ window.app = function() {
                         }
 
                         if (remaining >= 0) {
-                            this.storyStatuses[story.id] = `✓ ${formatCurrency(remaining, currency)} LEFT`;
+                            this.storyStatuses[story.id] = `[OK] ${formatCurrency(remaining, currency)} LEFT`;
                         } else {
-                            this.storyStatuses[story.id] = `⚠ ${formatCurrency(Math.abs(remaining), currency)} OVER`;
+                            this.storyStatuses[story.id] = `[!!] ${formatCurrency(Math.abs(remaining), currency)} OVER`;
                         }
                     } else if (story.goal_type === 'end_with_at_least') {
                         // Run projection to story end date
@@ -436,9 +436,9 @@ window.app = function() {
                             }
 
                             if (difference >= 0) {
-                                this.storyStatuses[story.id] = `✓ ${formatCurrency(difference, currency)} OVER`;
+                                this.storyStatuses[story.id] = `[OK] ${formatCurrency(difference, currency)} OVER`;
                             } else {
-                                this.storyStatuses[story.id] = `⚠ ${formatCurrency(Math.abs(difference), currency)} SHORT`;
+                                this.storyStatuses[story.id] = `[!!] ${formatCurrency(Math.abs(difference), currency)} SHORT`;
                             }
                         } catch (error) {
                             console.error(`Error calculating status for story ${story.id}:`, error);
@@ -714,10 +714,10 @@ window.app = function() {
                     this.settings  // ← Pass the already-loaded settings!
                 );
 
-                // Extract starting balance from first row
-                if (this.projectionRows.length > 0 && !this.projectionRows[0].isGap) {
+                // Extract starting balance from first actual event (skip gap indicators)
+                const firstEvent = this.projectionRows.find(row => !row.isGap && !row.isHistoricalGap);
+                if (firstEvent) {
                     // Starting balance is the balance of the first event minus its amount
-                    const firstEvent = this.projectionRows[0];
                     this.projectionStartingBalance = firstEvent.balance - firstEvent.amount;
                 } else {
                     this.projectionStartingBalance = 0;
@@ -801,7 +801,15 @@ window.app = function() {
                 return 'status-upcoming';
             }
 
-            // Active story - default ok (real calculation in projection view)
+            // Active story - check calculated status for color
+            const status = this.getStoryStatus(story);
+
+            // Bad states: [!!] indicator (OVER budget or SHORT of goal)
+            if (status.includes('[!!]')) {
+                return 'status-warn';
+            }
+
+            // Good states: [OK] indicator (LEFT in budget or OVER goal target)
             return 'status-ok';
         },
 
@@ -3353,21 +3361,20 @@ window.app = function() {
          */
         getDriftClass() {
             const drift = this.accountsTotal - this.projectionToday;
-            const driftPercent = Math.abs(drift) / Math.max(Math.abs(this.projectionToday), 1) * 100;
 
-            if (driftPercent < 5) return 'positive';  // 0-5%: on track
-            if (driftPercent < 10) return 'warning';  // 5-10%: amber
-            return 'negative';  // >10%: red
+            // Positive drift (more money than expected) = green
+            // Negative drift (less money than expected) = red
+            return drift >= 0 ? 'positive' : 'negative';
         },
 
         /**
-         * Format drift amount
+         * Format drift amount with directional arrow
          * Shows difference between accounts total and projected
          */
         formatDrift() {
             const drift = this.accountsTotal - this.projectionToday;
-            const sign = drift >= 0 ? '+' : '';
-            return sign + formatCurrency(drift, this.settings.base_currency);
+            const arrow = drift >= 0 ? '↑' : '↓';
+            return arrow + ' ' + formatCurrency(Math.abs(drift), this.settings.base_currency);
         },
 
         // ===== NOTIFICATION SYSTEM =====
