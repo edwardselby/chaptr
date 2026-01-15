@@ -38,7 +38,8 @@ body {
     color: var(--green-bright);
     font-size: 13px;
     line-height: 1.4;
-    overflow-x: hidden;
+    overflow: hidden; /* Prevent body scroll - only main-content scrolls */
+    height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -204,9 +205,15 @@ body::before {
 
 /* Main Content Area */
 .main-content {
-    margin-top: 52px;
-    margin-bottom: 60px;
-    min-height: calc(100vh - 112px);
+    position: fixed;
+    top: 52px;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .screen {
@@ -429,6 +436,9 @@ body::before {
 
 /* Filter Bar */
 .filters-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -545,6 +555,7 @@ body::before {
 /* Timeline */
 .timeline {
     background: var(--bg-primary);
+    padding-bottom: 50px; /* Extra space for last row above command bar */
 }
 
 .timeline-row {
@@ -746,18 +757,24 @@ body::before {
     color: var(--text-dim);
 }
 
-/* Gap Indicator */
+/* Gap Indicator - Collapsed to border decoration */
 .gap-row {
+    height: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    padding: 12px 16px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: background 0.15s;
+    overflow: visible; /* Allow content to extend beyond 0-height container */
 }
 
-.gap-row:hover {
+/* Hide time gaps when hidden events gap is present (priority: hidden events > time) */
+.hidden-events-gap ~ .gap-row {
+    display: none;
+}
+
+.gap-row:hover .gap-content {
     background: var(--bg-tertiary);
 }
 
@@ -771,6 +788,9 @@ body::before {
     padding: 0 12px;
     font-size: 11px;
     color: var(--text-dim);
+    background: var(--bg-primary);
+    white-space: nowrap; /* Prevent text wrapping */
+    transition: background 0.15s;
 }
 
 .gap-amount {
@@ -787,22 +807,33 @@ body::before {
     color: var(--green-bright);
 }
 
-/* Hidden Events Gap Indicator (story views) */
+/* Hidden Events Gap Indicator (story views) - Collapsed to border decoration */
 .hidden-events-gap {
+    height: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
     display: flex;
     align-items: center;
-    padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
+    overflow: visible; /* Allow content to extend beyond 0-height container */
+}
+
+.hidden-events-gap .gap-content {
+    background: var(--bg-primary);
+    padding: 0 12px;
 }
 
 .gap-count {
     font-style: italic;
+    padding: 0 8px;
+    font-size: 11px;
+    color: var(--text-dim);
 }
 
 .gap-delta {
     font-weight: 600;
     font-family: 'JetBrains Mono', monospace;
+    padding: 0 8px;
 }
 
 .gap-delta.positive {
@@ -956,11 +987,66 @@ body::before {
 }
 
 /* Responsive */
-@media (max-width: 375px) {
+/* Portrait Mobile - Hide balance, larger fonts for date/amount */
+@media (max-width: 480px) {
     .timeline-row {
-        grid-template-columns: 60px 1fr 75px 75px;
-        gap: 8px;
+        grid-template-columns: 65px 1fr 85px; /* date | description | amount */
+        gap: 8px; /* Tighter spacing */
         font-size: 11px;
+        padding: 8px 12px;
+    }
+
+    .timeline-row.header {
+        grid-template-columns: 65px 1fr 85px;
+    }
+
+    /* Hide balance column on narrow screens */
+    .timeline-balance {
+        display: none;
+    }
+
+    /* Increase font size for date and amount - more readable with extra space */
+    .timeline-date {
+        font-size: 12px; /* Was: 11px */
+    }
+
+    .timeline-amount {
+        font-size: 13px; /* Was: inherits 11-12px */
+    }
+
+    /* Gap indicators on mobile - simplified without decorative lines */
+    .gap-row {
+        height: auto; /* Override desktop height: 0 */
+        padding: 8px 12px; /* Give it actual space */
+        display: block; /* Simpler layout */
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
+    .hidden-events-gap {
+        height: auto; /* Override desktop height: 0 */
+        padding: 8px 12px;
+        display: block;
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
+    /* Hide decorative gap lines on mobile - too cluttered */
+    .gap-line {
+        display: none;
+    }
+
+    .gap-content {
+        font-size: 11px;
+        padding: 0;
+        background: transparent; /* No need for background without lines */
+    }
+
+    .gap-count,
+    .gap-delta {
+        padding: 0 6px;
     }
 
     .header {
@@ -969,6 +1055,66 @@ body::before {
 
     .logo-text {
         font-size: 14px;
+    }
+}
+
+/* Landscape Mobile / Small Tablets - Show balance again */
+@media (min-width: 481px) and (max-width: 768px) {
+    .timeline-row {
+        grid-template-columns: 65px 1fr 80px 80px; /* date | description | amount | balance */
+        gap: 8px;
+        font-size: 11px;
+        padding: 7px 12px;
+    }
+
+    .timeline-row.header {
+        grid-template-columns: 65px 1fr 80px 80px;
+    }
+
+    /* Balance visible in landscape */
+    .timeline-balance {
+        display: block;
+    }
+
+    /* Slightly larger fonts */
+    .timeline-date {
+        font-size: 12px;
+    }
+
+    .timeline-amount {
+        font-size: 12px;
+    }
+
+    .timeline-balance {
+        font-size: 12px;
+    }
+
+    /* Gap indicators on landscape - simplified without decorative lines */
+    .gap-row {
+        height: auto;
+        padding: 8px 12px;
+        display: block;
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
+    .hidden-events-gap {
+        height: auto;
+        padding: 8px 12px;
+        display: block;
+        text-align: center;
+        background: var(--bg-secondary);
+        margin: 4px 0;
+    }
+
+    /* Hide decorative gap lines on mobile landscape */
+    .gap-line {
+        display: none;
+    }
+
+    .gap-content {
+        background: transparent;
     }
 }
 
@@ -992,9 +1138,7 @@ body::before {
         padding: 6px 16px;
     }
 
-    .timeline-row {
-        padding: 5px 16px;
-    }
+    /* Timeline row padding handled by specific breakpoints above (portrait/landscape) */
 
     /* Panel headers - larger touch targets */
     .section-header {
@@ -2120,7 +2264,7 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
 /* ===== SPACING ADJUSTMENTS FOR TAB BAR ===== */
 
 .screen-content {
-    padding-bottom: 140px; /* Space for tab bar + command bar */
+    padding-bottom: 80px; /* Ensure last item visible above command bar */
 }
 
 /* ===== TOAST NOTIFICATIONS ===== */

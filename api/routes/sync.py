@@ -463,10 +463,10 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
     user_filter = {"created_by": user_id}
 
     return {
-        "accounts": [a.model_dump(mode="json") for a in await account_repo.list()],  # All accounts (no user filter)
-        "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter)],
-        "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter)],
-        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter)],
+        "accounts": [a.model_dump(mode="json") for a in await account_repo.list(limit=1000)],  # All accounts (no user filter)
+        "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter, limit=1000)],
+        "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter, limit=10000)],  # High limit for events
+        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter, limit=1000)],
         "settings": (await settings_repo.get_or_create_default()).model_dump(mode="json"),  # Settings are global
         "sync_timestamp": utc_now()
     }

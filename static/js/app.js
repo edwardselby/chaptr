@@ -382,6 +382,13 @@ window.app = function() {
                     const goalAmount = parseFloat(story.goal_amount || 0);
                     const currency = story.display_currency || this.settings.base_currency || 'GBP';
 
+                    // Defensive check for NaN goal amount
+                    if (isNaN(goalAmount) || goalAmount === 0) {
+                        console.warn(`[Story Status] Invalid goal amount for story ${story.name}: goal_amount=${story.goal_amount}, parsed=${goalAmount}`);
+                        this.storyStatuses[story.id] = this.getStoryLifecycleStatus(story);
+                        continue;
+                    }
+
                     if (story.goal_type === 'spend_up_to') {
                         // Calculate total spending in this story
                         const storyEvents = this.events.filter(e =>
@@ -391,8 +398,14 @@ window.app = function() {
                             e.event_date <= story.end_date
                         );
 
-                        const totalSpent = Math.abs(storyEvents.reduce((sum, e) => sum + e.amount, 0));
+                        const totalSpent = Math.abs(storyEvents.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0));
                         const remaining = goalAmount - totalSpent;
+
+                        // Defensive check for NaN remaining
+                        if (isNaN(remaining)) {
+                            this.storyStatuses[story.id] = this.getStoryLifecycleStatus(story);
+                            continue;
+                        }
 
                         if (remaining >= 0) {
                             this.storyStatuses[story.id] = `✓ ${formatCurrency(remaining, currency)} LEFT`;
@@ -413,8 +426,14 @@ window.app = function() {
                             );
 
                             const lastEvent = projection.filter(row => !row.isGap).pop();
-                            const endingBalance = lastEvent ? lastEvent.balance : 0;
+                            const endingBalance = lastEvent ? parseFloat(lastEvent.balance || 0) : 0;
                             const difference = endingBalance - goalAmount;
+
+                            // Defensive check for NaN difference
+                            if (isNaN(difference)) {
+                                this.storyStatuses[story.id] = this.getStoryLifecycleStatus(story);
+                                continue;
+                            }
 
                             if (difference >= 0) {
                                 this.storyStatuses[story.id] = `✓ ${formatCurrency(difference, currency)} OVER`;
@@ -423,7 +442,8 @@ window.app = function() {
                             }
                         } catch (error) {
                             console.error(`Error calculating status for story ${story.id}:`, error);
-                            this.storyStatuses[story.id] = `END WITH ${formatCurrency(goalAmount, currency)}`;
+                            // Fallback to lifecycle status on error
+                            this.storyStatuses[story.id] = this.getStoryLifecycleStatus(story);
                         }
                     }
                 }
@@ -574,15 +594,15 @@ window.app = function() {
         // ===== PROJECTION =====
 
         /**
-         * Set default projection date range (today to +1 month)
+         * Set default projection date range (today to +12 months)
          */
         setDefaultProjectionDates() {
             const today = new Date();
-            const nextMonth = new Date(today);
-            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            const nextYear = new Date(today);
+            nextYear.setFullYear(nextYear.getFullYear() + 1);
 
             this.projectionStartDate = toLocalISODate(today);
-            this.projectionEndDate = toLocalISODate(nextMonth);
+            this.projectionEndDate = toLocalISODate(nextYear);
         },
 
         /**
@@ -619,6 +639,35 @@ window.app = function() {
             if (view !== 'all') {
                 this.displayCurrency = null;
             }
+
+            // Adjust projection date range based on view
+            if (view !== 'all' && view !== 'baseline') {
+                // Story view - use story's date range
+                const story = this.stories.find(s => s.id === view);
+                if (story) {
+                    this.projectionStartDate = story.start_date;
+                    // Use story end_date if set, otherwise default to 1 year from start
+                    this.projectionEndDate = story.end_date || toLocalISODate(new Date(new Date(story.start_date).setFullYear(new Date(story.start_date).getFullYear() + 1)));
+                }
+            } else if (view === 'baseline') {
+                // Baseline view - use baseline_display_months setting
+                const today = new Date();
+                const endDate = new Date(today);
+                const months = this.settings.baseline_display_months || 3;
+                endDate.setMonth(endDate.getMonth() + months);
+
+                this.projectionStartDate = toLocalISODate(today);
+                this.projectionEndDate = toLocalISODate(endDate);
+            } else {
+                // ALL view - show 12 months from today
+                const today = new Date();
+                const nextYear = new Date(today);
+                nextYear.setFullYear(nextYear.getFullYear() + 1);
+
+                this.projectionStartDate = toLocalISODate(today);
+                this.projectionEndDate = toLocalISODate(nextYear);
+            }
+
             // Update projection rows with new view
             await this.updateProjectionRows();
         },

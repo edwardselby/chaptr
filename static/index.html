@@ -279,10 +279,10 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap"
-                                :class="{ 'past': isPast(row.event_date), 'today': isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
+                                :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
-                                <div class="timeline-date" x-text="formatDate(row.event_date)"></div>
+                                <div class="timeline-date" x-text="row.event_date ? formatDate(row.event_date) : ''"></div>
                                 <div class="timeline-event">
                                     <span x-text="row.description"></span>
                                     <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
@@ -295,7 +295,7 @@
 
                             <!-- TODAY Divider -->
                             <div class="today-divider" x-show="row.showTodayDivider">
-                                <span x-text="'━━━ TODAY (' + formatDate(row.event_date) + ') ━━━'"></span>
+                                <span x-text="row.event_date ? ('━━━ TODAY (' + formatDate(row.event_date) + ') ━━━') : '━━━ TODAY ━━━'"></span>
                             </div>
 
                             <!-- Hidden Events Gap Indicator AFTER event (trailing gaps) -->

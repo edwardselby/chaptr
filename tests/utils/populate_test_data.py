@@ -208,25 +208,26 @@ class TestDataGenerator:
         print(f"✅ Created {len(accounts)} accounts")
         return accounts
 
-    async def generate_stories(self, count: int) -> List[Story]:
+    async def generate_stories(self, count: int, user_id: Optional[str] = None) -> List[Story]:
         """
-        Generate realistic stories with varied funding modes and goals.
+        Generate realistic BIG-TICKET stories (not daily spending).
+
+        CHAPTR is for projecting significant expenses over weeks/months/years.
+        Stories represent major life events or purchases, not day-to-day spending.
 
         Args:
-            count: Number of stories to create (5-15)
+            count: Number of stories to create (recommended: 3)
+            user_id: User ID to set as created_by (required for sync)
 
         Returns:
             List of created stories
         """
-        print(f"\n📖 Generating {count} stories...")
+        print(f"\n📖 Generating {count} major life event stories...")
 
-        # Story name templates
+        # Major life events and significant purchases only
         story_templates = [
-            "canada-trip", "house-deposit", "volvo", "skiing-2025",
-            "wedding", "kitchen-reno", "new-laptop", "emergency-fund",
-            "vacation-spain", "car-repairs", "gym-membership", "study-fund"
+            "canada-trip-2025", "house-deposit-fund", "car-replacement"
         ]
-        random.shuffle(story_templates)
 
         # Funding mode distribution (40% projected, 40% fixed, 20% projected_plus)
         funding_modes = [
@@ -243,69 +244,70 @@ class TestDataGenerator:
         ]
 
         stories = []
-        today = date.today()
+        # Use 2026 calendar year for realistic testing
+        year_2026_start = date(2026, 1, 1)
+        default_account = self.accounts[0] if self.accounts else None
 
-        for i in range(count):
-            # Date ranges (±3-6 months)
-            start_offset = random.randint(-90, 90)
-            duration = random.randint(30, 180)
-            start_date = today + timedelta(days=start_offset)
-            end_date = start_date + timedelta(days=duration)
+        # Define specific realistic stories with varied durations
+        story_configs = [
+            {
+                "name": "canada-ski-trip",
+                "start_date": date(2026, 1, 1),   # 1 month: Jan 2026
+                "end_date": date(2026, 1, 31),
+                "funding_mode": FundingMode.PROJECTED,
+                "funding_amount": None,
+                "goal_type": GoalType.SPEND_UP_TO,
+                "goal_amount": Decimal("4500"),
+            },
+            {
+                "name": "car-maintenance",
+                "start_date": date(2026, 1, 1),   # 3 months: Jan-Mar 2026
+                "end_date": date(2026, 3, 31),
+                "funding_mode": FundingMode.PROJECTED,
+                "funding_amount": None,
+                "goal_type": GoalType.SPEND_UP_TO,
+                "goal_amount": Decimal("2500"),
+            },
+            {
+                "name": "house-renovation",
+                "start_date": date(2026, 1, 1),   # 12 months: Full year 2026
+                "end_date": date(2026, 12, 31),
+                "funding_mode": FundingMode.PROJECTED,
+                "funding_amount": None,
+                "goal_type": GoalType.SPEND_UP_TO,
+                "goal_amount": Decimal("18000"),
+            },
+        ]
 
-            # Funding mode
-            funding_mode = random.choice(funding_modes)
-            funding_amount = None
-            if funding_mode in [FundingMode.FIXED, FundingMode.PROJECTED_PLUS]:
-                if funding_mode == FundingMode.FIXED:
-                    funding_amount = Decimal(str(random.randint(500, 5000)))
-                else:  # PROJECTED_PLUS
-                    funding_amount = Decimal(str(random.randint(100, 1000)))
-
-            # Goal
-            goal_type = random.choice(goal_types)
-            goal_amount = None
-            if goal_type != GoalType.NONE:
-                if goal_type == GoalType.END_WITH_AT_LEAST:
-                    goal_amount = Decimal(str(random.randint(500, 3000)))
-                else:  # SPEND_UP_TO
-                    goal_amount = Decimal(str(random.randint(1000, 10000)))
-
-            # Default account (some stories have default, some don't)
-            default_account_id = None
-            if random.random() < 0.7:  # 70% have default account
-                default_account_id = random.choice(self.accounts).id
-
-            # Currency matches account if set, otherwise GBP
-            if default_account_id:
-                account = next(a for a in self.accounts if a.id == default_account_id)
-                currency = account.currency
-            else:
-                currency = "GBP"
-
+        for config in story_configs[:count]:  # Only create up to 'count' stories
             story_id = uuid4()
             story_data = {
-                "id": str(story_id),  # Convert UUID to string
-                "name": story_templates[i % len(story_templates)],
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "default_account_id": str(default_account_id) if default_account_id else None,
-                "funding_mode": funding_mode.value,
-                "funding_amount": str(funding_amount) if funding_amount else None,
-                "goal_type": goal_type.value,
-                "goal_amount": str(goal_amount) if goal_amount else None,
-                "display_currency": currency,
+                "id": str(story_id),
+                "name": config["name"],
+                "start_date": config["start_date"].isoformat(),
+                "end_date": config["end_date"].isoformat(),
+                "default_account_id": str(default_account.id) if default_account else None,
+                "funding_mode": config["funding_mode"].value,
+                "funding_amount": str(config["funding_amount"]) if config["funding_amount"] else None,
+                "goal_type": config["goal_type"].value,
+                "goal_amount": str(config["goal_amount"]) if config["goal_amount"] else None,
+                "display_currency": "GBP",
                 "created_at": datetime.now(timezone.utc),
-                "created_by": None,
+                "created_by": user_id,
                 "updated_at": datetime.now(timezone.utc),
-                "updated_by": None
+                "updated_by": user_id
             }
 
             await self.stories_coll.insert_one(story_data)
             story = Story(**story_data)
             stories.append(story)
 
-            print(f"  {story.name}: {funding_mode.value}" +
-                  (f" (£{funding_amount})" if funding_amount else ""))
+            funding_info = f"£{config['funding_amount']}" if config['funding_amount'] else "projected"
+            goal_info = f" | Goal: {config['goal_type'].value}"
+            if config['goal_amount']:
+                goal_info += f" £{config['goal_amount']}"
+
+            print(f"  {story.name}: {config['funding_mode'].value} ({funding_info}){goal_info}")
 
         self.stories = stories
         print(f"✅ Created {len(stories)} stories")
@@ -374,117 +376,186 @@ class TestDataGenerator:
         print(f"✅ Created {len(rules)} recurring rules")
         return rules
 
-    async def generate_events(self, count: int) -> List[Event]:
+    async def generate_events(self, count: int, user_id: Optional[str] = None) -> List[Event]:
         """
-        Generate realistic events (60% baseline, 40% story).
+        Generate BIG-TICKET baseline and story events.
+
+        CHAPTR is for projecting SIGNIFICANT expenses, not daily coffee purchases.
+
+        Baseline = Recurring monthly bills (rent, utilities, insurance)
+        Story events = Chunky one-time expenses (flight £800, car £7500)
 
         Args:
-            count: Number of events to create (30-200)
+            count: Ignored - generates realistic number based on stories
+            user_id: User ID to set as created_by (required for sync)
 
         Returns:
             List of created events
         """
-        print(f"\n📅 Generating {count} events...")
+        print(f"\n📅 Generating BIG-TICKET events...")
 
-        # Event description templates
-        expense_descriptions = [
-            "Groceries at Tesco", "Coffee at Starbucks", "Restaurant dinner",
-            "Fuel at Shell", "Amazon purchase", "Train tickets",
-            "Pharmacy", "Haircut", "Cinema tickets", "Pub lunch"
+        # BASELINE: Recurring monthly bills spanning 2026
+        # These are predictable recurring expenses - mortgage, utilities, subscriptions
+        baseline_bills = [
+            {"description": "Mortgage payment", "amount": -1350},
+            {"description": "Council Tax", "amount": -180},
+            {"description": "Gas & Electric", "amount": -145},
+            {"description": "Water bill", "amount": -45},
+            {"description": "Internet & Broadband", "amount": -40},
+            {"description": "Mobile Phone", "amount": -35},
+            {"description": "Netflix & Streaming", "amount": -25},
+            {"description": "Groceries (monthly bulk)", "amount": -450},  # Bulk monthly estimate, not itemized
         ]
-        income_descriptions = [
-            "Freelance project", "Bonus payment", "Gift", "Cashback",
-            "Side gig", "Consulting fee"
-        ]
+
+        # STORY EVENTS: Chunky expenses for each story spanning different time periods in 2026
+        story_expense_patterns = {
+            "canada-ski-trip": [
+                # 1 month trip (Jan 2026) - spread events across the month
+                {"date": date(2026, 1, 2), "description": "Return flights to Vancouver", "amount": -950},
+                {"date": date(2026, 1, 5), "description": "Hotel accommodation (3 weeks)", "amount": -1800},
+                {"date": date(2026, 1, 8), "description": "Ski equipment rental", "amount": -350},
+                {"date": date(2026, 1, 10), "description": "Lift passes & ski lessons", "amount": -600},
+                {"date": date(2026, 1, 15), "description": "Taxi & transport (bulk estimate)", "amount": -250},
+                {"date": date(2026, 1, 20), "description": "Activities & excursions", "amount": -400},
+                {"date": date(2026, 1, 28), "description": "Travel insurance", "amount": -150},
+            ],
+            "car-maintenance": [
+                # 3 months (Jan-Mar 2026) - spread maintenance across quarter
+                {"date": date(2026, 1, 15), "description": "New winter tires (set of 4)", "amount": -480},
+                {"date": date(2026, 1, 22), "description": "Brake pads & discs replacement", "amount": -320},
+                {"date": date(2026, 2, 5), "description": "Full service & oil change", "amount": -180},
+                {"date": date(2026, 2, 18), "description": "Spark plugs & air filter", "amount": -95},
+                {"date": date(2026, 3, 3), "description": "Wheel alignment & balancing", "amount": -85},
+                {"date": date(2026, 3, 12), "description": "Replacement wiper blades", "amount": -35},
+                {"date": date(2026, 3, 20), "description": "MOT test & minor repairs", "amount": -125},
+                {"date": date(2026, 3, 28), "description": "Car tools & maintenance kit", "amount": -140},
+            ],
+            "house-renovation": [
+                # 12 months (Jan-Dec 2026) - spread major work across the year
+                {"date": date(2026, 1, 20), "description": "Boiler service & safety check", "amount": -180},
+                {"date": date(2026, 2, 10), "description": "Kitchen renovation deposit", "amount": -3500},
+                {"date": date(2026, 3, 5), "description": "Bathroom tiling & waterproofing", "amount": -1200},
+                {"date": date(2026, 4, 15), "description": "Kitchen fitting & installation", "amount": -4500},
+                {"date": date(2026, 5, 8), "description": "Painting & decorating (3 rooms)", "amount": -850},
+                {"date": date(2026, 6, 12), "description": "New carpets & flooring", "amount": -1600},
+                {"date": date(2026, 7, 18), "description": "Plumbing repairs & upgrades", "amount": -720},
+                {"date": date(2026, 8, 25), "description": "Electrical rewiring (partial)", "amount": -950},
+                {"date": date(2026, 9, 10), "description": "Garden landscaping", "amount": -1400},
+                {"date": date(2026, 10, 5), "description": "Roof repairs & gutter cleaning", "amount": -580},
+                {"date": date(2026, 11, 15), "description": "New boiler installation", "amount": -2800},
+                {"date": date(2026, 12, 8), "description": "Final decorating & touch-ups", "amount": -720},
+            ],
+        }
 
         events = []
         today = date.today()
+        account = self.accounts[0] if self.accounts else None
 
-        # Distribution: 60% baseline, 40% story
-        baseline_count = int(count * 0.6)
-        story_count = count - baseline_count
+        if not account:
+            print("  ⚠️  No accounts found, skipping event generation")
+            return events
 
-        for i in range(count):
-            is_baseline = (i < baseline_count)
+        # Get rate to base for currency conversion
+        if account.currency == self.settings.base_currency:
+            rate_to_base = Decimal("1.0")
+        else:
+            rate_to_base = self.settings.rates.get(account.currency, Decimal("1.0"))
 
-            # 85% expenses, 15% income
-            is_income = random.random() < 0.15
+        # Generate baseline events (recurring monthly bills spanning whole year 2026)
+        baseline_count = 0
+        for month in range(1, 13):  # All 12 months of 2026
+            # Use 1st of each month for bills
+            bill_date = date(2026, month, 1)
 
-            if is_income:
-                amount = Decimal(str(random.randint(100, 2000)))
-                description = random.choice(income_descriptions)
-            else:
-                amount = -Decimal(str(round(random.uniform(5, 300), 2)))
-                description = random.choice(expense_descriptions)
+            for bill in baseline_bills:
+                event_id = uuid4()
+                event_data = {
+                    "id": str(event_id),
+                    "event_date": bill_date.isoformat(),
+                    "description": bill["description"],
+                    "amount": str(Decimal(str(bill["amount"]))),
+                    "currency": account.currency,
+                    "rate_to_base": str(rate_to_base),
+                    "account_id": str(account.id),
+                    "story_id": None,
+                    "is_baseline": True,
+                    "is_hypothetical": False,
+                    "is_auto_adjustment": False,
+                    "created_at": datetime.now(timezone.utc),
+                    "created_by": user_id,
+                    "updated_at": datetime.now(timezone.utc),
+                    "updated_by": user_id,
+                    "recurring_rule_id": None
+                }
 
-            # Date within ±3 months
-            event_date = today + timedelta(days=random.randint(-90, 90))
+                await self.events_coll.insert_one(event_data)
+                events.append(Event(**event_data))
+                baseline_count += 1
 
-            # Account resolution
-            if is_baseline:
-                # Baseline: use default account
-                account = self.accounts[0]
-                story_id = None
-            else:
-                # Story event
-                story = random.choice(self.stories)
-                story_id = story.id
+        # Generate story events (chunky expenses with specific dates)
+        story_event_count = 0
+        for story in self.stories:
+            # Get expenses for this story
+            story_expenses = story_expense_patterns.get(story.name, [])
 
-                # Use story's default account if set, otherwise default account
-                if story.default_account_id:
-                    account = next((a for a in self.accounts if a.id == story.default_account_id), self.accounts[0])
-                else:
-                    account = self.accounts[0]
+            if not story_expenses:
+                print(f"  ⚠️  No expense patterns defined for story: {story.name}")
+                continue
 
-            # Rate to base (using settings rates)
-            if account.currency == self.settings.base_currency:
-                rate_to_base = Decimal("1.0")
-            else:
-                # Get rate from settings
-                rate_to_base = self.settings.rates.get(account.currency, Decimal("1.0"))
+            for expense in story_expenses:
+                # Use the specific date defined in the pattern
+                event_date = expense["date"]
 
-            event_id = uuid4()
-            event_data = {
-                "id": str(event_id),  # Convert UUID to string
-                "event_date": event_date.isoformat(),
-                "description": description,
-                "amount": str(amount),
-                "currency": account.currency,
-                "rate_to_base": str(rate_to_base),
-                "account_id": str(account.id),
-                "story_id": str(story_id) if story_id else None,
-                "is_baseline": is_baseline,
-                "is_hypothetical": False,
-                "is_auto_adjustment": False,
-                "created_at": datetime.now(timezone.utc),
-                "created_by": None,
-                "updated_at": datetime.now(timezone.utc),
-                "updated_by": None,
-                "recurring_rule_id": None
-            }
+                event_id = uuid4()
+                event_data = {
+                    "id": str(event_id),
+                    "event_date": event_date.isoformat(),
+                    "description": expense["description"],
+                    "amount": str(Decimal(str(expense["amount"]))),
+                    "currency": account.currency,
+                    "rate_to_base": str(rate_to_base),
+                    "account_id": str(account.id),
+                    "story_id": str(story.id),
+                    "is_baseline": False,
+                    "is_hypothetical": False,
+                    "is_auto_adjustment": False,
+                    "created_at": datetime.now(timezone.utc),
+                    "created_by": user_id,
+                    "updated_at": datetime.now(timezone.utc),
+                    "updated_by": user_id,
+                    "recurring_rule_id": None
+                }
 
-            await self.events_coll.insert_one(event_data)
-            event = Event(**event_data)
-            events.append(event)
+                await self.events_coll.insert_one(event_data)
+                events.append(Event(**event_data))
+                story_event_count += 1
 
-        print(f"✅ Created {count} events ({baseline_count} baseline, {story_count} story)")
+        print(f"✅ Created {len(events)} BIG-TICKET events spanning 2026:")
+        print(f"    Baseline: {baseline_count} recurring monthly bills (mortgage, utilities, groceries)")
+        print(f"    Stories: {story_event_count} chunky expenses across {len(self.stories)} stories:")
+        for story in self.stories:
+            expenses = story_expense_patterns.get(story.name, [])
+            print(f"      - {story.name}: {len(expenses)} events")
         return events
 
     async def generate_all(
         self,
         account_count: int = 5,
-        story_count: int = 10,
+        story_count: int = 3,
         rule_count: int = 5,
-        event_count: int = 100
+        event_count: int = 0  # Auto-generated based on stories
     ) -> Dict[str, int]:
         """
         Generate all test data in correct dependency order.
 
+        CHAPTR focuses on BIG-TICKET expenses over weeks/months/years.
+        This generates realistic fixture data matching that purpose.
+
         Args:
-            account_count: Number of accounts (3-8)
-            story_count: Number of stories (5-15)
-            rule_count: Number of recurring rules (3-7)
-            event_count: Number of events (30-200)
+            account_count: Number of accounts (default: 5)
+            story_count: Number of MAJOR life events (recommended: 3, max: 3)
+            rule_count: Number of recurring rules (default: 5)
+            event_count: Ignored - auto-generated based on stories
 
         Returns:
             Dictionary with counts of created entities
@@ -493,12 +564,23 @@ class TestDataGenerator:
         print("🚀 CHAPTR Test Data Generator")
         print("=" * 60)
 
+        # Get user ID from database for created_by field
+        # This is required for sync filtering (full_sync filters by created_by)
+        user = await self.db["users"].find_one()
+        user_id = None
+        if user:
+            user_id = user["id"]
+            print(f"\n👤 Using user: {user['username']} ({user_id})")
+        else:
+            print("\n⚠️  Warning: No user found in database. Stories/events will have created_by: None")
+            print("   Run /api/auth/create-first-user first to create a user.")
+
         # Generate in dependency order
         settings = await self.generate_settings()
         accounts = await self.generate_accounts(account_count)
-        stories = await self.generate_stories(story_count)
+        stories = await self.generate_stories(story_count, user_id=user_id)
         rules = await self.generate_recurring_rules(rule_count)
-        events = await self.generate_events(event_count)
+        events = await self.generate_events(event_count, user_id=user_id)
 
         # Summary
         summary = {
@@ -551,9 +633,9 @@ Examples:
 
     # Custom counts
     parser.add_argument("--accounts", type=int, help="Number of accounts (3-8)")
-    parser.add_argument("--stories", type=int, help="Number of stories (5-15)")
+    parser.add_argument("--stories", type=int, help="Number of MAJOR life event stories (recommended: 3, max: 3)")
     parser.add_argument("--rules", type=int, help="Number of recurring rules (3-7)")
-    parser.add_argument("--events", type=int, help="Number of events (30-200)")
+    parser.add_argument("--events", type=int, help="Ignored - events auto-generated based on stories")
 
     # Options
     parser.add_argument(
@@ -578,19 +660,19 @@ Examples:
     # Determine counts (preset vs custom)
     if args.preset:
         presets = {
-            "small": {"accounts": 3, "stories": 5, "rules": 3, "events": 30},
-            "medium": {"accounts": 5, "stories": 10, "rules": 5, "events": 100},
-            "large": {"accounts": 8, "stories": 15, "rules": 7, "events": 200}
+            "small": {"accounts": 3, "stories": 2, "rules": 3, "events": 0},  # 2 major stories
+            "medium": {"accounts": 5, "stories": 3, "rules": 5, "events": 0},  # 3 major stories (recommended)
+            "large": {"accounts": 8, "stories": 3, "rules": 7, "events": 0}   # 3 major stories + more accounts/rules
         }
         counts = presets[args.preset]
-        print(f"\nUsing preset: {args.preset}")
+        print(f"\nUsing preset: {args.preset} (BIG-TICKET expenses only)")
     else:
         # Custom or defaults
         counts = {
             "accounts": args.accounts or 5,
-            "stories": args.stories or 10,
+            "stories": args.stories or 3,  # Default to 3 major stories
             "rules": args.rules or 5,
-            "events": args.events or 100
+            "events": args.events or 0  # Auto-generated
         }
 
     # Use config defaults if not provided

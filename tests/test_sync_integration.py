@@ -928,3 +928,75 @@ async def test_reconciliation_trigger_endpoint(
 
     assert len(auto_events) == 1, "Should create auto-adjustment event"
     assert Decimal(str(auto_events[0]["amount"])) == Decimal("500.00"), "Drift should be 1000 - 500 = 500"
+
+
+# ============================================================================
+# Sync Endpoint High Limits Test
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_full_sync_returns_all_events_beyond_default_limit(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_user_real,
+    event_repo_real,
+    clean_database_real
+):
+    """
+    Test that GET /api/sync/full returns all events, not just default 100 limit.
+
+    Scenario:
+    1. Create 123 events in database (matching fixture data)
+    2. Call GET /api/sync/full
+    3. Verify all 123 events returned
+
+    Validates:
+    - Full sync endpoint uses explicit high limit (10,000)
+    - Not limited by base repository default limit (100)
+    - All user events returned regardless of count
+
+    Related to: sync.py:468 - explicit limit=10000 for events
+    """
+    # Create 123 events (matching populate_test_data.py fixture count)
+    created_event_ids = []
+
+    for i in range(123):
+        event_data = EventCreate(
+            date=f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",  # Spread across 2026
+            description=f"Test Event {i+1}",
+            amount=Decimal("-50.00"),
+            currency="GBP",
+            account_id=sample_account_with_user.id,
+            rate_to_base=Decimal("1.0"),
+            is_baseline=True
+        )
+        event = await event_repo_real.create(
+            event_data,
+            current_user={"id": str(sample_user_real.id)},
+            client_id=None
+        )
+        created_event_ids.append(str(event.id))
+
+    # Call full sync endpoint
+    response = await async_client_real.get("/api/sync/full", headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify structure
+    assert "events" in data
+    assert "accounts" in data
+    assert "stories" in data
+    assert "recurring_rules" in data
+    assert "settings" in data
+    assert "sync_timestamp" in data
+
+    # CRITICAL: Verify all 123 events returned (not just 100)
+    events = data["events"]
+    assert len(events) >= 123, f"Expected at least 123 events, got {len(events)}"
+
+    # Verify created events are in response
+    returned_event_ids = {e["id"] for e in events}
+    for event_id in created_event_ids:
+        assert event_id in returned_event_ids, f"Event {event_id} missing from full sync response"

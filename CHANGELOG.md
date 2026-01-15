@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-01-15
+
 ### Added
 - Service worker version endpoint (/sw-version) with content-hash based versioning for automatic cache invalidation on file changes
+- Test fixture data redesign with 3 realistic BIG-TICKET expense stories spanning 2026 (canada-ski-trip, car-maintenance, house-renovation)
+- Test fixture: 123 total events (96 baseline recurring bills + 27 story events) with specific dates throughout 2026
 - "Updating application..." message during service worker reload (instead of generic "Loading application...")
 - Content-hash based SW versioning: version changes automatically when any precached file changes (no server restart needed)
 - Production validator agent comprehensive PWA architecture review with priority-based issue tracking
@@ -22,8 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPTR-171adb6c: Loading indicator tests - 8 tests covering show/hide methods with timing verification (300ms fade transition)
 - CPTR-171adb6c: ESC key extended tests - 5 tests covering edge cases for debouncing, modal priority, and state consistency
 - CPTR-171adb6c: Backend SW generation tests - 15 tests validating dynamically generated service worker content with automatic revision numbers
+- Sync endpoint high limit tests - test_full_sync_returns_all_events_beyond_default_limit() validates GET /api/sync/full returns all events (not limited by base repository default of 100)
+- Frontend projection date range tests - 52 comprehensive tests in projection_date_ranges.test.js covering dynamic date adjustment for story/baseline/ALL views
 
 ### Changed
+- Gap indicators: Transformed from full rows to border decorations (height: 0, text sits on timeline border) - significantly reduces visual clutter on desktop (style.css:760-832)
+- Mobile timeline layout: Responsive 3-column (portrait) / 4-column (landscape) grid with orientation-aware balance column visibility
+- Mobile gap indicators: Simplified to centered text blocks without decorative lines for cleaner mobile display
+- Mobile fonts: Increased date (12px) and amount (13px) font sizes for better readability in portrait mode
+- Mobile spacing: Tighter 8px column gaps (was 12px) and compact 8px row padding for efficient screen usage
+- Projection date ranges: Dynamic adjustment based on view type (story views use story date range, baseline uses baseline_display_months setting, ALL view shows 12 months)
+- Default projection range: Increased from 1 month to 12 months for ALL view (app.js:576-586)
+- Sync endpoint event limit: Added explicit limit=10000 to prevent default 100-item cap (sync.py:468)
 - Service worker version calculation: changed from server start time to MD5 hash of all precached file contents
 - Service worker lifecycle: removed manual skipWaiting() from install event (Workbox controls install, client controls activation)
 - Controllerchange event listener: added debounce guard flag and 100ms delay to prevent reload loops
@@ -31,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored precache file listing: extracted get_precache_files() shared function used by /sw-version and /sw.js endpoints (DRY)
 
 ### Fixed
+- Story status "£NaN OVER" display: Added defensive checks for NaN values in story goal calculations with parseFloat() and fallback to lifecycle status (ACTIVE/ENDED/UPCOMING) when calculation fails (app.js:385-407,431-435,443-445)
+- Gap indicator stacking: Hide time gaps when hidden events gap is present in same row - prevents redundant "14 days" + "9 hidden events" stacking (style.css:773-775)
+- Events not appearing in story views: Fixed sync endpoint returning only 100 of 123 events (added explicit limit=10000 for events in sync.py:468)
+- Events not visible in 2026 fixture stories: Fixed projection date range using current month (Jan-Feb 2025) instead of story date ranges in 2026 (app.js:612-653)
+- Alpine.js template errors on undefined event_date: Added ternary guards in timeline template before calling date functions (index.html:282,285,298) to handle gap indicators and drift rows without event_date field
 - CPTR-171adb6c: Test refactoring - 12 failing tests resolved to achieve 100% passing (2 fixed: storage schema + backend file mocking; 10 deleted: unmockable dynamic imports, fake timer conflicts, browser security restrictions)
 - CPTR-171adb6c: Storage validation test - added entity_id index to sync_queue Dexie schema preventing SchemaError on atomic operations
 - CPTR-171adb6c: Backend versioning test - refactored to use temporary files instead of complex Path mocking for reliable file I/O testing
