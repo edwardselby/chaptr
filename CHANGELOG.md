@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-16
+
 ### Added
 - Historical events gap indicator: Shows count and net total of events that occurred before projection window as gap indicator at top of timeline (projection.js:82-83,113-114,135-136,358-380; index.html:266-276; style.css:826-840,1052-1059,1136-1143)
 - Accounts total row: Shows sum of all account balances in display currency (or base currency) at bottom of accounts list with amber border styling similar to View All row (index.html:204-214; app.js:831-857; style.css:396-410)
