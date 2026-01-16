@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Historical events gap indicator: Shows count and net total of events that occurred before projection window as gap indicator at top of timeline (projection.js:82-83,113-114,135-136,358-380; index.html:266-276; style.css:826-840,1052-1059,1136-1143)
+- Accounts total row: Shows sum of all account balances in display currency (or base currency) at bottom of accounts list with amber border styling similar to View All row (index.html:204-214; app.js:831-857; style.css:396-410)
+- Mode descriptions: Added explanatory text for each storage mode (Online & Offline, Online Only, Limited) (index.html:620-628; style.css:2297-2319,3235-3241)
 
 ### Changed
 - Story status symbols: Replaced emoji (✓ and ⚠) with terminal-friendly [OK] and [!!] indicators for consistency with terminal aesthetic (app.js:411,413,439,441)
@@ -20,6 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sync notification size: Doubled font size from 11px to 22px for pending count and notification messages (style.css:160,170,183)
 - Dashboard accounts display: Now shows all accounts instead of limiting to first 3 (index.html:190)
 - Starting balance color logic: Now shows red for negative balances, green for positive (index.html:258)
+- Settings screen layout: Restructured into responsive two-column layout on desktop (60% left / 40% right) with single-column stack on mobile (index.html:455-713; style.css:2860-2920)
+- Preferences panel: Base Currency, Date Format, and Baseline Display (Months) now display in 3-column grid on desktop for efficient space usage (index.html:467-547; style.css:2875-2879,2915-2920)
+- Conversion Rates section: Moved from left column to right column in settings screen (index.html:590-621)
+- User Management section: Moved from right column to left column, positioned between Preferences and Backup & Restore (index.html:551-574)
+- Currency rate inputs: Fixed styling to match application form inputs with proper borders, background, and focus states using specific CSS rules (style.css:2214-2242)
+- Mode panel: Fixed to use reactive storageMode property instead of non-reactive storage.mode (index.html:620-621)
+- Mode names: Changed from "Offline Capable/Online Only/Basic" to clearer "Online & Offline/Online Only/Limited" terminology (index.html:620-621)
+- Mode name colors: Added color coding - blue for Online & Offline, amber for Online Only, red for Limited (style.css:2303-2313)
+- Story items styling: Removed grey background to match account items - now transparent with border-bottom only, grey background on hover (style.css:283-300,932-947)
+- View All row: Removed confusing balance amount display, now shows only name and description (index.html:155-160)
+- TODAY marker positioning: Repositioned to appear after all of today's events instead of before them for clearer timeline separation (projection.js:483-487)
+- Gap indicators transparency: Made all gap indicator backgrounds 50% transparent (rgba(10,10,10,0.5)) for visual consistency (style.css:785-790,819-822,835-838)
+- Desktop timeline rows: Increased vertical padding from 10px to 18px for better spacing and readability (style.css:3041-3044)
+- Desktop TODAY divider: Increased padding to 18px to match timeline row spacing (style.css:3059-3063)
+- Desktop filter chips: Increased font size from 11px to 17px and padding for better readability in story view tabs (style.css:3065-3078)
 
 ### Fixed
 - Starting balance NaN display: Fixed calculation to skip gap indicators (both regular and historical) when extracting starting balance from projection rows (app.js:717-724)

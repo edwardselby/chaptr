@@ -280,24 +280,6 @@ body::before {
     padding: 0;
 }
 
-.story-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.story-item:last-child {
-    border-bottom: none;
-}
-
-.story-item:hover {
-    background: var(--bg-tertiary);
-}
-
 .story-item-left {
     flex: 1;
 }
@@ -391,6 +373,22 @@ body::before {
 
 .account-balance.negative {
     color: var(--red);
+}
+
+/* Accounts Total Row */
+.account-total-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid var(--amber);
+    border-bottom: none;
+    margin-top: 8px;
+}
+
+.account-total-item .account-name {
+    color: var(--amber);
+    font-weight: bold;
 }
 
 /* Tag Badge */
@@ -788,7 +786,7 @@ body::before {
     padding: 0 12px;
     font-size: 11px;
     color: var(--text-dim);
-    background: var(--bg-primary);
+    background: rgba(10, 10, 10, 0.5);
     white-space: nowrap; /* Prevent text wrapping */
     transition: background 0.15s;
 }
@@ -819,7 +817,7 @@ body::before {
 }
 
 .hidden-events-gap .gap-content {
-    background: var(--bg-primary);
+    background: rgba(10, 10, 10, 0.5);
     padding: 0 12px;
 }
 
@@ -835,7 +833,7 @@ body::before {
 }
 
 .historical-events-gap .gap-content {
-    background: var(--bg-primary);
+    background: rgba(10, 10, 10, 0.5);
     padding: 0 12px;
 }
 
@@ -932,19 +930,20 @@ body::before {
 
 /* Dashboard Story Items */
 .story-item {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    padding: 12px;
-    cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: border-color 0.15s;
-    margin-bottom: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.story-item:last-child {
+    border-bottom: none;
 }
 
 .story-item:hover {
-    border-color: var(--green-dim);
+    background: var(--bg-tertiary);
 }
 
 .story-item-left {
@@ -2195,10 +2194,34 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     color: var(--text-bright);
 }
 
-.rate-input {
+/* Ensure form inputs in tables are properly styled */
+.rates-table .table-col input[type="number"],
+.rates-table .form-input {
     width: 100%;
-    padding: 6px 8px;
-    font-size: 13px;
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-bright) !important;
+    padding: 10px 12px !important;
+    font-family: inherit !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    appearance: none;
+}
+
+.rates-table .table-col input[type="number"]:focus,
+.rates-table .form-input:focus {
+    outline: none !important;
+    border-color: var(--green-dim) !important;
+    box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1) !important;
+}
+
+/* Remove spinner buttons from number inputs */
+.rates-table input[type="number"]::-webkit-inner-spin-button,
+.rates-table input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .btn-small {
@@ -2252,6 +2275,30 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     color: var(--text-bright);
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
+}
+
+.mode-name {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.mode-name.mode-full {
+    color: var(--blue);
+}
+
+.mode-name.mode-sync {
+    color: var(--amber);
+}
+
+.mode-name.mode-limited {
+    color: var(--red);
+}
+
+.mode-description {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
 }
 
 /* Sync settings form */
@@ -2857,6 +2904,27 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     justify-content: flex-end;
 }
 
+/* Settings Screen - Mobile/Tablet (Single Column) */
+.settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-column-left,
+.settings-column-right {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Preferences Grid - Mobile/Tablet (Single Column) */
+.preferences-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 /* Mobile adjustments */
 @media (max-width: 600px) {
     .database-tools-modal {
@@ -2875,6 +2943,29 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
 
 /* ===== DESKTOP MODE - 50% FONT SIZE INCREASE ===== */
 @media (min-width: 769px) {
+    /* Settings Screen - Two Column Layout */
+    .settings-grid {
+        display: grid;
+        grid-template-columns: 60% 40%;
+        gap: 16px;
+        align-items: start;
+    }
+
+    .settings-column-left,
+    .settings-column-right {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* Preferences Grid - Three Column Layout */
+    .preferences-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+    }
+
     /* Base font size */
     body {
         font-size: 20px; /* Was 13px, increased by ~54% */
@@ -2949,6 +3040,7 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     /* Timeline */
     .timeline-row {
         font-size: 18px; /* Was 12px */
+        padding: 18px 16px; /* Increased from 10px to 18px vertical padding for better spacing */
     }
 
     .timeline-row.header {
@@ -2962,6 +3054,27 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     .timeline-amount,
     .timeline-balance {
         font-size: 18px; /* Inherit from row */
+    }
+
+    /* TODAY divider */
+    .today-divider {
+        padding: 18px 16px; /* Match timeline row padding */
+        font-size: 17px; /* Was 11px */
+    }
+
+    /* Filter chips (story tabs) */
+    .filters-bar {
+        padding: 18px 16px; /* Was 12px 16px */
+    }
+
+    .filter-chip {
+        font-size: 17px; /* Was 11px */
+        padding: 9px 18px; /* Was 6px 12px */
+    }
+
+    .currency-toggle {
+        font-size: 17px; /* Was 11px */
+        padding: 9px 15px; /* Was 6px 10px */
     }
 
     /* Gap indicators */
@@ -3133,6 +3246,14 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
     /* Mode display */
     .mode-display {
         font-size: 20px; /* Was 13px */
+    }
+
+    .mode-name {
+        font-size: 21px; /* Was 14px */
+    }
+
+    .mode-description {
+        font-size: 17px; /* Was 11px */
     }
 
     /* Toast notifications */

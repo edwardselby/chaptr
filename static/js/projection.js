@@ -480,8 +480,8 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
 
-        // Insert TODAY divider before first future event
-        if (!todayDividerInserted && row.event_date >= today) {
+        // Insert TODAY divider after today's events, before first future event
+        if (!todayDividerInserted && row.event_date > today) {
             row.showTodayDivider = true;
             todayDividerInserted = true;
         }

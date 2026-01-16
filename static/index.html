@@ -157,9 +157,6 @@
                                 <div class="story-name">View All</div>
                                 <div class="story-dates">All stories + baseline</div>
                             </div>
-                            <div class="story-item-right">
-                                <div class="story-balance" x-text="formatCurrency(getViewAllSummary().balance, settings.base_currency)"></div>
-                            </div>
                         </div>
 
                         <!-- Regular stories -->
@@ -201,6 +198,17 @@
                                 </div>
                             </div>
                         </template>
+                        <!-- Accounts Total Row -->
+                        <div class="account-total-item" x-show="accounts.length > 0">
+                            <div class="account-item-left">
+                                <div class="account-name">Total</div>
+                            </div>
+                            <div class="account-item-right">
+                                <div class="account-balance"
+                                     :class="getAccountsTotalDisplay() >= 0 ? 'positive' : 'negative'"
+                                     x-text="formatCurrency(getAccountsTotalDisplay(), getAccountsTotalCurrency())"></div>
+                            </div>
+                        </div>
                         <div class="empty-state" x-show="accounts.length === 0">
                             <p>No accounts available, add one from the <span class="key">[Manage]</span> button above...</p>
                         </div>
@@ -452,17 +460,99 @@
 
                 <!-- Settings Content (Admin Only) -->
                 <template x-if="user && user.role === 'admin'">
-                    <div>
+                    <div class="settings-grid">
 
-                        <!-- Mode -->
+                        <!-- Left Column: Primary Configuration -->
+                        <div class="settings-column-left">
+
+                            <!-- Preferences -->
                         <section class="section">
                             <div class="section-header">
-                                <h2>Mode</h2>
+                                <h2>Preferences</h2>
                             </div>
-                            <div class="mode-display">
-                                <span x-text="storage.mode === 'full' ? 'Offline Capable' :
-                                               storage.mode === 'sync-only' ? 'Online Only' : 'Basic'">
-                                </span>
+                            <div class="settings-form">
+                                <!-- Three-column grid for desktop mode -->
+                                <div class="preferences-grid">
+                                    <div class="form-group">
+                                        <label for="base-currency">Base Currency</label>
+
+                                        <!-- Custom Dropdown -->
+                                        <div class="custom-select"
+                                            x-data="window.settingsDropdown(
+                                                'base-currency',
+                                                [
+                                                    { value: 'GBP', label: 'GBP (£)' },
+                                                    { value: 'USD', label: 'USD ($)' },
+                                                    { value: 'EUR', label: 'EUR (€)' },
+                                                    { value: 'CAD', label: 'CAD ($)' }
+                                                ],
+                                                () => settingsForm.base_currency,
+                                                (value) => { settingsForm.base_currency = value; updateSettings(); }
+                                            )"
+                                            @click.away="open = false"
+                                            @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
+
+                                            <button type="button" class="select-trigger" @click="toggleOpen()">
+                                                <span x-text="getSelectedLabel()"></span>
+                                                <span class="chevron" :class="{ 'open': open }">▼</span>
+                                            </button>
+
+                                            <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                                <template x-for="opt in options" :key="opt.value">
+                                                    <li @click="selectOption(opt.value)"
+                                                        :class="{ 'selected': settingsForm.base_currency === opt.value }"
+                                                        x-text="opt.label"></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+
+                                        <span class="form-hint">All projections use this as the base currency</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="date-format">Date Format</label>
+
+                                        <!-- Custom Dropdown -->
+                                        <div class="custom-select"
+                                            x-data="window.settingsDropdown(
+                                                'date-format',
+                                                [
+                                                    { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
+                                                    { value: 'MMM DD', label: 'MMM DD (Dec 18)' },
+                                                    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-18)' }
+                                                ],
+                                                () => settingsForm.date_format,
+                                                (value) => { settingsForm.date_format = value; updateSettings(); }
+                                            )"
+                                            @click.away="open = false"
+                                            @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
+
+                                            <button type="button" class="select-trigger" @click="toggleOpen()">
+                                                <span x-text="getSelectedLabel()"></span>
+                                                <span class="chevron" :class="{ 'open': open }">▼</span>
+                                            </button>
+
+                                            <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                                                <template x-for="opt in options" :key="opt.value">
+                                                    <li @click="selectOption(opt.value)"
+                                                        :class="{ 'selected': settingsForm.date_format === opt.value }"
+                                                        x-text="opt.label"></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="baseline-months">Baseline Display (Months)</label>
+                                        <input
+                                            id="baseline-months"
+                                            type="number"
+                                            x-model="settingsForm.baseline_display_months"
+                                            @change="updateSettings()"
+                                            min="1"
+                                            max="12"
+                                            class="form-input">
+                                        <span class="form-hint">How many months of baseline to show on dashboard</span>
+                                    </div>
+                                </div>
                             </div>
                         </section>
 
@@ -491,90 +581,47 @@
                             </div>
                         </section>
 
-                        <!-- Preferences -->
+                        <!-- Backup & Restore -->
                         <section class="section">
                             <div class="section-header">
-                                <h2>Preferences</h2>
+                                <h2>Backup & Restore</h2>
                             </div>
-                            <div class="settings-form">
-                                <div class="form-group">
-                                    <label for="base-currency">Base Currency</label>
-
-                                    <!-- Custom Dropdown -->
-                                    <div class="custom-select"
-                                        x-data="window.settingsDropdown(
-                                            'base-currency',
-                                            [
-                                                { value: 'GBP', label: 'GBP (£)' },
-                                                { value: 'USD', label: 'USD ($)' },
-                                                { value: 'EUR', label: 'EUR (€)' },
-                                                { value: 'CAD', label: 'CAD ($)' }
-                                            ],
-                                            () => settingsForm.base_currency,
-                                            (value) => { settingsForm.base_currency = value; updateSettings(); }
-                                        )"
-                                        @click.away="open = false"
-                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
-
-                                        <button type="button" class="select-trigger" @click="toggleOpen()">
-                                            <span x-text="getSelectedLabel()"></span>
-                                            <span class="chevron" :class="{ 'open': open }">▼</span>
-                                        </button>
-
-                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
-                                            <template x-for="opt in options" :key="opt.value">
-                                                <li @click="selectOption(opt.value)"
-                                                    :class="{ 'selected': settingsForm.base_currency === opt.value }"
-                                                    x-text="opt.label"></li>
-                                            </template>
-                                        </ul>
-                                    </div>
-
-                                    <span class="form-hint">All projections use this as the base currency</span>
-                                </div>
-                                <div class="form-group">
-                                    <label for="date-format">Date Format</label>
-
-                                    <!-- Custom Dropdown -->
-                                    <div class="custom-select"
-                                        x-data="window.settingsDropdown(
-                                            'date-format',
-                                            [
-                                                { value: 'DD MMM', label: 'DD MMM (18 Dec)' },
-                                                { value: 'MMM DD', label: 'MMM DD (Dec 18)' },
-                                                { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-18)' }
-                                            ],
-                                            () => settingsForm.date_format,
-                                            (value) => { settingsForm.date_format = value; updateSettings(); }
-                                        )"
-                                        @click.away="open = false"
-                                        @dropdown-opened.window="if ($event.detail.id !== dropdownId) open = false">
-
-                                        <button type="button" class="select-trigger" @click="toggleOpen()">
-                                            <span x-text="getSelectedLabel()"></span>
-                                            <span class="chevron" :class="{ 'open': open }">▼</span>
-                                        </button>
-
-                                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
-                                            <template x-for="opt in options" :key="opt.value">
-                                                <li @click="selectOption(opt.value)"
-                                                    :class="{ 'selected': settingsForm.date_format === opt.value }"
-                                                    x-text="opt.label"></li>
-                                            </template>
-                                        </ul>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label for="baseline-months">Baseline Display (Months)</label>
+                            <div class="backup-actions">
+                                <button class="btn-secondary" @click="downloadBackup()">
+                                    Backup
+                                </button>
+                                <label for="restore-file" class="btn-secondary file-upload-label">
+                                    Restore
                                     <input
-                                        id="baseline-months"
-                                        type="number"
-                                        x-model="settingsForm.baseline_display_months"
-                                        @change="updateSettings()"
-                                        min="1"
-                                        max="12"
-                                        class="form-input">
-                                    <span class="form-hint">How many months of baseline to show on dashboard</span>
+                                        id="restore-file"
+                                        type="file"
+                                        accept="application/json"
+                                        @change="uploadBackup($event)"
+                                        style="display: none;">
+                                </label>
+                            </div>
+                        </section>
+
+                        </div>
+                        <!-- End Left Column -->
+
+                        <!-- Right Column: System & Utilities -->
+                        <div class="settings-column-right">
+
+                        <!-- Mode -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Mode</h2>
+                            </div>
+                            <div class="mode-display">
+                                <div class="mode-name"
+                                     :class="storageMode === 'full' ? 'mode-full' :
+                                             storageMode === 'sync-only' ? 'mode-sync' : 'mode-limited'"
+                                     x-text="storageMode === 'full' ? 'Online & Offline' :
+                                             storageMode === 'sync-only' ? 'Online Only' : 'Limited'">
+                                </div>
+                                <div class="mode-description" x-text="storageMode === 'full' ? 'Local storage with offline support and background sync' :
+                                               storageMode === 'sync-only' ? 'Real-time sync, requires active internet connection' : 'Basic functionality with direct API calls'">
                                 </div>
                             </div>
                         </section>
@@ -599,7 +646,7 @@
                                                 type="number"
                                                 x-model.number="settingsForm.rates[currency]"
                                                 step="0.01"
-                                                class="form-input rate-input">
+                                                class="form-input">
                                         </div>
                                         <div class="table-col">
                                             <button class="btn-small btn-danger" @click="deleteRate(currency)">Remove</button>
@@ -609,27 +656,6 @@
                             </div>
                             <div class="panel-actions">
                                 <button class="btn-primary" @click="updateSettings()">Save Rates</button>
-                            </div>
-                        </section>
-
-                        <!-- Backup & Restore -->
-                        <section class="section">
-                            <div class="section-header">
-                                <h2>Backup & Restore</h2>
-                            </div>
-                            <div class="backup-actions">
-                                <button class="btn-secondary" @click="downloadBackup()">
-                                    Backup
-                                </button>
-                                <label for="restore-file" class="btn-secondary file-upload-label">
-                                    Restore
-                                    <input
-                                        id="restore-file"
-                                        type="file"
-                                        accept="application/json"
-                                        @change="uploadBackup($event)"
-                                        style="display: none;">
-                                </label>
                             </div>
                         </section>
 
@@ -697,6 +723,9 @@
                                 </button>
                             </div>
                         </section>
+
+                        </div>
+                        <!-- End Right Column -->
 
                     </div>
                 </template>

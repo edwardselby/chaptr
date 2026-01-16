@@ -829,6 +829,34 @@ window.app = function() {
         },
 
         /**
+         * Get accounts total in display currency (or base currency if no display currency set)
+         * @returns {number} Total of all accounts in display currency
+         */
+        getAccountsTotalDisplay() {
+            const baseCurrency = this.settings.base_currency;
+            const displayCurrency = this.displayCurrency;
+
+            // accountsTotal is already in base currency
+            let total = this.accountsTotal;
+
+            // Convert to display currency if needed
+            if (displayCurrency && displayCurrency !== baseCurrency) {
+                const displayRate = this.settings.rates[displayCurrency] || 1.0;
+                total = Math.round(total * displayRate * 100) / 100;
+            }
+
+            return total;
+        },
+
+        /**
+         * Get currency code for accounts total display
+         * @returns {string} Display currency code or base currency code
+         */
+        getAccountsTotalCurrency() {
+            return this.displayCurrency || this.settings.base_currency;
+        },
+
+        /**
          * Update sync queue count for UI indicator
          */
         async updateSyncQueueCount() {
