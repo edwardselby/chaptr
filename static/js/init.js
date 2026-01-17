@@ -208,16 +208,23 @@ async function initServiceWorker() {
 
     const registerSW = async () => {
         try {
-            // Fetch SW version to force browser to check for updates
-            // This ensures browser treats SW as a new URL when version changes
-            const versionResponse = await fetch('/sw-version');
-            const { version } = await versionResponse.json();
-
-            const registration = await navigator.serviceWorker.register(`/sw.js?v=${version}`, {
+            // Register SW with fixed URL - the SW content itself changes when files change
+            // (precache hashes inside SW change), which triggers browser's byte-by-byte update detection
+            const registration = await navigator.serviceWorker.register('/sw.js', {
                 updateViaCache: 'none'  // Always fetch SW from network, never use HTTP cache
             });
-            logger.info('Service Worker registered:', registration.scope, `(version: ${version})`);
+            logger.info('Service Worker registered:', registration.scope);
             logger.perf('Service Worker registration');
+
+            // Force update check - ensures browser fetches latest SW from server
+            // This is important because updateViaCache only affects the SW script itself,
+            // not whether the browser decides to check for updates
+            try {
+                await registration.update();
+                logger.info('[SW] Update check completed');
+            } catch (updateError) {
+                logger.warn('[SW] Update check failed:', updateError);
+            }
 
             // Check for updates on registration
             registration.addEventListener('updatefound', () => {
@@ -244,9 +251,11 @@ async function initServiceWorker() {
                     logger.info('[SW] Controller changed, reloading page...');
 
                     // Set flag to show "Updating Application..." on next load
+                    // Clear force-reload counter (successful update)
                     // Handle sessionStorage being disabled (private browsing, SecurityError)
                     try {
                         sessionStorage.setItem('chaptr-sw-updating', 'true');
+                        sessionStorage.removeItem('chaptr-sw-force-reload');
                     } catch (e) {
                         // sessionStorage disabled - UX message won't show but reload still works
                         logger.warn('[SW] sessionStorage unavailable, update message will not show');
@@ -361,7 +370,7 @@ const testableUtils = {
 
 /**
  * Check if service worker update is available
- * Returns true if update needed, false otherwise
+ * Returns true if there's a waiting worker ready to activate
  */
 async function checkForServiceWorkerUpdate() {
     if (!('serviceWorker' in navigator)) {
@@ -369,23 +378,15 @@ async function checkForServiceWorkerUpdate() {
     }
 
     try {
-        // Get current SW version from server
-        const versionResponse = await fetch('/sw-version');
-        const { version: newVersion } = await versionResponse.json();
-
-        // Check if we have an active SW with different version
         const registration = await navigator.serviceWorker.getRegistration();
-        if (registration?.active) {
-            const currentUrl = registration.active.scriptURL;
-            const currentVersion = new URL(currentUrl).searchParams.get('v');
 
-            if (currentVersion && currentVersion !== newVersion) {
-                logger.info(`[SW] Update available: ${currentVersion} → ${newVersion}`);
-                return true;
-            }
+        // Check if there's a waiting worker (update already downloaded)
+        if (registration?.waiting) {
+            logger.info('[SW] Update ready (waiting worker found)');
+            return true;
         }
     } catch (error) {
-        logger.warn('[SW] Version check failed:', error);
+        logger.warn('[SW] Update check failed:', error);
     }
 
     return false;
@@ -399,48 +400,66 @@ async function init() {
         logger.info('Starting initialization...');
         loadingIndicator.show();
 
-        // Step 0: Check for SW update BEFORE loading app
-        // If update available, skip loading and go straight to SW registration
-        const updateAvailable = await checkForServiceWorkerUpdate();
+        // Step 0: Check if there's a waiting SW that needs activation
+        const hasWaitingWorker = await checkForServiceWorkerUpdate();
 
-        if (!updateAvailable) {
-            // No update - load app normally
-            // Step 1: Import app module (sets window.app)
-            await import('./app.js');
-            logger.perf('App module import');
+        if (hasWaitingWorker) {
+            // There's a waiting worker - activate it immediately
+            logger.info('[SW] Activating waiting worker...');
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (registration?.waiting) {
+                // Set up controllerchange listener before activating
+                let reloadTriggered = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!reloadTriggered) {
+                        reloadTriggered = true;
+                        logger.info('[SW] Controller changed, reloading...');
+                        testableUtils.reloadPage();
+                    }
+                });
 
-            if (typeof window.app !== 'function') {
-                throw new Error('app() function not defined after importing app.js');
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                logger.info('[SW] Waiting for controller change...');
+
+                // Fallback timeout in case controllerchange doesn't fire
+                setTimeout(() => {
+                    if (!reloadTriggered) {
+                        logger.warn('[SW] Controller change timeout - forcing reload');
+                        testableUtils.reloadPage();
+                    }
+                }, 3000);
+                return; // Don't load app, will reload soon
             }
-            logger.info('App module loaded ✓');
-
-            // Step 2: Register global components
-            registerGlobals();
-
-            // Step 3: Load Alpine.js (with retry)
-            await loadAlpine();
-        } else {
-            logger.info('[SW] Skipping app load, update will trigger reload');
         }
 
-        // Step 4: Initialize service worker (always run, triggers reload if update)
+        // Step 1: Import app module (sets window.app)
+        await import('./app.js');
+        logger.perf('App module import');
+
+        if (typeof window.app !== 'function') {
+            throw new Error('app() function not defined after importing app.js');
+        }
+        logger.info('App module loaded ✓');
+
+        // Step 2: Register global components
+        registerGlobals();
+
+        // Step 3: Load Alpine.js (with retry)
+        await loadAlpine();
+
+        // Step 4: Initialize service worker (may trigger reload if update found)
         await initServiceWorker();
 
-        // Complete (only hide loader if no update pending)
-        if (!updateAvailable) {
-            const totalTime = (performance.now() - perf.start).toFixed(2);
-            logger.info(`Initialization complete ✓ (${totalTime}ms)`);
+        // Complete
+        const totalTime = (performance.now() - perf.start).toFixed(2);
+        logger.info(`Initialization complete ✓ (${totalTime}ms)`);
 
-            if (isDevelopment) {
-                console.table(perf.marks);
-            }
-
-            // Hide loading indicator
-            loadingIndicator.hide();
-        } else {
-            logger.info('[SW] Waiting for service worker update to trigger reload...');
-            // Keep loader visible - will reload soon
+        if (isDevelopment) {
+            console.table(perf.marks);
         }
+
+        // Hide loading indicator
+        loadingIndicator.hide();
 
     } catch (error) {
         loadingIndicator.hide();

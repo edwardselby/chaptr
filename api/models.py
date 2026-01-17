@@ -927,6 +927,19 @@ class SyncServerChange(BaseModel):
     )
 
 
+class AppliedChange(BaseModel):
+    """
+    Successfully applied change returned to client.
+
+    Contains the entity's new updated_at timestamp so the client can
+    synchronize its local copy. This prevents false conflicts on
+    subsequent updates.
+    """
+    entity_type: EntityType = Field(..., description="Type of entity changed")
+    entity_id: UUID = Field(..., description="ID of changed entity")
+    updated_at: datetime = Field(..., description="Server's new updated_at timestamp")
+
+
 class SyncResponse(BaseModel):
     """
     Response from POST /api/sync endpoint.
@@ -944,9 +957,9 @@ class SyncResponse(BaseModel):
     3. Apply server_changes to local database
     4. If full_sync_required=true, call GET /api/sync/full
     """
-    applied: list[UUID] = Field(
+    applied: list[AppliedChange] = Field(
         default=[],
-        description="entity_ids of successfully applied client changes"
+        description="Successfully applied client changes with updated timestamps"
     )
     conflicts: list[SyncConflict] = Field(
         default=[],

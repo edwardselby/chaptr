@@ -895,6 +895,9 @@ window.app = function() {
                 // Reload data to reflect server changes
                 await this.loadData();
 
+                // Show conflict resolution modal if conflicts exist
+                await this.checkForConflicts();
+
             } catch (error) {
                 console.error('[CHAPTR] Sync failed:', error);
             } finally {
@@ -1942,6 +1945,9 @@ window.app = function() {
 
                     // Reload data to reflect server changes
                     await this.loadData();
+
+                    // Show conflict resolution modal if conflicts exist
+                    await this.checkForConflicts();
                 })();
 
                 await Promise.race([syncPromise, timeoutPromise]);
@@ -3228,6 +3234,39 @@ window.app = function() {
         },
 
         /**
+         * Format datetime for conflict display
+         * @param {string} dateTimeStr - ISO datetime string
+         * @returns {string} Formatted datetime (e.g., "Jan 15, 14:30")
+         */
+        formatDateTime(dateTimeStr) {
+            if (!dateTimeStr) return '';
+            const date = new Date(dateTimeStr);
+            if (isNaN(date.getTime())) return '';
+
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = months[date.getMonth()];
+            const day = date.getDate();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+
+            return `${month} ${day}, ${hours}:${minutes}`;
+        },
+
+        /**
+         * Determine if version is newer based on updated_at timestamp
+         * @param {object} version - Version object with updated_at field
+         * @param {object} otherVersion - Other version to compare against
+         * @returns {boolean} True if this version is newer
+         */
+        isNewerVersion(version, otherVersion) {
+            if (!version?.updated_at || !otherVersion?.updated_at) return false;
+            const versionTime = new Date(version.updated_at).getTime();
+            const otherTime = new Date(otherVersion.updated_at).getTime();
+            return versionTime > otherTime;
+        },
+
+        /**
          * Format relative time (wrapper for utils)
          */
         formatRelativeTime(date) {
@@ -3259,8 +3298,39 @@ window.app = function() {
 
             if (this.conflicts.length > 0) {
                 console.log(`Found ${this.conflicts.length} unresolved conflicts`);
+
+                // Enrich conflicts with full entity data from IndexedDB
+                // This fixes the issue where client_version may only contain partial update data
+                for (const conflict of this.conflicts) {
+                    // For edit_edit conflicts, client_version might be partial update data
+                    // Try to get full entity from IndexedDB to display complete information
+                    if (conflict.conflict_type === 'edit_edit' && conflict.entity_id) {
+                        let fullEntity = null;
+
+                        if (conflict.entity_type === 'event') {
+                            fullEntity = await db.events.get(conflict.entity_id);
+                        } else if (conflict.entity_type === 'account') {
+                            fullEntity = await db.accounts.get(conflict.entity_id);
+                        } else if (conflict.entity_type === 'story') {
+                            fullEntity = await db.stories.get(conflict.entity_id);
+                        }
+
+                        if (fullEntity) {
+                            // Merge full entity data with client_version to ensure all fields are present
+                            conflict.client_version = { ...fullEntity, ...conflict.client_version };
+                        }
+                    }
+                    // Note: server_version should already be complete from backend
+                }
+
                 this.currentConflictIndex = 0;
                 this.currentConflict = this.conflicts[0];
+
+                // Debug: Log conflict data to diagnose display issues
+                console.log('[CHAPTR] Current conflict data:', this.currentConflict);
+                console.log('[CHAPTR] Client version:', this.currentConflict?.client_version);
+                console.log('[CHAPTR] Server version:', this.currentConflict?.server_version);
+
                 this.showConflictModal = true;
             }
         },
@@ -3284,49 +3354,104 @@ window.app = function() {
             try {
                 // Task 116: Update local Dexie with selected version
                 if (selectedVersion) {
-                    // Determine base_updated_at from the version we're accepting
-                    const baseUpdatedAt = choice === 'keep_mine'
-                        ? conflict.client_version?.base_updated_at || conflict.client_version?.updated_at
-                        : conflict.server_version?.updated_at;
+                    // CRITICAL: When resolving conflicts, use server's current timestamp as base
+                    // to tell server "I know your current version, overwrite it with my choice"
+                    const baseUpdatedAt = conflict.server_version?.updated_at;
+
+                    // CRITICAL: For "Keep Theirs", preserve server timestamp
+                    // For "Keep Mine", use NEW timestamp to ensure monotonic increasing timestamps
+                    const resolvedTimestamp = choice === 'keep_theirs'
+                        ? selectedVersion.updated_at  // Keep server's timestamp
+                        : new Date().toISOString();   // Fresh timestamp for client version
 
                     // Ensure object has 'id' field (Dexie primary key)
                     // Backend conflicts use MongoDB _id, need to convert
                     // Also serialize MongoDB types (Decimal128, ObjectId) to plain JS values
-                    const eventData = {
+                    const entityData = {
                         ...selectedVersion,
                         id: selectedVersion.id || conflict.entity_id,  // Use entity_id as fallback
-                        updated_at: new Date().toISOString(), // Fresh timestamp
-                        // Convert MongoDB Decimal128 to number
-                        amount: parseFloat(selectedVersion.amount),
-                        rate_to_base: parseFloat(selectedVersion.rate_to_base || 1.0),
-                        // Ensure IDs are strings (convert MongoDB ObjectId if needed)
-                        account_id: selectedVersion.account_id ? String(selectedVersion.account_id) : null,
-                        story_id: selectedVersion.story_id ? String(selectedVersion.story_id) : null,
-                        recurring_rule_id: selectedVersion.recurring_rule_id ? String(selectedVersion.recurring_rule_id) : null
+                        updated_at: resolvedTimestamp
                     };
 
+                    // Entity-specific field serialization
+                    if (conflict.entity_type === 'event') {
+                        // Convert MongoDB Decimal128 to number for events
+                        entityData.amount = parseFloat(selectedVersion.amount);
+                        entityData.rate_to_base = parseFloat(selectedVersion.rate_to_base || 1.0);
+                        // Ensure IDs are strings (convert MongoDB ObjectId if needed)
+                        entityData.account_id = selectedVersion.account_id ? String(selectedVersion.account_id) : null;
+                        entityData.story_id = selectedVersion.story_id ? String(selectedVersion.story_id) : null;
+                        entityData.recurring_rule_id = selectedVersion.recurring_rule_id ? String(selectedVersion.recurring_rule_id) : null;
+                    } else if (conflict.entity_type === 'account') {
+                        // Convert MongoDB Decimal128 to number for accounts
+                        entityData.current_balance = parseFloat(selectedVersion.current_balance);
+                        entityData.rate_to_base = parseFloat(selectedVersion.rate_to_base || 1.0);
+                    } else if (conflict.entity_type === 'story') {
+                        // Stories may have funding_amount and goal_amount as Decimal128
+                        if (selectedVersion.funding_amount) {
+                            entityData.funding_amount = parseFloat(selectedVersion.funding_amount);
+                        }
+                        if (selectedVersion.goal_amount) {
+                            entityData.goal_amount = parseFloat(selectedVersion.goal_amount);
+                        }
+                        // Ensure IDs are strings
+                        entityData.default_account_id = selectedVersion.default_account_id ? String(selectedVersion.default_account_id) : null;
+                    }
+
                     // Remove MongoDB _id field if present (not needed in Dexie)
-                    delete eventData._id;
+                    delete entityData._id;
 
-                    // Update event in local database
-                    await db.events.put(eventData);
+                    // Update entity in appropriate Dexie table
+                    if (conflict.entity_type === 'event') {
+                        await db.events.put(entityData);
+                    } else if (conflict.entity_type === 'account') {
+                        await db.accounts.put(entityData);
+                    } else if (conflict.entity_type === 'story') {
+                        await db.stories.put(entityData);
+                    }
 
-                    // Task 117: Queue resolution for sync (use serialized data)
-                    await db.queueChange(
-                        'event',
-                        conflict.entity_id,
-                        'update',
-                        eventData,  // Use serialized version, not original
-                        baseUpdatedAt // Use original timestamp before conflict
-                    );
+                    // CRITICAL: Clear all existing queue items for this entity first
+                    // Multiple edits before sync create multiple queue items, all conflicting
+                    // We must clear them before queueing the resolution
+                    await db.sync_queue
+                        .where({ entity_type: conflict.entity_type, entity_id: conflict.entity_id })
+                        .delete();
+                    console.log(`[CHAPTR] Cleared existing queue items for ${conflict.entity_type} ${conflict.entity_id}`);
+
+                    // Task 117: Queue resolution for sync ONLY if keeping client version
+                    // If keeping server version, server already has it - no need to sync back
+                    if (choice === 'keep_mine') {
+                        await db.queueChange(
+                            conflict.entity_type,
+                            conflict.entity_id,
+                            'update',
+                            entityData,  // Use serialized version, not original
+                            baseUpdatedAt // Use server's timestamp to avoid conflict detection
+                        );
+                    }
+                    // If keeping server version, no sync needed - just resolved locally
                 } else {
                     // Selected version is null (delete case - keep_mine on delete/edit conflict)
                     // Null guard: Use server version's timestamp if it exists
                     const baseUpdatedAt = conflict.server_version?.updated_at || conflict.client_version?.updated_at;
 
-                    await db.events.delete(conflict.entity_id);
+                    // Delete from appropriate Dexie table
+                    if (conflict.entity_type === 'event') {
+                        await db.events.delete(conflict.entity_id);
+                    } else if (conflict.entity_type === 'account') {
+                        await db.accounts.delete(conflict.entity_id);
+                    } else if (conflict.entity_type === 'story') {
+                        await db.stories.delete(conflict.entity_id);
+                    }
+
+                    // CRITICAL: Clear all existing queue items for this entity first
+                    await db.sync_queue
+                        .where({ entity_type: conflict.entity_type, entity_id: conflict.entity_id })
+                        .delete();
+                    console.log(`[CHAPTR] Cleared existing queue items for ${conflict.entity_type} ${conflict.entity_id} (delete case)`);
+
                     await db.queueChange(
-                        'event',
+                        conflict.entity_type,
                         conflict.entity_id,
                         'delete',
                         null,
@@ -3336,6 +3461,7 @@ window.app = function() {
 
                 // Task 118: Mark conflict as resolved
                 await db.resolveConflict(conflict.id);
+                console.log(`[CHAPTR] Marked conflict ${conflict.id} as resolved`);
 
                 // Task 119: Process next conflict if multiple exist
                 this.currentConflictIndex++;
@@ -3351,7 +3477,9 @@ window.app = function() {
                     await this.updateDashboardProjection();
 
                     // Trigger sync to send resolved changes
+                    console.log('[CHAPTR] Syncing resolved conflict changes...');
                     await this.manualSync();
+                    console.log('[CHAPTR] Sync complete after conflict resolution');
                 }
             } catch (error) {
                 console.error('Error resolving conflict:', error);

@@ -1066,8 +1066,22 @@ class StorageAdapter {
      * @returns {Promise<void>}
      */
     async processSyncResponse(syncData) {
-        // Store conflicts in conflicts table
+        // Store conflicts in conflicts table (with deduplication)
         for (const conflict of syncData.conflicts) {
+            // Check if we already have an UNRESOLVED conflict for this entity
+            const existingUnresolvedConflict = await db.conflicts
+                .where('[entity_id+conflict_type]')
+                .equals([conflict.entity_id, conflict.conflict_type])
+                .filter(c => c.resolved_at === null)
+                .first();
+
+            // Skip only if there's already an unresolved conflict for this exact entity+type
+            if (existingUnresolvedConflict) {
+                console.log(`[CHAPTR] Skipping duplicate conflict for ${conflict.entity_type} ${conflict.entity_id} (already exists as unresolved)`);
+                continue;
+            }
+
+            // Add new conflict (even if old resolved conflicts exist - those are historical)
             await db.conflicts.add({
                 id: generateUUID(),
                 entity_type: conflict.entity_type,
@@ -1111,12 +1125,7 @@ class StorageAdapter {
             }
         }
 
-        // Clear successfully applied changes from queue
-        for (const appliedId of syncData.applied) {
-            await db.sync_queue.where({ entity_id: appliedId }).delete();
-        }
-
-        // Apply server changes to Dexie
+        // Entity type to table name mapping
         const tableMap = {
             'account': 'accounts',
             'story': 'stories',
@@ -1124,6 +1133,38 @@ class StorageAdapter {
             'recurring_rule': 'recurring_rules',
             'settings': 'settings'
         };
+
+        // Process successfully applied changes:
+        // 1. Update local entity's updated_at to match server (prevents false conflicts)
+        // 2. Clear from sync queue
+        for (const applied of syncData.applied) {
+            const tableName = tableMap[applied.entity_type];
+
+            // Skip settings - uses different ID scheme (integer 1 locally vs UUID on server)
+            // Settings timestamp sync is handled separately via full entity replacement
+            if (applied.entity_type === 'settings') {
+                await db.sync_queue.where({ entity_id: applied.entity_id }).delete();
+                continue;
+            }
+
+            // Update local entity's updated_at to match server's new timestamp
+            // This is critical to prevent false conflicts on subsequent updates
+            if (tableName) {
+                const existingEntity = await db[tableName].get(applied.entity_id);
+                if (existingEntity) {
+                    await db[tableName].update(applied.entity_id, {
+                        updated_at: applied.updated_at
+                    });
+                } else {
+                    // Entity not found locally - may have been deleted or not yet synced
+                    // This can happen with reconciliation-modified accounts that client hasn't pulled yet
+                    console.warn(`[Sync] Applied entity not found locally: ${applied.entity_type} ${applied.entity_id}`);
+                }
+            }
+
+            // Clear from queue
+            await db.sync_queue.where({ entity_id: applied.entity_id }).delete();
+        }
 
         for (const change of syncData.server_changes) {
             const tableName = tableMap[change.entity_type];

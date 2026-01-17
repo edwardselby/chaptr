@@ -702,6 +702,29 @@ body::before {
     border-bottom: 1px solid var(--green-dim);
     font-size: 1em;
     color: var(--green);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.version-badge {
+    font-size: 0.7em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.version-badge.newer {
+    background: rgba(74, 246, 38, 0.2);
+    color: var(--green);
+    border: 1px solid var(--green);
+}
+
+.version-badge.older {
+    background: rgba(255, 193, 7, 0.2);
+    color: var(--amber);
+    border: 1px solid var(--amber);
 }
 
 .version-mine h3 {
@@ -730,6 +753,20 @@ body::before {
 .version-details strong {
     color: var(--text-dim);
     font-weight: 600;
+}
+
+/* Conflict Modal Footer */
+.modal-conflict .modal-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding: 20px 24px;
+    border-top: 1px solid var(--border);
+}
+
+.modal-conflict .modal-footer .btn {
+    flex: 1;
+    max-width: 200px;
 }
 
 /* TODAY Divider */

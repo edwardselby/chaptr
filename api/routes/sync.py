@@ -25,6 +25,7 @@ from api.models import (
     SyncResponse,
     SyncConflict,
     SyncServerChange,
+    AppliedChange,
     FullSyncResponse,
     EntityType,
     ChangeAction,
@@ -51,6 +52,13 @@ from api.utils.errors import ResourceNotFoundError, ResourceConflictError
 
 
 router = APIRouter()
+
+# ==================== Constants ====================
+
+# Maximum time (seconds) between CREATE and UPDATE in same sync batch.
+# Typical sync batch processing takes <1 second; 5 seconds provides buffer
+# for network latency and slow operations while preventing exploitation.
+SAME_BATCH_MAX_INTERVAL_SECONDS = 5
 
 
 # ==================== Model Mapping Helpers ====================
@@ -252,11 +260,32 @@ async def sync(
     # Capture sync start time - used to include changes created during this sync (e.g., reconciliation)
     sync_start_time = utc_now()
 
-    applied: list[UUID] = []
+    applied: list[AppliedChange] = []
     conflicts: list[SyncConflict] = []
 
     # Track entities created in this batch to skip conflict detection on immediate updates
     created_in_batch: set[UUID] = set()
+
+    async def append_applied(repo: BaseRepository, entity_type: EntityType, entity_id: UUID, is_delete: bool = False):
+        """Helper to append AppliedChange with fetched updated_at timestamp."""
+        if is_delete:
+            # For deleted entities, use current time as the timestamp.
+            # This is intentional: the entity no longer exists so we can't fetch its timestamp,
+            # and the exact value doesn't matter for conflict detection (entity is gone).
+            # The timestamp only serves to acknowledge the deletion was processed.
+            applied.append(AppliedChange(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                updated_at=utc_now()
+            ))
+        else:
+            # Fetch entity to get new updated_at
+            entity = await repo.get(entity_id)
+            applied.append(AppliedChange(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                updated_at=entity.updated_at
+            ))
 
     # ========== PUSH PHASE: Process client changes ==========
     for change in request.changes:
@@ -288,7 +317,7 @@ async def sync(
         try:
             if change.action == ChangeAction.CREATE:
                 await handle_create(repo, change, current_user, request.client_id)
-                applied.append(change.entity_id)
+                await append_applied(repo, change.entity_type, change.entity_id)
                 created_in_batch.add(change.entity_id)  # Track for conflict-free updates
 
             elif change.action == ChangeAction.UPDATE:
@@ -297,13 +326,13 @@ async def sync(
                 skip_conflict_check = change.entity_id in created_in_batch
 
                 if skip_conflict_check:
-                    # SECURITY: Validate entity was actually created recently (within 5 seconds)
+                    # SECURITY: Validate entity was actually created recently
                     # This prevents exploiting same-batch bypass if timing is off
                     entity = await repo.get(change.entity_id)
                     if entity:
                         time_since_create = (sync_start_time - entity.created_at).total_seconds()
-                        if time_since_create > 5:  # More than 5 seconds old - shouldn't happen in same batch
-                            # Fall back to normal conflict detection
+                        if time_since_create > SAME_BATCH_MAX_INTERVAL_SECONDS:
+                            # Entity too old for same-batch treatment - use normal conflict detection
                             skip_conflict_check = False
 
                     if skip_conflict_check:
@@ -312,28 +341,28 @@ async def sync(
                         if update_model_class:
                             update_data = update_model_class(**change.data)
                             await repo.update(change.entity_id, update_data, current_user=current_user, client_id=request.client_id)
-                            applied.append(change.entity_id)
+                            await append_applied(repo, change.entity_type, change.entity_id)
                     else:
                         # Entity too old - use normal conflict detection
                         conflict = await handle_update(repo, change, current_user, request.client_id)
                         if conflict:
                             conflicts.append(conflict)
                         else:
-                            applied.append(change.entity_id)
+                            await append_applied(repo, change.entity_type, change.entity_id)
                 else:
                     # Normal conflict detection
                     conflict = await handle_update(repo, change, current_user, request.client_id)
                     if conflict:
                         conflicts.append(conflict)
                     else:
-                        applied.append(change.entity_id)
+                        await append_applied(repo, change.entity_type, change.entity_id)
 
             elif change.action == ChangeAction.DELETE:
                 conflict = await handle_delete(repo, change, current_user, request.client_id)
                 if conflict:
                     conflicts.append(conflict)
                 else:
-                    applied.append(change.entity_id)
+                    await append_applied(repo, change.entity_type, change.entity_id, is_delete=True)
 
         except ResourceNotFoundError:
             # Entity was already deleted by another client - not an error
@@ -355,12 +384,63 @@ async def sync(
 
     user_id = UUID(current_user["id"])
 
-    await trigger_reconciliation(
+    reconciled_account_ids = await trigger_reconciliation(
         trigger_reason="sync",
         db=db,
         user_id=user_id,
         client_id=None  # Server-side change - must appear in all clients' server_changes
     )
+
+    # ========== POST-RECONCILIATION: Refresh account timestamps ==========
+    # Reconciliation may update accounts that weren't in the client's changes.
+    # We must return updated timestamps for ALL reconciled accounts to prevent false conflicts.
+    #
+    # NOTE: Currently only accounts are refreshed because reconciliation only modifies:
+    # 1. Account entities (clears pending_reconciliation flag)
+    # 2. Event entities (creates/deletes [auto] adjustment events)
+    #
+    # Events don't need timestamp refresh here because:
+    # - Created events are new (client doesn't have stale timestamps)
+    # - Deleted events are removed (no conflict possible)
+    #
+    # If future reconciliation logic modifies other entity types, this section
+    # should be extended to refresh those timestamps as well.
+    account_repo = AccountRepository(db)
+
+    # Track which account IDs are already in the applied list
+    applied_account_ids = {
+        ac.entity_id for ac in applied if ac.entity_type == EntityType.ACCOUNT
+    }
+
+    # 1. Refresh timestamps for accounts already in applied list
+    for i, applied_change in enumerate(applied):
+        if applied_change.entity_type == EntityType.ACCOUNT:
+            try:
+                refreshed_account = await account_repo.get(applied_change.entity_id)
+                applied[i] = AppliedChange(
+                    entity_type=applied_change.entity_type,
+                    entity_id=applied_change.entity_id,
+                    updated_at=refreshed_account.updated_at
+                )
+            except ResourceNotFoundError:
+                # Account was deleted during reconciliation - keep original timestamp
+                pass
+
+    # 2. Add reconciled accounts that weren't in the original applied list
+    # These are accounts modified by reconciliation (e.g., clearing pending_reconciliation)
+    # that the client didn't directly change but needs updated timestamps for
+    for account_id in reconciled_account_ids:
+        if account_id not in applied_account_ids:
+            try:
+                refreshed_account = await account_repo.get(account_id)
+                applied.append(AppliedChange(
+                    entity_type=EntityType.ACCOUNT,
+                    entity_id=account_id,
+                    updated_at=refreshed_account.updated_at
+                ))
+            except ResourceNotFoundError:
+                # Account was deleted - skip
+                pass
 
     # ========== PULL PHASE: Get changes from other clients ==========
     server_changes: list[SyncServerChange] = []
@@ -484,13 +564,13 @@ async def trigger_reconciliation_endpoint(
     Triggered by: balance updates, projection views, or manual user action.
 
     Returns:
-        {"reconciled": bool, "message": str}
+        {"reconciled": bool, "accounts_processed": int, "message": str}
     """
     from core.reconciliation import trigger_reconciliation
 
     user_id = UUID(current_user["id"])
 
-    result = await trigger_reconciliation(
+    reconciled_ids = await trigger_reconciliation(
         trigger_reason="manual",
         db=db,
         user_id=user_id,
@@ -498,6 +578,7 @@ async def trigger_reconciliation_endpoint(
     )
 
     return {
-        "reconciled": result,
-        "message": "Reconciliation complete" if result else "No pending accounts"
+        "reconciled": len(reconciled_ids) > 0,
+        "accounts_processed": len(reconciled_ids),
+        "message": f"Reconciliation complete ({len(reconciled_ids)} accounts)" if reconciled_ids else "No pending accounts"
     }

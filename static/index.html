@@ -2130,32 +2130,112 @@
     <div class="modal-overlay" x-show="showConflictModal" @keydown.escape.window="closeConflictModal()" x-cloak>
         <div class="modal modal-conflict" @click.stop>
             <div class="modal-header" style="border-bottom-color: var(--amber);">
-                <h2 style="color: var(--amber);">⚠ Sync Conflict Detected</h2>
+                <h2 style="color: var(--amber);">[!!] Sync Conflict</h2>
                 <span class="conflict-count" x-text="`Conflict ${currentConflictIndex + 1} of ${conflicts.length}`"></span>
             </div>
 
             <div class="modal-body">
-                <!-- Edit/Edit Conflict (Task 112) -->
-                <template x-if="currentConflict?.conflict_type === 'edit_edit'">
+                <!-- Edit/Edit Conflict - EVENT (Task 112) -->
+                <template x-if="currentConflict?.conflict_type === 'edit_edit' && currentConflict?.entity_type === 'event'">
                     <div>
                         <p class="conflict-message">Both you and another device edited this event. Choose which version to keep:</p>
 
                         <div class="conflict-versions">
                             <div class="version version-mine">
-                                <h3>Your Version</h3>
+                                <h3>
+                                    <span>Your Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
                                 <div class="version-details">
                                     <p><strong>Description:</strong> <span x-text="currentConflict.client_version?.description"></span></p>
-                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount)"></span></p>
+                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount, currentConflict.client_version?.currency)"></span></p>
                                     <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.client_version?.event_date)"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
                                 </div>
                             </div>
 
                             <div class="version version-theirs">
-                                <h3>Server Version</h3>
+                                <h3>
+                                    <span>Server Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
                                 <div class="version-details">
                                     <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
-                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount)"></span></p>
+                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount, currentConflict.server_version?.currency)"></span></p>
                                     <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Edit/Edit Conflict - ACCOUNT -->
+                <template x-if="currentConflict?.conflict_type === 'edit_edit' && currentConflict?.entity_type === 'account'">
+                    <div>
+                        <p class="conflict-message">Both you and another device edited this account. Choose which version to keep:</p>
+
+                        <div class="conflict-versions">
+                            <div class="version version-mine">
+                                <h3>
+                                    <span>Your Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
+                                <div class="version-details">
+                                    <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                    <p><strong>Currency:</strong> <span x-text="currentConflict.client_version?.currency"></span></p>
+                                    <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.client_version?.current_balance, currentConflict.client_version?.currency)"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
+                                </div>
+                            </div>
+
+                            <div class="version version-theirs">
+                                <h3>
+                                    <span>Server Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
+                                <div class="version-details">
+                                    <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                    <p><strong>Currency:</strong> <span x-text="currentConflict.server_version?.currency"></span></p>
+                                    <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.server_version?.current_balance, currentConflict.server_version?.currency)"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Edit/Edit Conflict - STORY -->
+                <template x-if="currentConflict?.conflict_type === 'edit_edit' && currentConflict?.entity_type === 'story'">
+                    <div>
+                        <p class="conflict-message">Both you and another device edited this story. Choose which version to keep:</p>
+
+                        <div class="conflict-versions">
+                            <div class="version version-mine">
+                                <h3>
+                                    <span>Your Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
+                                <div class="version-details">
+                                    <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                    <p><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.client_version?.start_date)"></span></p>
+                                    <p><strong>End Date:</strong> <span x-text="currentConflict.client_version?.end_date ? formatDate(currentConflict.client_version.end_date) : 'Ongoing'"></span></p>
+                                    <p><strong>Goal:</strong> <span x-text="currentConflict.client_version?.goal_type || 'None'"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
+                                </div>
+                            </div>
+
+                            <div class="version version-theirs">
+                                <h3>
+                                    <span>Server Version</span>
+                                    <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
+                                </h3>
+                                <div class="version-details">
+                                    <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                    <p><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.server_version?.start_date)"></span></p>
+                                    <p><strong>End Date:</strong> <span x-text="currentConflict.server_version?.end_date ? formatDate(currentConflict.server_version.end_date) : 'Ongoing'"></span></p>
+                                    <p><strong>Goal:</strong> <span x-text="currentConflict.server_version?.goal_type || 'None'"></span></p>
+                                    <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
                                 </div>
                             </div>
                         </div>
@@ -2165,21 +2245,39 @@
                 <!-- Delete/Edit Conflict (Task 114) -->
                 <template x-if="currentConflict?.conflict_type === 'delete_edit'">
                     <div>
-                        <p class="conflict-message">You tried to delete this event, but it was modified on another device:</p>
+                        <p class="conflict-message" x-text="`You tried to delete this ${currentConflict.entity_type}, but it was modified on another device:`"></p>
 
                         <div class="conflict-versions">
                             <div class="version version-mine">
                                 <h3>Your Action</h3>
-                                <p style="color: var(--amber);">Delete this event</p>
+                                <p style="color: var(--amber);" x-text="`Delete this ${currentConflict.entity_type}`"></p>
                             </div>
 
                             <div class="version version-theirs">
                                 <h3>Server Version</h3>
-                                <div class="version-details">
-                                    <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
-                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount)"></span></p>
-                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
-                                </div>
+                                <!-- Show different fields based on entity type -->
+                                <template x-if="currentConflict.entity_type === 'event'">
+                                    <div class="version-details">
+                                        <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
+                                        <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount, currentConflict.server_version?.currency)"></span></p>
+                                        <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
+                                        <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
+                                    </div>
+                                </template>
+                                <template x-if="currentConflict.entity_type === 'account'">
+                                    <div class="version-details">
+                                        <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                        <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.server_version?.current_balance, currentConflict.server_version?.currency)"></span></p>
+                                        <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
+                                    </div>
+                                </template>
+                                <template x-if="currentConflict.entity_type === 'story'">
+                                    <div class="version-details">
+                                        <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                        <p><strong>Date Range:</strong> <span x-text="formatDateRange(currentConflict.server_version?.start_date, currentConflict.server_version?.end_date)"></span></p>
+                                        <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -2189,11 +2287,11 @@
             <div class="modal-footer">
                 <!-- Task 113: Keep Mine / Keep Theirs buttons -->
                 <button @click="resolveConflict('keep_mine')" class="btn btn-primary">
-                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep My Version</span>
+                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Mine</span>
                     <span x-show="currentConflict?.conflict_type === 'delete_edit'">Keep Deleted</span>
                 </button>
                 <button @click="resolveConflict('keep_theirs')" class="btn btn-secondary">
-                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Server Version</span>
+                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Theirs</span>
                     <span x-show="currentConflict?.conflict_type === 'delete_edit'">Restore Event</span>
                 </button>
             </div>

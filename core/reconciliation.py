@@ -22,7 +22,7 @@ async def trigger_reconciliation(
     db: AsyncIOMotorDatabase,
     user_id: UUID,
     client_id: Optional[str] = None
-) -> bool:
+) -> List[UUID]:
     """
     Trigger reconciliation for all accounts with pending_reconciliation = true.
 
@@ -32,10 +32,11 @@ async def trigger_reconciliation(
     :param db: MongoDB database instance
     :param user_id: User UUID (from JWT)
     :param client_id: Client identifier for change log
-    :return: True if reconciliation ran, False if no pending accounts
+    :return: List of account IDs that were reconciled (empty list if none)
     """
     from api.repositories.accounts import AccountRepository
     from api.repositories.events import EventRepository
+    from api.models import AccountUpdate
 
     account_repo = AccountRepository(db)
     event_repo = EventRepository(db)
@@ -47,8 +48,9 @@ async def trigger_reconciliation(
     }).to_list(length=None)
 
     if not pending_accounts:
-        return False
+        return []
 
+    reconciled_account_ids: List[UUID] = []
     today = datetime.now(timezone.utc).date().isoformat()
 
     for account_doc in pending_accounts:
@@ -68,18 +70,18 @@ async def trigger_reconciliation(
                 client_id=client_id
             )
 
-        # 5. Clear pending_reconciliation flag
-        await account_repo.collection.update_one(
-            {"id": str(account_id)},
-            {
-                "$set": {
-                    "pending_reconciliation": False,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }
-            }
+        # 5. Clear pending_reconciliation flag using repository update
+        # This properly logs to change_log so other clients see the change
+        await account_repo.update(
+            account_id,
+            AccountUpdate(pending_reconciliation=False),
+            current_user={"id": str(user_id)},
+            client_id=client_id
         )
 
-    return True
+        reconciled_account_ids.append(account_id)
+
+    return reconciled_account_ids
 
 
 async def calculate_auto_adjustment(
