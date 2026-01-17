@@ -10,7 +10,7 @@ import {
   createOpeningBalanceEventData,
   createRecurringInstanceData,
   generateInstancesForWindow,
-} from '../static/js/event-helpers.js';
+} from '../../../static/js/event-helpers.js';
 
 describe('calculateRateToBase', () => {
   const mockSettings = {

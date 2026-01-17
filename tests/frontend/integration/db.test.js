@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { db } from '../static/js/db.js';
-import { generateUUID } from '../static/js/utils.js';
+import { db } from '../../../static/js/db.js';
+import { generateUUID } from '../../../static/js/utils.js';
 
 describe('Dexie Database - Initialization', () => {
   it('should have all required tables defined', () => {

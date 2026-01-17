@@ -79,7 +79,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // Simulate AbortController timeout
             fetchSpy.mockRejectedValue(new DOMException('Aborted', 'AbortError'));
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -103,7 +103,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
                 })
             );
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
             const startTime = Date.now();
             const result = await checkForServiceWorkerUpdate();
@@ -126,7 +126,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
 
             fetchSpy.mockImplementation(() => delayedPromise);
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
             // Start check in background
             const checkPromise = checkForServiceWorkerUpdate();
@@ -158,7 +158,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // Simulate network error (offline, DNS failure, etc.)
             fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -175,7 +175,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             networkError.name = 'NetworkError';
             fetchSpy.mockRejectedValue(networkError);
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -185,7 +185,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // Simulate offline mode
             fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -202,7 +202,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
                 json: async () => { throw new Error('Server error'); }
             });
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             // Should catch error and return false
@@ -217,7 +217,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
                 }
             });
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -234,7 +234,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
                 json: async () => ({ version: 'abc12345' })
             });
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
             // Start 3 concurrent checks
             const results = await Promise.all([
@@ -258,7 +258,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
                 })
             );
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -272,7 +272,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // Set registration to null initially (pending)
             navigator.serviceWorker.getRegistration.mockResolvedValue(null);
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -281,7 +281,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
         it('should return false when service worker registration is null', async () => {
             navigator.serviceWorker.getRegistration.mockResolvedValue(null);
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
@@ -295,7 +295,7 @@ describe('SW Version Detection - Network Edge Cases', () => {
             };
             navigator.serviceWorker.getRegistration.mockResolvedValue(registrationNoActive);
 
-            const { checkForServiceWorkerUpdate } = await import('../static/js/init.js');
+            const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);

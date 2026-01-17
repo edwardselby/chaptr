@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadingIndicator } from '../static/js/init.js';
+import { loadingIndicator } from '../../../static/js/init.js';
 
 describe('Service Worker Updating UX', () => {
     let originalSessionStorage;

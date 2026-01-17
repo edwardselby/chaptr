@@ -17,7 +17,7 @@ import {
   isToday,
   isPast,
   getModeAwareErrorMessage,
-} from '../static/js/utils.js';
+} from '../../../static/js/utils.js';
 
 describe('formatCurrency', () => {
   it('formats positive GBP amounts correctly', () => {

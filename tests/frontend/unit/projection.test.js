@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   convertToBaseCurrency,
   convertFromBaseCurrency,
-} from '../static/js/projection.js';
+} from '../../../static/js/projection.js';
 
 describe('convertToBaseCurrency', () => {
   it('converts amount using rate', () => {

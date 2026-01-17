@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ValidationHelpers } from '../static/js/validation-helpers.js';
+import { ValidationHelpers } from '../../../static/js/validation-helpers.js';
 
 describe('Form Validation Integration - validateHTML5', () => {
     /**

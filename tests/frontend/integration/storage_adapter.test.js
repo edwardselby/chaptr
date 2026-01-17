@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { storage } from '../static/js/storage-adapter.js';
+import { storage } from '../../../static/js/storage-adapter.js';
 
 // Create a test-friendly wrapper that we can instantiate
 class StorageAdapter {

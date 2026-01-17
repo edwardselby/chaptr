@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ValidationHelpers } from '../static/js/validation-helpers.js';
+import { ValidationHelpers } from '../../../static/js/validation-helpers.js';
 
 /**
  * Test Utilities - DOM Element Creation

@@ -6,14 +6,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { db } from '../static/js/db.js';
+import { db } from '../../../static/js/db.js';
 import {
   applyQueuedChange,
   applyDerivedChange,
   applyDerivedChangesBatch,
   clearQueuedMarkers
-} from '../static/js/queue-helpers.js';
-import { generateUUID } from '../static/js/utils.js';
+} from '../../../static/js/queue-helpers.js';
+import { generateUUID } from '../../../static/js/utils.js';
 
 describe('Queue Helpers - applyQueuedChange', () => {
   const testAccountId = generateUUID();

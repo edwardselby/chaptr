@@ -131,7 +131,7 @@ describe('Initialization Sequence', () => {
     describe('Normal Initialization Flow', () => {
         it('should execute in correct order: checkUpdate → app.js → globals → Alpine.start()', async () => {
             // Dynamic import to test actual init sequence
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             // Call init manually (auto-execution disabled in test env)
             await initModule.init();
@@ -154,7 +154,7 @@ describe('Initialization Sequence', () => {
         });
 
         it('should complete initialization without errors in normal flow', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             await initModule.init();
 
@@ -179,7 +179,7 @@ describe('Initialization Sequence', () => {
         });
 
         it('should not log errors during successful initialization', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             await initModule.init();
             await vi.runAllTimersAsync();
@@ -189,7 +189,7 @@ describe('Initialization Sequence', () => {
         });
 
         it('should show and hide loading indicator', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             // Loader should not exist initially
             expect(document.getElementById('chaptr-init-loader')).toBeNull();
@@ -220,7 +220,7 @@ describe('Initialization Sequence', () => {
                 json: async () => ({ version: 'new-version-123' })
             });
 
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
             await initModule.init();
             await vi.runAllTimersAsync();
 
@@ -235,7 +235,7 @@ describe('Initialization Sequence', () => {
                 json: async () => ({ version: 'new-version-123' })
             });
 
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             await initModule.init();
             await vi.runAllTimersAsync();
@@ -251,7 +251,7 @@ describe('Initialization Sequence', () => {
                 json: async () => ({ version: 'new-version-123' })
             });
 
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
             await initModule.init();
 
             // Loader should remain visible (not hidden)
@@ -265,7 +265,7 @@ describe('Initialization Sequence', () => {
 
     describe('Error Recovery', () => {
         it('should continue to load app when checkUpdate throws error', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             // Make fetch fail (causes checkUpdate to throw)
             fetchSpy.mockRejectedValue(new Error('Network failure'));
@@ -287,7 +287,7 @@ describe('Initialization Sequence', () => {
         });
 
         it('should continue to load app when SW registration fails', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             // Make SW registration fail
             navigator.serviceWorker.register.mockRejectedValue(
@@ -316,7 +316,7 @@ describe('Initialization Sequence', () => {
         });
 
         it('should log all errors but continue app initialization', async () => {
-            const initModule = await import('../static/js/init.js');
+            const initModule = await import('../../../static/js/init.js');
 
             // Make both version check and SW registration fail
             fetchSpy.mockRejectedValue(new Error('Check failed'));

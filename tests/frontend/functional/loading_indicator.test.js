@@ -70,7 +70,7 @@ describe('Loading Indicator - Show/Hide', () => {
 
     describe('show() method', () => {
         it('should create loader element with correct ID when none exists', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             loadingIndicator.show();
 
@@ -80,7 +80,7 @@ describe('Loading Indicator - Show/Hide', () => {
         });
 
         it('should not create duplicate loader when called multiple times', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             loadingIndicator.show();
             loadingIndicator.show();
@@ -91,7 +91,7 @@ describe('Loading Indicator - Show/Hide', () => {
         });
 
         it('should display "Loading application..." by default', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             loadingIndicator.show();
 
@@ -104,7 +104,7 @@ describe('Loading Indicator - Show/Hide', () => {
 
     describe('hide() method', () => {
         it('should fade out loader with opacity transition', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             // Show loader first
             loadingIndicator.show();
@@ -121,7 +121,7 @@ describe('Loading Indicator - Show/Hide', () => {
         });
 
         it('should remove loader from DOM after 300ms delay', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             // Show loader first
             loadingIndicator.show();
@@ -144,7 +144,7 @@ describe('Loading Indicator - Show/Hide', () => {
         });
 
         it('should do nothing when no loader exists', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             // Call hide without showing first
             expect(() => loadingIndicator.hide()).not.toThrow();
@@ -159,7 +159,7 @@ describe('Loading Indicator - Show/Hide', () => {
 
     describe('show/hide sequence', () => {
         it('should handle complete show → hide cycle', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             // Show loader
             loadingIndicator.show();
@@ -178,7 +178,7 @@ describe('Loading Indicator - Show/Hide', () => {
         });
 
         it('should allow re-showing loader after hiding', async () => {
-            const { loadingIndicator } = await import('../static/js/init.js');
+            const { loadingIndicator } = await import('../../../static/js/init.js');
 
             // First cycle
             loadingIndicator.show();

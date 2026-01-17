@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { modalDropdown, settingsDropdown } from '../static/js/dropdown-factories.js';
+import { modalDropdown, settingsDropdown } from '../../../static/js/dropdown-factories.js';
 
 describe('Dropdown Validation Integration', () => {
     describe('modalDropdown with errorState', () => {

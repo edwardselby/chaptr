@@ -22,7 +22,7 @@ import {
     init,
     logger,
     testableUtils
-} from '../static/js/init.js';
+} from '../../../static/js/init.js';
 
 describe('Service Worker Update Flow', () => {
     let mockRegistration;
