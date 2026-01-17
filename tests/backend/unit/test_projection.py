@@ -2201,7 +2201,7 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
 
     finally:
         # Clean up
-        mock_db.events.data = [e for e in mock_db.events.data if e.get("id") != home_event["_id"]]
+        mock_db.events.data = [e for e in mock_db.events.data if e.get("id") != home_event["id"]]
         for event in mock_db.events.data:
             if event["description"] == "car rental":
                 event["story_id"] = None
@@ -2938,7 +2938,7 @@ async def test_projection_with_zero_balance_account(mock_db):
 
     try:
         result = await calculate_account_projection(
-            account_id=str(zero_account["_id"]),
+            account_id=zero_account["id"],
             start_date=date(2024, 12, 20),
             end_date=date(2024, 12, 25),
             db=mock_db
@@ -2952,7 +2952,7 @@ async def test_projection_with_zero_balance_account(mock_db):
 
     finally:
         mock_db.accounts.data = [a for a in mock_db.accounts.data
-                                  if a.get("id") != zero_account["_id"]]
+                                  if a.get("id") != zero_account["id"]]
 
 
 @pytest.mark.asyncio
@@ -2993,7 +2993,7 @@ async def test_projection_with_only_hypothetical_events(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e.get("id") != hypothetical_event["_id"]]
+                               if e.get("id") != hypothetical_event["id"]]
 
 
 @pytest.mark.asyncio
@@ -3034,7 +3034,7 @@ async def test_projection_with_only_auto_adjustment_events(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e.get("id") != auto_adjust_event["_id"]]
+                               if e.get("id") != auto_adjust_event["id"]]
 
 
 # ============================================================================
@@ -3261,7 +3261,7 @@ async def test_very_large_amounts_decimal_precision(mock_db):
 
     finally:
         mock_db.events.data = [e for e in mock_db.events.data
-                               if e.get("id") != large_event["_id"]]
+                               if e.get("id") != large_event["id"]]
 
 
 @pytest.mark.asyncio

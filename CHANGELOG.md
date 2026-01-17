@@ -7,22 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-01-17
+
 ### Added
 - AppliedChange model for sync response timestamp synchronization (api/models.py:930-941)
 - Post-reconciliation timestamp refresh for accounts modified by server-side reconciliation (api/routes/sync.py:390-432)
-- Backend reconciliation tests: 8 new tests for future event filtering, user isolation, drift threshold boundary, idempotency, delete logging, and story event handling (tests/test_reconciliation.py)
-- Frontend reconciliation tests: 42 new tests for projection filtering, same-day ordering, adjustment event creation, and drift calculation (tests/reconciliation_frontend.test.js)
+- Backend reconciliation tests: 8 new tests for future event filtering, user isolation, drift threshold boundary, idempotency, delete logging, and story event handling
+- Frontend reconciliation tests: 42 new tests for projection filtering, same-day ordering, adjustment event creation, and drift calculation
+- Admin endpoint tests: 5 new tests for user management endpoints (test_admin.py)
+- Error handler tests: 22 new tests for custom exception handling and HTTP responses (test_errors.py)
+- Database index tests: 8 new tests validating MongoDB index configuration (test_indexes.py)
+- Scheduler tests: 10 new tests for recurring event generation scheduling (test_scheduler.py)
 
 ### Changed
 - Sync response `applied` field: Changed from `list[UUID]` to `list[AppliedChange]` with `updated_at` timestamps to prevent false conflicts (api/models.py:960-963; api/routes/sync.py:263-290)
 - `trigger_reconciliation()` return type: Changed from `bool` to `List[UUID]` for better tracking of reconciled accounts (core/reconciliation.py:25,36,51,85)
 - Reconciliation account updates: Now uses `AccountRepository.update()` instead of direct MongoDB update for proper change_log integration (core/reconciliation.py:73-80)
 - Storage adapter `processSyncResponse()`: Updates local entity timestamps from server response to prevent false conflicts (static/js/storage-adapter.js:1137-1165)
+- Test directory structure: Reorganized into backend/frontend with unit/integration/functional subdirectories
+- Account default enforcement tests: Updated to reflect explicit unset workflow (409 Conflict when setting new default while another exists)
+- Event list tests: Now filter out opening balance events when verifying user-created event counts
 
 ### Fixed
 - False sync conflicts: Local entities now receive server's updated_at timestamp after successful sync, preventing conflicts on subsequent updates
 - Reconciliation change tracking: Account updates during reconciliation now properly logged to change_log for multi-client sync
 - Conflict deduplication: Storage adapter skips adding duplicate unresolved conflicts for same entity+type combination (static/js/storage-adapter.js:1069-1082)
+- Test fixture scope mismatch: Changed mongodb_test fixture from session to function scope for pytest-asyncio compatibility
+- Test authentication: Added auth_headers to all integration tests requiring authentication
+- Archived account fixture: Fixed sample_archived_account to create account first then archive (opening balance event creation)
 
 ## [0.6.0] - 2026-01-16
 

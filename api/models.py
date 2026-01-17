@@ -823,19 +823,24 @@ class SyncChange(BaseModel):
     )
 
     @model_validator(mode='after')
-    def validate_base_updated_at_for_updates_deletes(self):
+    def validate_base_updated_at_for_deletes(self):
         """
-        Validate base_updated_at is provided for UPDATE and DELETE actions.
+        Validate base_updated_at is provided for DELETE actions.
 
         Business Rules:
-        - UPDATE actions: Must include base_updated_at for conflict detection
         - DELETE actions: Must include base_updated_at for conflict detection
+        - UPDATE actions: base_updated_at optional (allows same-batch CREATE→UPDATE bypass)
         - CREATE actions: base_updated_at should be None (entity doesn't exist yet)
+
+        The sync route handles UPDATE conflict detection:
+        - Same-batch updates (CREATE→UPDATE in one sync) skip conflict check
+        - Non-same-batch updates with base_updated_at compare timestamps
+        - Non-same-batch updates without base_updated_at apply without conflict check
         """
-        if self.action in (ChangeAction.UPDATE, ChangeAction.DELETE):
+        if self.action == ChangeAction.DELETE:
             if self.base_updated_at is None:
                 raise ValueError(
-                    f'{self.action.value} actions require base_updated_at for conflict detection'
+                    'delete actions require base_updated_at for conflict detection'
                 )
         return self
 

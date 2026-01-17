@@ -27,18 +27,18 @@ class TestRecurringRuleList:
     """Tests for GET /api/recurring-rules endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_recurring_rules_empty(self, async_client):
+    async def test_list_recurring_rules_empty(self, async_client, auth_headers):
         """Empty database returns empty list."""
-        response = await async_client.get("/api/recurring-rules")
+        response = await async_client.get("/api/recurring-rules", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
     @pytest.mark.asyncio
-    async def test_list_recurring_rules_returns_rules(self, async_client, sample_recurring_rule):
+    async def test_list_recurring_rules_returns_rules(self, async_client, sample_recurring_rule, auth_headers):
         """List returns created recurring rules."""
-        response = await async_client.get("/api/recurring-rules")
+        response = await async_client.get("/api/recurring-rules", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -55,9 +55,9 @@ class TestRecurringRuleGet:
     """Tests for GET /api/recurring-rules/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_recurring_rule_success(self, async_client, sample_recurring_rule):
+    async def test_get_recurring_rule_success(self, async_client, sample_recurring_rule, auth_headers):
         """Get existing recurring rule returns 200 with rule data."""
-        response = await async_client.get(f"/api/recurring-rules/{sample_recurring_rule.id}")
+        response = await async_client.get(f"/api/recurring-rules/{sample_recurring_rule.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -68,12 +68,12 @@ class TestRecurringRuleGet:
         assert data["day"] == 28
 
     @pytest.mark.asyncio
-    async def test_get_recurring_rule_not_found(self, async_client):
+    async def test_get_recurring_rule_not_found(self, async_client, auth_headers):
         """Get non-existent recurring rule returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.get(f"/api/recurring-rules/{fake_id}")
+        response = await async_client.get(f"/api/recurring-rules/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404
         data = response.json()
@@ -88,7 +88,7 @@ class TestRecurringRuleCreate:
     """Tests for POST /api/recurring-rules endpoint."""
 
     @pytest.mark.asyncio
-    async def test_create_monthly_recurring_rule(self, async_client, sample_account):
+    async def test_create_monthly_recurring_rule(self, async_client, sample_account, auth_headers):
         """Create monthly recurring rule."""
         payload = {
             "description": "Salary",
@@ -101,7 +101,7 @@ class TestRecurringRuleCreate:
             "end_date": None
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -113,7 +113,7 @@ class TestRecurringRuleCreate:
         assert data["created_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_create_weekly_recurring_rule(self, async_client, sample_account):
+    async def test_create_weekly_recurring_rule(self, async_client, sample_account, auth_headers):
         """Create weekly recurring rule."""
         payload = {
             "description": "Gym Membership",
@@ -126,7 +126,7 @@ class TestRecurringRuleCreate:
             "end_date": "2025-12-31"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -134,7 +134,7 @@ class TestRecurringRuleCreate:
         assert data["day"] == 1
 
     @pytest.mark.asyncio
-    async def test_create_annually_recurring_rule(self, async_client, sample_account):
+    async def test_create_annually_recurring_rule(self, async_client, sample_account, auth_headers):
         """Create annually recurring rule.
 
         Note: Annual rules use start_date to determine month (June 15 = day 15, start on June 15).
@@ -151,7 +151,7 @@ class TestRecurringRuleCreate:
             "end_date": None
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -161,7 +161,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_recurring_rule_validation_error_invalid_day(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Create monthly rule with invalid day (>31) returns 422."""
         payload = {
@@ -174,7 +174,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-01"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -182,7 +182,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_recurring_rule_validation_error_missing_description(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Create rule without description returns 422."""
         payload = {
@@ -194,7 +194,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-01"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -202,7 +202,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_monthly_rule_validates_day_range_upper_bound(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Monthly rule day must be 1-31 (test upper bound)."""
         payload = {
@@ -215,7 +215,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-01"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -223,7 +223,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_monthly_rule_validates_day_range_lower_bound(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Monthly rule day must be 1-31 (test lower bound)."""
         payload = {
@@ -236,7 +236,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-01"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -244,7 +244,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_weekly_rule_validates_day_range_upper_bound(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Weekly rule day must be 1-7 (test upper bound)."""
         payload = {
@@ -257,7 +257,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-06"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -265,7 +265,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_weekly_rule_validates_day_range_lower_bound(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Weekly rule day must be 1-7 (test lower bound)."""
         payload = {
@@ -278,7 +278,7 @@ class TestRecurringRuleCreate:
             "start_date": "2025-01-06"
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -286,7 +286,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_recurring_rule_validates_end_date_after_start_date(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """end_date must be after start_date (422 if invalid)."""
         payload = {
@@ -300,7 +300,7 @@ class TestRecurringRuleCreate:
             "end_date": "2025-05-31"  # Invalid: before start_date
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -308,7 +308,7 @@ class TestRecurringRuleCreate:
 
     @pytest.mark.asyncio
     async def test_create_recurring_rule_accepts_same_start_and_end_date(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """end_date can equal start_date (single occurrence)."""
         payload = {
@@ -322,7 +322,7 @@ class TestRecurringRuleCreate:
             "end_date": "2025-06-15"  # Same as start: single occurrence
         }
 
-        response = await async_client.post("/api/recurring-rules", json=payload)
+        response = await async_client.post("/api/recurring-rules", json=payload, headers=auth_headers)
 
         # Should succeed (edge case: single occurrence)
         assert response.status_code == 201
@@ -340,14 +340,15 @@ class TestRecurringRuleUpdate:
 
     @pytest.mark.asyncio
     async def test_update_recurring_rule_description_success(
-        self, async_client, sample_recurring_rule
+        self, async_client, sample_recurring_rule, auth_headers
     ):
         """Update recurring rule description returns updated data."""
         payload = {"description": "Updated Rent"}
 
         response = await async_client.put(
             f"/api/recurring-rules/{sample_recurring_rule.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -357,7 +358,7 @@ class TestRecurringRuleUpdate:
 
     @pytest.mark.asyncio
     async def test_update_recurring_rule_amount_success(
-        self, async_client, sample_recurring_rule
+        self, async_client, sample_recurring_rule, auth_headers
     ):
         """Update recurring rule amount."""
         payload = {
@@ -373,7 +374,8 @@ class TestRecurringRuleUpdate:
 
         response = await async_client.put(
             f"/api/recurring-rules/{sample_recurring_rule.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -381,7 +383,7 @@ class TestRecurringRuleUpdate:
         assert data["amount"] == "-1600.0"  # Single trailing zero (Decimal formatting)
 
     @pytest.mark.asyncio
-    async def test_update_recurring_rule_not_found(self, async_client):
+    async def test_update_recurring_rule_not_found(self, async_client, auth_headers):
         """Update non-existent recurring rule returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
@@ -389,21 +391,23 @@ class TestRecurringRuleUpdate:
         payload = {"description": "New Description"}
         response = await async_client.put(
             f"/api/recurring-rules/{fake_id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_update_recurring_rule_validation_error(
-        self, async_client, sample_recurring_rule
+        self, async_client, sample_recurring_rule, auth_headers
     ):
         """Update with invalid data returns 422."""
         payload = {"frequency": "invalid"}  # Invalid frequency
 
         response = await async_client.put(
             f"/api/recurring-rules/{sample_recurring_rule.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 422
@@ -418,24 +422,24 @@ class TestRecurringRuleDelete:
     """Tests for DELETE /api/recurring-rules/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_delete_recurring_rule_success(self, async_client, sample_recurring_rule):
+    async def test_delete_recurring_rule_success(self, async_client, sample_recurring_rule, auth_headers):
         """DELETE recurring rule returns 204."""
-        response = await async_client.delete(f"/api/recurring-rules/{sample_recurring_rule.id}")
+        response = await async_client.delete(f"/api/recurring-rules/{sample_recurring_rule.id}", headers=auth_headers)
 
         assert response.status_code == 204
         assert response.text == ""
 
         # Verify rule is deleted
-        get_response = await async_client.get(f"/api/recurring-rules/{sample_recurring_rule.id}")
+        get_response = await async_client.get(f"/api/recurring-rules/{sample_recurring_rule.id}", headers=auth_headers)
         assert get_response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_delete_recurring_rule_not_found(self, async_client):
+    async def test_delete_recurring_rule_not_found(self, async_client, auth_headers):
         """DELETE non-existent recurring rule returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.delete(f"/api/recurring-rules/{fake_id}")
+        response = await async_client.delete(f"/api/recurring-rules/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404
 

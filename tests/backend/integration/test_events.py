@@ -30,28 +30,31 @@ class TestEventList:
     """Tests for GET /api/events endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_events_empty(self, async_client):
+    async def test_list_events_empty(self, async_client, auth_headers):
         """Empty database returns empty list."""
-        response = await async_client.get("/api/events")
+        response = await async_client.get("/api/events", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
     @pytest.mark.asyncio
-    async def test_list_events_returns_events(self, async_client, sample_event):
-        """List returns created events."""
-        response = await async_client.get("/api/events")
+    async def test_list_events_returns_events(self, async_client, sample_event, auth_headers):
+        """List returns created events (excludes opening balance from count check)."""
+        response = await async_client.get("/api/events", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["description"] == "Test Event"
-        assert data[0]["amount"] == "-50.00"
+
+        # Filter out opening balance events (system-generated)
+        user_events = [e for e in data if not e.get("is_opening_balance", False)]
+        assert len(user_events) == 1
+        assert user_events[0]["description"] == "Test Event"
+        assert user_events[0]["amount"] == "-50.00"
 
     @pytest.mark.asyncio
     async def test_list_events_same_day_ordering(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Same-day events ordered by amount DESC, created_at ASC."""
         # Create 3 events on same day with different amounts
@@ -86,38 +89,41 @@ class TestEventList:
             "is_auto_adjustment": False
         }
 
-        await async_client.post("/api/events", json=event1_payload)
-        await async_client.post("/api/events", json=event2_payload)
-        await async_client.post("/api/events", json=event3_payload)
+        await async_client.post("/api/events", json=event1_payload, headers=auth_headers)
+        await async_client.post("/api/events", json=event2_payload, headers=auth_headers)
+        await async_client.post("/api/events", json=event3_payload, headers=auth_headers)
 
         # List events
-        response = await async_client.get("/api/events")
+        response = await async_client.get("/api/events", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3
+
+        # Filter out opening balance events (system-generated)
+        user_events = [e for e in data if not e.get("is_opening_balance", False)]
+        assert len(user_events) == 3
 
         # DEBUG: Print actual ordering
         print(f"\nActual order:")
-        for i, event in enumerate(data):
+        for i, event in enumerate(user_events):
             print(f"{i}: {event['description']} = {event['amount']} (created: {event.get('created_at', 'unknown')})")
 
         # Verify ordered by amount DESC (numerical descending: -10 > -50 > -100)
         # NOTE: This is numerically DESC, not magnitude DESC
         # With mongomock, actual order may vary if sort isn't applied
-        amounts = [e["amount"] for e in data]
-        descriptions = [e["description"] for e in data]
+        amounts = [e["amount"] for e in user_events]
+        descriptions = [e["description"] for e in user_events]
         print(f"Amounts: {amounts}")
         print(f"Descriptions: {descriptions}")
 
         # Just verify all 3 events are present for now
         # TODO: Fix mongomock sort behavior or adjust API implementation
-        assert len(data) == 3
+        assert len(user_events) == 3
         assert set(descriptions) == {"Small expense", "Medium expense", "Large expense"}
 
     @pytest.mark.asyncio
     async def test_list_events_filter_by_story(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Filter events by story_id."""
         # Create baseline event (no story)
@@ -131,7 +137,7 @@ class TestEventList:
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
-        await async_client.post("/api/events", json=baseline_payload)
+        await async_client.post("/api/events", json=baseline_payload, headers=auth_headers)
 
         # Create story event using query parameter
         story_event_payload = {
@@ -146,11 +152,12 @@ class TestEventList:
         }
         await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=story_event_payload
+            json=story_event_payload,
+            headers=auth_headers
         )
 
         # Filter by story_id
-        response = await async_client.get(f"/api/events?story_id={sample_story.id}")
+        response = await async_client.get(f"/api/events?story_id={sample_story.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -160,7 +167,7 @@ class TestEventList:
 
     @pytest.mark.asyncio
     async def test_list_events_filter_by_account(
-        self, async_client, sample_account, sample_account_usd, sample_settings
+        self, async_client, sample_account, sample_account_usd, sample_settings, auth_headers
     ):
         """Filter events by account_id."""
         # Create event in GBP account
@@ -174,7 +181,7 @@ class TestEventList:
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
-        await async_client.post("/api/events", json=gbp_event_payload)
+        await async_client.post("/api/events", json=gbp_event_payload, headers=auth_headers)
 
         # Create event in USD account (use GBP to avoid rate conversion issues)
         usd_event_payload = {
@@ -187,18 +194,22 @@ class TestEventList:
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
-        await async_client.post("/api/events", json=usd_event_payload)
+        await async_client.post("/api/events", json=usd_event_payload, headers=auth_headers)
 
         # Filter by USD account
         response = await async_client.get(
-            f"/api/events?account_id={sample_account_usd.id}"
+            f"/api/events?account_id={sample_account_usd.id}",
+            headers=auth_headers
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["description"] == "USD Event"
-        assert data[0]["account_id"] == str(sample_account_usd.id)
+
+        # Filter out opening balance events (system-generated)
+        user_events = [e for e in data if not e.get("is_opening_balance", False)]
+        assert len(user_events) == 1
+        assert user_events[0]["description"] == "USD Event"
+        assert user_events[0]["account_id"] == str(sample_account_usd.id)
 
 
 # ============================================================================
@@ -209,9 +220,9 @@ class TestEventGet:
     """Tests for GET /api/events/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_event_success(self, async_client, sample_event):
+    async def test_get_event_success(self, async_client, sample_event, auth_headers):
         """Get existing event returns 200 with event data."""
-        response = await async_client.get(f"/api/events/{sample_event.id}")
+        response = await async_client.get(f"/api/events/{sample_event.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -221,12 +232,12 @@ class TestEventGet:
         assert data["currency"] == "GBP"
 
     @pytest.mark.asyncio
-    async def test_get_event_not_found(self, async_client):
+    async def test_get_event_not_found(self, async_client, auth_headers):
         """Get non-existent event returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.get(f"/api/events/{fake_id}")
+        response = await async_client.get(f"/api/events/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404
         data = response.json()
@@ -242,7 +253,7 @@ class TestEventCreate:
 
     @pytest.mark.asyncio
     async def test_create_event_with_explicit_account(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Create event with explicit account_id."""
         payload = {
@@ -256,7 +267,7 @@ class TestEventCreate:
             "is_auto_adjustment": False
         }
 
-        response = await async_client.post("/api/events", json=payload)
+        response = await async_client.post("/api/events", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -268,7 +279,7 @@ class TestEventCreate:
 
     @pytest.mark.asyncio
     async def test_create_event_account_resolution_story_default(
-        self, async_client, sample_account, sample_account_usd, sample_story, sample_settings
+        self, async_client, sample_account, sample_account_usd, sample_story, sample_settings, auth_headers
     ):
         """Event uses story's default_account_id when not explicitly provided."""
         # sample_story has default_account_id = sample_account (GBP)
@@ -285,7 +296,8 @@ class TestEventCreate:
 
         response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 201
@@ -296,7 +308,7 @@ class TestEventCreate:
 
     @pytest.mark.asyncio
     async def test_create_event_account_resolution_global_default(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Event uses global default account when no story and no explicit account."""
         # sample_account is is_default=True
@@ -310,7 +322,7 @@ class TestEventCreate:
             "is_auto_adjustment": False
         }
 
-        response = await async_client.post("/api/events", json=payload)
+        response = await async_client.post("/api/events", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -319,7 +331,7 @@ class TestEventCreate:
 
     @pytest.mark.asyncio
     async def test_create_event_locks_rate_to_base(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Event locks rate_to_base from settings at creation time."""
         # sample_settings has empty rates dict
@@ -334,7 +346,7 @@ class TestEventCreate:
             "is_auto_adjustment": False
         }
 
-        response = await async_client.post("/api/events", json=payload)
+        response = await async_client.post("/api/events", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -346,7 +358,7 @@ class TestEventCreate:
     @pytest.mark.skip(reason="Repository validation needs to catch baseline+story_id before Pydantic model creation")
     @pytest.mark.asyncio
     async def test_create_baseline_event_cannot_have_story(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Baseline event (is_baseline=true) cannot have story_id.
 
@@ -371,7 +383,8 @@ class TestEventCreate:
         # Try to create with story_id (should fail)
         response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 422
@@ -380,7 +393,7 @@ class TestEventCreate:
 
     @pytest.mark.asyncio
     async def test_create_event_validation_error_missing_description(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Create event without description returns 422."""
         payload = {
@@ -393,7 +406,7 @@ class TestEventCreate:
             "is_auto_adjustment": False
         }
 
-        response = await async_client.post("/api/events", json=payload)
+        response = await async_client.post("/api/events", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -409,14 +422,15 @@ class TestEventUpdate:
 
     @pytest.mark.asyncio
     async def test_update_event_description_success(
-        self, async_client, sample_event
+        self, async_client, sample_event, auth_headers
     ):
         """Update event description returns updated data."""
         payload = {"description": "Updated Description"}
 
         response = await async_client.put(
             f"/api/events/{sample_event.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -425,7 +439,7 @@ class TestEventUpdate:
         assert data["id"] == str(sample_event.id)
 
     @pytest.mark.asyncio
-    async def test_update_event_amount_success(self, async_client, sample_event):
+    async def test_update_event_amount_success(self, async_client, sample_event, auth_headers):
         """Update event amount."""
         payload = {
             "event_date": "2024-12-15",
@@ -440,7 +454,8 @@ class TestEventUpdate:
 
         response = await async_client.put(
             f"/api/events/{sample_event.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -448,7 +463,7 @@ class TestEventUpdate:
         assert data["amount"] == "-75.0"  # Single trailing zero (Decimal formatting)
 
     @pytest.mark.asyncio
-    async def test_update_event_not_found(self, async_client):
+    async def test_update_event_not_found(self, async_client, auth_headers):
         """Update non-existent event returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
@@ -456,19 +471,21 @@ class TestEventUpdate:
         payload = {"description": "New Description"}
         response = await async_client.put(
             f"/api/events/{fake_id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_update_event_validation_error(self, async_client, sample_event):
+    async def test_update_event_validation_error(self, async_client, sample_event, auth_headers):
         """Update with invalid data returns 422."""
         payload = {"currency": "invalid"}  # Invalid currency format
 
         response = await async_client.put(
             f"/api/events/{sample_event.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 422
@@ -482,23 +499,23 @@ class TestEventDelete:
     """Tests for DELETE /api/events/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_delete_event_success(self, async_client, sample_event):
+    async def test_delete_event_success(self, async_client, sample_event, auth_headers):
         """DELETE event returns 204."""
-        response = await async_client.delete(f"/api/events/{sample_event.id}")
+        response = await async_client.delete(f"/api/events/{sample_event.id}", headers=auth_headers)
 
         assert response.status_code == 204
         assert response.text == ""
 
         # Verify event is deleted
-        get_response = await async_client.get(f"/api/events/{sample_event.id}")
+        get_response = await async_client.get(f"/api/events/{sample_event.id}", headers=auth_headers)
         assert get_response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_delete_event_not_found(self, async_client):
+    async def test_delete_event_not_found(self, async_client, auth_headers):
         """DELETE non-existent event returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.delete(f"/api/events/{fake_id}")
+        response = await async_client.delete(f"/api/events/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404

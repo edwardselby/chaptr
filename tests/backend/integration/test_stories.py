@@ -28,18 +28,18 @@ class TestStoryList:
     """Tests for GET /api/stories endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_stories_empty(self, async_client):
+    async def test_list_stories_empty(self, async_client, auth_headers):
         """Empty database returns empty list."""
-        response = await async_client.get("/api/stories")
+        response = await async_client.get("/api/stories", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
     @pytest.mark.asyncio
-    async def test_list_stories_returns_stories(self, async_client, sample_story):
+    async def test_list_stories_returns_stories(self, async_client, sample_story, auth_headers):
         """List returns created stories."""
-        response = await async_client.get("/api/stories")
+        response = await async_client.get("/api/stories", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -49,7 +49,7 @@ class TestStoryList:
 
     @pytest.mark.asyncio
     async def test_list_stories_sorted_by_start_date_desc(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Stories sorted by start_date descending."""
         # Create stories with different start dates
@@ -81,12 +81,12 @@ class TestStoryList:
             "display_currency": "GBP"
         }
 
-        await async_client.post("/api/stories", json=story1_payload)
-        await async_client.post("/api/stories", json=story2_payload)
-        await async_client.post("/api/stories", json=story3_payload)
+        await async_client.post("/api/stories", json=story1_payload, headers=auth_headers)
+        await async_client.post("/api/stories", json=story2_payload, headers=auth_headers)
+        await async_client.post("/api/stories", json=story3_payload, headers=auth_headers)
 
         # List stories
-        response = await async_client.get("/api/stories")
+        response = await async_client.get("/api/stories", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -106,9 +106,9 @@ class TestStoryGet:
     """Tests for GET /api/stories/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_story_success(self, async_client, sample_story):
+    async def test_get_story_success(self, async_client, sample_story, auth_headers):
         """Get existing story returns 200 with story data."""
-        response = await async_client.get(f"/api/stories/{sample_story.id}")
+        response = await async_client.get(f"/api/stories/{sample_story.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -118,12 +118,12 @@ class TestStoryGet:
         assert data["goal_type"] == "none"
 
     @pytest.mark.asyncio
-    async def test_get_story_not_found(self, async_client):
+    async def test_get_story_not_found(self, async_client, auth_headers):
         """Get non-existent story returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.get(f"/api/stories/{fake_id}")
+        response = await async_client.get(f"/api/stories/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404
         data = response.json()
@@ -138,7 +138,7 @@ class TestStoryCreate:
     """Tests for POST /api/stories endpoint."""
 
     @pytest.mark.asyncio
-    async def test_create_story_funding_mode_projected(self, async_client, sample_account):
+    async def test_create_story_funding_mode_projected(self, async_client, sample_account, auth_headers):
         """Create story with PROJECTED funding mode."""
         payload = {
             "name": "Trip to Japan",
@@ -152,7 +152,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -163,7 +163,7 @@ class TestStoryCreate:
         assert data["created_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_create_story_funding_mode_fixed(self, async_client, sample_account):
+    async def test_create_story_funding_mode_fixed(self, async_client, sample_account, auth_headers):
         """Create story with FIXED funding mode requires funding_amount."""
         payload = {
             "name": "Fixed Budget Trip",
@@ -177,7 +177,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -186,7 +186,7 @@ class TestStoryCreate:
 
     @pytest.mark.asyncio
     async def test_create_story_funding_mode_projected_plus(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Create story with PROJECTED_PLUS funding mode."""
         payload = {
@@ -201,7 +201,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -209,7 +209,7 @@ class TestStoryCreate:
         assert data["funding_amount"] == "2000.0"
 
     @pytest.mark.asyncio
-    async def test_create_story_goal_type_spend_up_to(self, async_client, sample_account):
+    async def test_create_story_goal_type_spend_up_to(self, async_client, sample_account, auth_headers):
         """Create story with SPEND_UP_TO goal type requires goal_amount."""
         payload = {
             "name": "Budget Challenge",
@@ -223,7 +223,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -232,7 +232,7 @@ class TestStoryCreate:
 
     @pytest.mark.asyncio
     async def test_create_story_funding_mode_fixed_requires_funding_amount(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """FIXED funding mode requires funding_amount (422 without)."""
         payload = {
@@ -247,7 +247,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -255,7 +255,7 @@ class TestStoryCreate:
 
     @pytest.mark.asyncio
     async def test_create_story_funding_mode_projected_plus_requires_funding_amount(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """PROJECTED_PLUS funding mode requires funding_amount (422 without)."""
         payload = {
@@ -270,7 +270,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -278,7 +278,7 @@ class TestStoryCreate:
 
     @pytest.mark.asyncio
     async def test_create_story_funding_mode_projected_accepts_null_funding_amount(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """PROJECTED funding mode does NOT require funding_amount (null is valid)."""
         payload = {
@@ -293,7 +293,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()
@@ -301,7 +301,7 @@ class TestStoryCreate:
         assert data["funding_amount"] is None
 
     @pytest.mark.asyncio
-    async def test_create_story_validation_error_missing_name(self, async_client, sample_account):
+    async def test_create_story_validation_error_missing_name(self, async_client, sample_account, auth_headers):
         """Create story without name returns 422."""
         payload = {
             "start_date": "2025-01-01",
@@ -312,7 +312,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -320,7 +320,7 @@ class TestStoryCreate:
 
     @pytest.mark.asyncio
     async def test_create_story_validation_error_invalid_funding_mode(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """Create story with invalid funding_mode returns 422."""
         payload = {
@@ -333,7 +333,7 @@ class TestStoryCreate:
             "display_currency": "GBP"
         }
 
-        response = await async_client.post("/api/stories", json=payload)
+        response = await async_client.post("/api/stories", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -348,13 +348,14 @@ class TestStoryUpdate:
     """Tests for PUT /api/stories/{id} endpoint."""
 
     @pytest.mark.asyncio
-    async def test_update_story_name_success(self, async_client, sample_story):
+    async def test_update_story_name_success(self, async_client, sample_story, auth_headers):
         """Update story name returns updated data."""
         payload = {"name": "Updated Story Name"}
 
         response = await async_client.put(
             f"/api/stories/{sample_story.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -364,7 +365,7 @@ class TestStoryUpdate:
 
     @pytest.mark.asyncio
     async def test_update_story_dates_success(
-        self, async_client, sample_story
+        self, async_client, sample_story, auth_headers
     ):
         """Update story dates."""
         payload = {
@@ -381,7 +382,8 @@ class TestStoryUpdate:
 
         response = await async_client.put(
             f"/api/stories/{sample_story.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -390,7 +392,7 @@ class TestStoryUpdate:
         assert data["end_date"] == "2025-02-28"
 
     @pytest.mark.asyncio
-    async def test_update_story_not_found(self, async_client):
+    async def test_update_story_not_found(self, async_client, auth_headers):
         """Update non-existent story returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
@@ -398,19 +400,21 @@ class TestStoryUpdate:
         payload = {"name": "New Name"}
         response = await async_client.put(
             f"/api/stories/{fake_id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_update_story_validation_error(self, async_client, sample_story):
+    async def test_update_story_validation_error(self, async_client, sample_story, auth_headers):
         """Update with invalid data returns 422."""
         payload = {"funding_mode": "invalid"}
 
         response = await async_client.put(
             f"/api/stories/{sample_story.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 422
@@ -424,20 +428,20 @@ class TestStoryDelete:
     """Tests for DELETE /api/stories/{id} endpoint (with cascade to events)."""
 
     @pytest.mark.asyncio
-    async def test_delete_story_success(self, async_client, sample_story):
+    async def test_delete_story_success(self, async_client, sample_story, auth_headers):
         """DELETE story returns 204."""
-        response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
 
         assert response.status_code == 204
         assert response.text == ""
 
         # Verify story is deleted
-        get_response = await async_client.get(f"/api/stories/{sample_story.id}")
+        get_response = await async_client.get(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert get_response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_story_cascades_to_events(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Deleting story removes associated events."""
         # Create event associated with story
@@ -454,22 +458,23 @@ class TestStoryDelete:
         }
         event_response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",  # Query parameter!
-            json=event_payload
+            json=event_payload,
+            headers=auth_headers
         )
         assert event_response.status_code == 201
         event_id = event_response.json()["id"]
 
         # Delete story
-        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert delete_response.status_code == 204
 
         # Verify event is also deleted (cascade)
-        event_get_response = await async_client.get(f"/api/events/{event_id}")
+        event_get_response = await async_client.get(f"/api/events/{event_id}", headers=auth_headers)
         assert event_get_response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_story_preserves_baseline_events(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Deleting story preserves baseline events (story_id=null)."""
         # Create baseline event (not associated with story)
@@ -486,25 +491,26 @@ class TestStoryDelete:
         }
         baseline_response = await async_client.post(
             "/api/events",  # No story_id query param = baseline
-            json=baseline_event_payload
+            json=baseline_event_payload,
+            headers=auth_headers
         )
         assert baseline_response.status_code == 201
         baseline_id = baseline_response.json()["id"]
 
         # Delete story
-        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert delete_response.status_code == 204
 
         # Verify baseline event still exists
-        baseline_get_response = await async_client.get(f"/api/events/{baseline_id}")
+        baseline_get_response = await async_client.get(f"/api/events/{baseline_id}", headers=auth_headers)
         assert baseline_get_response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_delete_story_not_found(self, async_client):
+    async def test_delete_story_not_found(self, async_client, auth_headers):
         """DELETE non-existent story returns 404."""
         from uuid import uuid4
         fake_id = uuid4()
 
-        response = await async_client.delete(f"/api/stories/{fake_id}")
+        response = await async_client.delete(f"/api/stories/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404

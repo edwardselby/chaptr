@@ -25,9 +25,9 @@ class TestSettingsGet:
     """Tests for GET /api/settings endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_settings_creates_default_if_none_exist(self, async_client):
+    async def test_get_settings_creates_default_if_none_exist(self, async_client, auth_headers):
         """GET settings with empty database creates default settings."""
-        response = await async_client.get("/api/settings")
+        response = await async_client.get("/api/settings", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -50,10 +50,10 @@ class TestSettingsGet:
         assert data["updated_at"] is not None
 
     @pytest.mark.asyncio
-    async def test_get_settings_returns_existing_singleton(self, async_client, sample_settings):
+    async def test_get_settings_returns_existing_singleton(self, async_client, sample_settings, auth_headers):
         """GET settings returns existing singleton document."""
         # sample_settings fixture creates settings via update_singleton
-        response = await async_client.get("/api/settings")
+        response = await async_client.get("/api/settings", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -63,16 +63,16 @@ class TestSettingsGet:
         assert data["base_currency"] == sample_settings.base_currency
 
     @pytest.mark.asyncio
-    async def test_get_settings_idempotent(self, async_client):
+    async def test_get_settings_idempotent(self, async_client, auth_headers):
         """Multiple GET requests return same singleton."""
         # First request creates default
-        response1 = await async_client.get("/api/settings")
+        response1 = await async_client.get("/api/settings", headers=auth_headers)
         assert response1.status_code == 200
         data1 = response1.json()
         settings_id = data1["id"]
 
         # Second request returns same instance
-        response2 = await async_client.get("/api/settings")
+        response2 = await async_client.get("/api/settings", headers=auth_headers)
         assert response2.status_code == 200
         data2 = response2.json()
 
@@ -87,7 +87,7 @@ class TestSettingsUpdate:
     """Tests for PUT /api/settings endpoint."""
 
     @pytest.mark.asyncio
-    async def test_update_settings_partial_rates_only(self, async_client, sample_settings):
+    async def test_update_settings_partial_rates_only(self, async_client, sample_settings, auth_headers):
         """Update only rates field (partial update)."""
         payload = {
             "rates": {
@@ -96,7 +96,7 @@ class TestSettingsUpdate:
             }
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -110,13 +110,13 @@ class TestSettingsUpdate:
         assert data["date_format"] == sample_settings.date_format
 
     @pytest.mark.asyncio
-    async def test_update_settings_change_base_currency(self, async_client, sample_settings):
+    async def test_update_settings_change_base_currency(self, async_client, sample_settings, auth_headers):
         """Update base_currency field."""
         payload = {
             "base_currency": "USD"
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -129,7 +129,7 @@ class TestSettingsUpdate:
         assert data["baseline_display_months"] == sample_settings.baseline_display_months
 
     @pytest.mark.asyncio
-    async def test_update_settings_multiple_fields(self, async_client, sample_settings):
+    async def test_update_settings_multiple_fields(self, async_client, sample_settings, auth_headers):
         """Update multiple fields at once."""
         payload = {
             "base_currency": "EUR",
@@ -142,7 +142,7 @@ class TestSettingsUpdate:
             }
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -156,27 +156,27 @@ class TestSettingsUpdate:
         assert data["rates"]["USD"] == "1.08"
 
     @pytest.mark.asyncio
-    async def test_update_settings_server_url(self, async_client, sample_settings):
+    async def test_update_settings_server_url(self, async_client, sample_settings, auth_headers):
         """Update server_url for sync configuration."""
         payload = {
             "server_url": "https://chaptr.example.com"
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["server_url"] == "https://chaptr.example.com"
 
     @pytest.mark.asyncio
-    async def test_update_settings_creates_if_none_exist(self, async_client):
+    async def test_update_settings_creates_if_none_exist(self, async_client, auth_headers):
         """PUT creates default settings if none exist (singleton pattern)."""
         # Empty database, no settings yet
         payload = {
             "base_currency": "USD"
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -190,14 +190,14 @@ class TestSettingsUpdate:
 
     @pytest.mark.asyncio
     async def test_update_settings_validation_error_invalid_currency(
-        self, async_client, sample_settings
+        self, async_client, sample_settings, auth_headers
     ):
         """Update with invalid currency code returns 422."""
         payload = {
             "base_currency": "invalid"  # Not 3 uppercase letters
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -205,14 +205,14 @@ class TestSettingsUpdate:
 
     @pytest.mark.asyncio
     async def test_update_settings_validation_error_invalid_baseline_months(
-        self, async_client, sample_settings
+        self, async_client, sample_settings, auth_headers
     ):
         """Update with invalid baseline_display_months returns 422."""
         payload = {
             "baseline_display_months": -1  # Must be >= 1
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 422
         data = response.json()
@@ -220,7 +220,7 @@ class TestSettingsUpdate:
 
     @pytest.mark.asyncio
     async def test_update_settings_updates_updated_at_timestamp(
-        self, async_client, sample_settings
+        self, async_client, sample_settings, auth_headers
     ):
         """PUT always updates the updated_at timestamp."""
         original_updated_at = sample_settings.updated_at
@@ -229,7 +229,7 @@ class TestSettingsUpdate:
             "base_currency": "USD"
         }
 
-        response = await async_client.put("/api/settings", json=payload)
+        response = await async_client.put("/api/settings", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()

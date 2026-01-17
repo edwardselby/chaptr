@@ -133,16 +133,18 @@ class TestUserModel:
         """Test creating valid user."""
         user_data = {
             "username": "Edward",
+            "password": "SecurePass123",  # Min 8 chars, uppercase, lowercase, digit
             "role": UserRole.ADMIN
         }
         user = UserCreate(**user_data)
         assert user.username == "Edward"
+        assert user.password == "SecurePass123"
         assert user.role == UserRole.ADMIN
 
     def test_user_username_required(self):
         """Test username cannot be empty."""
         with pytest.raises(ValidationError) as exc_info:
-            UserCreate(username="", role=UserRole.USER)
+            UserCreate(username="", password="SecurePass123", role=UserRole.USER)
         assert "at least 1" in str(exc_info.value)
 
 

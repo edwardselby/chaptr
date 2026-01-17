@@ -64,8 +64,7 @@ async def get_projection(
             examples=["GBP"]
         )
     ] = None,
-    current_user: dict = Depends(get_current_user),
-    db = Depends(MongoDB.get_database)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Calculate financial projection with customizable view and date range.
@@ -92,7 +91,6 @@ async def get_projection(
     :type display_currency: Optional[str]
     :param current_user: Authenticated user
     :type current_user: dict
-    :param db: Database connection
     :return: Projection data with events and optional warnings
     :rtype: ProjectionResponse
     :raises HTTPException: 400 for invalid parameters, 404 for story not found
@@ -138,6 +136,10 @@ async def get_projection(
                 status_code=400,
                 detail="Currency must be 3 uppercase letters (e.g., GBP, USD)"
             )
+
+    # Get database using direct call (matches sync endpoint pattern)
+    # This is required for test fixtures to monkey-patch correctly
+    db = MongoDB.get_database()
 
     # Get settings for base currency
     settings = await db.settings.find_one()

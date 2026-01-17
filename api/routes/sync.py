@@ -554,8 +554,7 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
 
 @router.post("/reconciliation/trigger")
 async def trigger_reconciliation_endpoint(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(MongoDB.get_database)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Manually trigger reconciliation for all pending accounts.
@@ -568,6 +567,9 @@ async def trigger_reconciliation_endpoint(
     """
     from core.reconciliation import trigger_reconciliation
 
+    # Get database using direct call (matches sync endpoint pattern)
+    # This is required for test fixtures to monkey-patch correctly
+    db = MongoDB.get_database()
     user_id = UUID(current_user["id"])
 
     reconciled_ids = await trigger_reconciliation(

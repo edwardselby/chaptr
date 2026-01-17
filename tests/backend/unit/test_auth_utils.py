@@ -103,8 +103,8 @@ def test_create_access_token_generates_valid_jwt():
     assert "exp" in payload
 
 
-def test_create_access_token_admin_gets_7_day_expiration():
-    """Admin users get 7-day token expiration (role-based)."""
+def test_create_access_token_admin_gets_24_hour_expiration():
+    """Admin users get standard 24-hour token expiration (spec v3.0: all users same)."""
     user_id = uuid4()
     token = create_access_token(user_id, "Admin", "admin")
 
@@ -112,15 +112,15 @@ def test_create_access_token_admin_gets_7_day_expiration():
     exp_timestamp = payload["exp"]
     exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
 
-    # Calculate expected expiration (7 days = 10080 minutes)
-    expected_exp = datetime.now(timezone.utc) + timedelta(minutes=10080)
+    # Calculate expected expiration (24 hours = 1440 minutes, same for all users)
+    expected_exp = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
 
     # Allow 5 second tolerance for test execution time
     assert abs((exp_datetime - expected_exp).total_seconds()) < 5
 
 
 def test_create_access_token_user_gets_24_hour_expiration():
-    """Regular users get 24-hour token expiration (role-based)."""
+    """Regular users get standard 24-hour token expiration (spec v3.0: all users same)."""
     user_id = uuid4()
     token = create_access_token(user_id, "User", "user")
 
@@ -128,15 +128,15 @@ def test_create_access_token_user_gets_24_hour_expiration():
     exp_timestamp = payload["exp"]
     exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
 
-    # Calculate expected expiration (24 hours = 1440 minutes)
-    expected_exp = datetime.now(timezone.utc) + timedelta(minutes=1440)
+    # Calculate expected expiration (same for all users per spec v3.0)
+    expected_exp = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
 
     # Allow 5 second tolerance
     assert abs((exp_datetime - expected_exp).total_seconds()) < 5
 
 
-def test_create_access_token_custom_expiration_overrides_role():
-    """Custom expiration delta overrides role-based expiration."""
+def test_create_access_token_custom_expiration_overrides_default():
+    """Custom expiration delta overrides default expiration."""
     user_id = uuid4()
     custom_delta = timedelta(minutes=30)
 

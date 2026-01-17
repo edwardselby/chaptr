@@ -22,7 +22,7 @@ class TestAccountDefaultEnforcement:
 
     @pytest.mark.asyncio
     async def test_exactly_one_default_account_after_creation(
-        self, async_client, sample_account
+        self, async_client, sample_account, auth_headers
     ):
         """After creating multiple accounts, exactly one has is_default=true."""
         # sample_account is default
@@ -35,11 +35,11 @@ class TestAccountDefaultEnforcement:
             "current_balance": 500.00,
             "is_default": False
         }
-        response = await async_client.post("/api/accounts", json=payload)
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
         assert response.status_code == 201
 
         # List accounts - exactly one should be default
-        list_response = await async_client.get("/api/accounts")
+        list_response = await async_client.get("/api/accounts", headers=auth_headers)
         accounts = list_response.json()
 
         default_accounts = [acc for acc in accounts if acc["is_default"] is True]
@@ -47,24 +47,41 @@ class TestAccountDefaultEnforcement:
         assert default_accounts[0]["name"] == "Test Account"
 
     @pytest.mark.asyncio
-    async def test_changing_default_unsets_previous_default(
-        self, async_client, sample_account, sample_account_usd
+    async def test_changing_default_requires_explicit_unset(
+        self, async_client, sample_account, sample_account_usd, auth_headers
     ):
-        """Setting new account as default unsets previous default."""
+        """Changing default account requires explicitly unsetting previous default first."""
         # sample_account is default initially
         assert sample_account.is_default is True
         assert sample_account_usd.is_default is False
 
-        # Update USD account to be default
+        # Try to update USD account to be default (should fail - 409)
         payload = {"is_default": True}
         response = await async_client.put(
             f"/api/accounts/{sample_account_usd.id}",
-            json=payload
+            json=payload,
+            headers=auth_headers
         )
-        assert response.status_code == 200
+        assert response.status_code == 409
+
+        # Unset old default first
+        unset_response = await async_client.put(
+            f"/api/accounts/{sample_account.id}",
+            json={"is_default": False},
+            headers=auth_headers
+        )
+        assert unset_response.status_code == 200
+
+        # Now set USD as default
+        set_response = await async_client.put(
+            f"/api/accounts/{sample_account_usd.id}",
+            json={"is_default": True},
+            headers=auth_headers
+        )
+        assert set_response.status_code == 200
 
         # List accounts - verify only USD is default
-        list_response = await async_client.get("/api/accounts")
+        list_response = await async_client.get("/api/accounts", headers=auth_headers)
         accounts = list_response.json()
 
         default_accounts = [acc for acc in accounts if acc["is_default"] is True]
@@ -72,7 +89,7 @@ class TestAccountDefaultEnforcement:
         assert default_accounts[0]["currency"] == "USD"
 
     @pytest.mark.asyncio
-    async def test_cannot_remove_default_if_only_account(self, async_client):
+    async def test_cannot_remove_default_if_only_account(self, async_client, auth_headers):
         """Cannot set is_default=false if it's the only account."""
         # Create first account (auto-default)
         payload = {
@@ -80,7 +97,7 @@ class TestAccountDefaultEnforcement:
             "currency": "GBP",
             "current_balance": 1000.00
         }
-        create_response = await async_client.post("/api/accounts", json=payload)
+        create_response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
         assert create_response.status_code == 201
         account_id = create_response.json()["id"]
 
@@ -88,7 +105,8 @@ class TestAccountDefaultEnforcement:
         update_payload = {"is_default": False}
         response = await async_client.put(
             f"/api/accounts/{account_id}",
-            json=update_payload
+            json=update_payload,
+            headers=auth_headers
         )
 
         # Should succeed (API doesn't block this), but account remains default
@@ -103,20 +121,20 @@ class TestAccountDefaultEnforcement:
 
     @pytest.mark.asyncio
     async def test_cannot_archive_default_account(
-        self, async_client, sample_account, sample_account_usd
+        self, async_client, sample_account, sample_account_usd, auth_headers
     ):
         """Cannot archive the default account (409 Conflict)."""
         # sample_account is default
         assert sample_account.is_default is True
 
         # Try to archive the default account
-        response = await async_client.delete(f"/api/accounts/{sample_account.id}")
+        response = await async_client.delete(f"/api/accounts/{sample_account.id}", headers=auth_headers)
 
         # Should return 409 Conflict (business rule prevents this)
         assert response.status_code == 409
 
         # Verify account still exists and is not archived
-        get_response = await async_client.get(f"/api/accounts/{sample_account.id}")
+        get_response = await async_client.get(f"/api/accounts/{sample_account.id}", headers=auth_headers)
         assert get_response.status_code == 200
         data = get_response.json()
         assert data["is_archived"] is False
@@ -131,7 +149,7 @@ class TestStoryCascadeDelete:
 
     @pytest.mark.asyncio
     async def test_deleting_story_removes_associated_events(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Deleting a story removes all events with story_id."""
         # Create event associated with story
@@ -147,22 +165,23 @@ class TestStoryCascadeDelete:
         }
         event_response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=event_payload
+            json=event_payload,
+            headers=auth_headers
         )
         assert event_response.status_code == 201
         event_id = event_response.json()["id"]
 
         # Delete story
-        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert delete_response.status_code == 204
 
         # Verify event was deleted (cascade)
-        get_event_response = await async_client.get(f"/api/events/{event_id}")
+        get_event_response = await async_client.get(f"/api/events/{event_id}", headers=auth_headers)
         assert get_event_response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_deleting_story_deletes_multiple_events_comprehensively(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Deleting a story deletes ALL associated events (edge case: 3+ events)."""
         event_ids = []
@@ -181,28 +200,29 @@ class TestStoryCascadeDelete:
             }
             response = await async_client.post(
                 f"/api/events?story_id={sample_story.id}",
-                json=event_payload
+                json=event_payload,
+                headers=auth_headers
             )
             assert response.status_code == 201
             event_ids.append(response.json()["id"])
 
         # Verify all 5 events exist
         for event_id in event_ids:
-            response = await async_client.get(f"/api/events/{event_id}")
+            response = await async_client.get(f"/api/events/{event_id}", headers=auth_headers)
             assert response.status_code == 200
 
         # Delete story
-        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert delete_response.status_code == 204
 
         # Verify ALL 5 events were deleted (comprehensive cleanup)
         for event_id in event_ids:
-            response = await async_client.get(f"/api/events/{event_id}")
+            response = await async_client.get(f"/api/events/{event_id}", headers=auth_headers)
             assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_deleting_story_preserves_baseline_events(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Deleting a story preserves baseline events (story_id=null)."""
         # Create baseline event (no story_id)
@@ -216,16 +236,16 @@ class TestStoryCascadeDelete:
             "is_hypothetical": False,
             "is_auto_adjustment": False
         }
-        baseline_response = await async_client.post("/api/events", json=baseline_payload)
+        baseline_response = await async_client.post("/api/events", json=baseline_payload, headers=auth_headers)
         assert baseline_response.status_code == 201
         baseline_id = baseline_response.json()["id"]
 
         # Delete story
-        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}")
+        delete_response = await async_client.delete(f"/api/stories/{sample_story.id}", headers=auth_headers)
         assert delete_response.status_code == 204
 
         # Verify baseline event still exists
-        get_baseline_response = await async_client.get(f"/api/events/{baseline_id}")
+        get_baseline_response = await async_client.get(f"/api/events/{baseline_id}", headers=auth_headers)
         assert get_baseline_response.status_code == 200
 
 
@@ -238,7 +258,7 @@ class TestEventAccountResolution:
 
     @pytest.mark.asyncio
     async def test_account_resolution_hierarchy_explicit_account(
-        self, async_client, sample_account, sample_account_usd, sample_story, sample_settings
+        self, async_client, sample_account, sample_account_usd, sample_story, sample_settings, auth_headers
     ):
         """Explicit account_id takes precedence over story default and global default."""
         # sample_story has default_account_id = sample_account (GBP)
@@ -257,7 +277,8 @@ class TestEventAccountResolution:
 
         response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=event_payload
+            json=event_payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 201
@@ -269,7 +290,7 @@ class TestEventAccountResolution:
 
     @pytest.mark.asyncio
     async def test_account_resolution_hierarchy_story_default(
-        self, async_client, sample_account, sample_story, sample_settings
+        self, async_client, sample_account, sample_story, sample_settings, auth_headers
     ):
         """Story's default_account_id is used when account_id not provided."""
         # sample_story has default_account_id = sample_account
@@ -287,7 +308,8 @@ class TestEventAccountResolution:
 
         response = await async_client.post(
             f"/api/events?story_id={sample_story.id}",
-            json=event_payload
+            json=event_payload,
+            headers=auth_headers
         )
 
         assert response.status_code == 201
@@ -298,7 +320,7 @@ class TestEventAccountResolution:
 
     @pytest.mark.asyncio
     async def test_account_resolution_hierarchy_global_default(
-        self, async_client, sample_account, sample_settings
+        self, async_client, sample_account, sample_settings, auth_headers
     ):
         """Global default account is used when no story and no explicit account."""
         # sample_account is is_default=True
@@ -314,7 +336,7 @@ class TestEventAccountResolution:
             "is_auto_adjustment": False
         }
 
-        response = await async_client.post("/api/events", json=event_payload)
+        response = await async_client.post("/api/events", json=event_payload, headers=auth_headers)
 
         assert response.status_code == 201
         data = response.json()

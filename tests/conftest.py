@@ -48,6 +48,7 @@ from api.repositories.recurring_rules import RecurringRuleRepository
 from api.repositories.settings import SettingsRepository
 from api.repositories.users import UserRepository
 from api.utils.auth import create_access_token
+from api.utils.db import utc_now
 
 # Enable pytest-asyncio
 pytest_plugins = ("pytest_asyncio",)
@@ -57,12 +58,13 @@ pytest_plugins = ("pytest_asyncio",)
 # Database Fixtures
 # ============================================================================
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def mongodb_test():
     """
     Test MongoDB connection using mongomock for isolated testing.
 
-    Session-scoped to reuse connection across all tests.
+    Function-scoped for pytest-asyncio compatibility.
+    Mongomock is fast enough that function scope has minimal overhead.
     """
     # Create mongomock client (in-memory MongoDB)
     client = AsyncMongoMockClient()
@@ -348,18 +350,28 @@ async def sample_archived_account(account_repo):
     Archived test account.
 
     Useful for testing archived account filtering.
+    Creates account first (non-archived), then archives it.
+    This is realistic - accounts are archived after creation, not created archived.
     """
+    # First create as non-archived (required for opening balance event)
     account_data = AccountCreate(
         name="Archived Account",
         currency="GBP",
         current_balance=Decimal("0.00"),
         balance_updated_at=utc_now(),
         is_default=False,
-        is_archived=True,
+        is_archived=False,
         pending_reconciliation=False
     )
     account = await account_repo.create(account_data)
-    return account
+
+    # Then archive the account
+    from api.models import AccountUpdate
+    archived_account = await account_repo.update(
+        account.id,
+        AccountUpdate(is_archived=True)
+    )
+    return archived_account
 
 
 @pytest_asyncio.fixture

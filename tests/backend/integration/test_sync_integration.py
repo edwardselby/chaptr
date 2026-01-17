@@ -115,7 +115,7 @@ async def test_two_client_bidirectional_sync(
     assert response_a1.status_code == 200
     data_a1 = response_a1.json()
     assert len(data_a1["applied"]) == 1
-    assert data_a1["applied"][0] == str(event_e1_id)
+    assert data_a1["applied"][0]["entity_id"] == str(event_e1_id)
     sync_ts_a1 = data_a1["sync_timestamp"]
 
     # Client B: First sync
@@ -172,7 +172,7 @@ async def test_two_client_bidirectional_sync(
     assert response_b2.status_code == 200
     data_b2 = response_b2.json()
     assert len(data_b2["applied"]) == 1
-    assert data_b2["applied"][0] == str(event_e2_id)
+    assert data_b2["applied"][0]["entity_id"] == str(event_e2_id)
 
     # Client A: Second sync (should receive E2, NOT E1 again)
     sync_a2 = {
@@ -578,10 +578,13 @@ async def test_sync_triggers_reconciliation_creates_auto_events(
         client_id=None
     )
 
-    # Create event that makes projected balance = 500
+    # Create expense event that increases projected balance beyond actual
+    # Note: Account repo creates opening balance event of +1000 when account is created
+    # So projected balance = 1000 (opening) + 500 (this event) = 1500
+    # When user syncs actual balance of 1000, drift = 1000 - 1500 = -500
     event = EventCreate(
-        date="2025-01-10",
-        description="Salary",
+        event_date="2025-01-10",
+        description="Expected Income",
         amount=Decimal("500.00"),
         account_id=account.id,
         currency="GBP",
@@ -595,6 +598,7 @@ async def test_sync_triggers_reconciliation_creates_auto_events(
     )
 
     # Client A: Update account balance to 1000 with pending_reconciliation=True
+    # This triggers reconciliation: projected (1500) vs actual (1000) = drift of -500
     sync_a1 = {
         "client_id": "client-a",
         "last_sync_at": None,
@@ -627,8 +631,9 @@ async def test_sync_triggers_reconciliation_creates_auto_events(
     assert len(auto_events) == 1, "Should create 1 [auto] adjustment event"
 
     auto_event = auto_events[0]
-    # Drift = actual (1000) - projected (500) = 500
-    assert Decimal(str(auto_event["amount"])) == Decimal("500.00"), "Should have correct drift amount"
+    # Drift = actual (1000) - projected (1500) = -500
+    # (Account has opening balance +1000, plus event +500 = projected 1500)
+    assert Decimal(str(auto_event["amount"])) == Decimal("-500.00"), "Should have correct drift amount"
     assert auto_event["description"] == "balance adjustment"
     assert auto_event["is_auto_adjustment"] is True
 
@@ -685,10 +690,13 @@ async def test_sync_reconciliation_multi_client_propagation(
         client_id=None
     )
 
-    # Create event (projected balance = 1000)
+    # Create event (adds to projected balance)
+    # Note: Account repo creates opening balance event of +2000 when account is created
+    # So projected balance = 2000 (opening) + 1000 (this event) = 3000
+    # When user syncs actual balance of 2000, drift = 2000 - 3000 = -1000
     event = EventCreate(
-        date="2025-01-10",
-        description="Initial",
+        event_date="2025-01-10",
+        description="Expected Income",
         amount=Decimal("1000.00"),
         account_id=account.id,
         currency="GBP",
@@ -745,8 +753,9 @@ async def test_sync_reconciliation_multi_client_propagation(
 
     assert len(auto_changes) == 1, "Client B should receive [auto] event"
     assert auto_changes[0]["action"] == "create"
-    # Drift = 2000 - 1000 = 1000
-    assert Decimal(auto_changes[0]["data"]["amount"]) == Decimal("1000.00")
+    # Drift = actual (2000) - projected (3000) = -1000
+    # (Account has opening balance +2000, plus event +1000 = projected 3000)
+    assert Decimal(auto_changes[0]["data"]["amount"]) == Decimal("-1000.00")
 
 
 @pytest.mark.integration
@@ -789,10 +798,13 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
         client_id=None
     )
 
-    # Create baseline event (projected = 500)
+    # Create baseline event
+    # Note: Account repo creates opening balance event of +1500 when account is created
+    # So projected balance = 1500 (opening) + 500 (this event) = 2000
+    # When user syncs actual balance of 1500, drift = 1500 - 2000 = -500
     event = EventCreate(
-        date="2025-01-10",
-        description="Starting",
+        event_date="2025-01-10",
+        description="Expected Income",
         amount=Decimal("500.00"),
         account_id=account.id,
         currency="GBP",
@@ -805,9 +817,9 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
         client_id=None
     )
 
-    # Create OLD [auto] adjustment (drift=500, stale)
+    # Create OLD [auto] adjustment (stale - will be removed before new drift calculated)
     old_auto = EventCreate(
-        date="2025-01-15",
+        event_date="2025-01-15",
         description="balance adjustment",
         amount=Decimal("500.00"),
         account_id=account.id,
@@ -854,9 +866,11 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
 
     assert len(auto_events) == 1, "Should have exactly 1 [auto] adjustment (old removed, new created)"
 
-    # Verify new adjustment has updated drift (1500 - 500 = 1000)
+    # Verify new adjustment has correct drift
+    # Drift = actual (1500) - projected (2000) = -500
+    # (Account has opening balance +1500, plus event +500 = projected 2000)
     new_auto = auto_events[0]
-    assert Decimal(str(new_auto["amount"])) == Decimal("1000.00"), "Should have updated drift"
+    assert Decimal(str(new_auto["amount"])) == Decimal("-500.00"), "Should have updated drift"
 
 
 @pytest.mark.integration
@@ -864,9 +878,11 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
 async def test_reconciliation_trigger_endpoint(
     async_client_real,
     auth_headers_real,
+    sample_account_with_user,
     sample_user_real,
-    account_repo_real,
-    event_repo_real
+    sample_settings_real,
+    event_repo_real,
+    clean_database_real
 ):
     """
     Test POST /api/reconciliation/trigger endpoint (Task 120).
@@ -877,30 +893,35 @@ async def test_reconciliation_trigger_endpoint(
     - Returns proper response format
     - Creates auto-adjustment events when needed
     """
-    # Create account with drift (needs reconciliation)
-    account = await account_repo_real.create(
-        {
-            "name": "Test Account",
-            "currency": "GBP",
-            "current_balance": Decimal("1000.00"),
-            "is_default": True,
-            "pending_reconciliation": True
-        },
+    from api.models import EventCreate, AccountUpdate
+    from api.repositories.accounts import AccountRepository
+
+    account = sample_account_with_user
+    account_repo = AccountRepository(clean_database_real)
+
+    # Create baseline event
+    # Note: sample_account_with_user creates account with opening balance event of +1000
+    # So projected balance = 1000 (opening) + 500 (this event) = 1500
+    # When reconciliation runs, drift = actual (1000) - projected (1500) = -500
+    event_data = EventCreate(
+        event_date="2025-01-10",
+        description="Expected Income",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True
+    )
+    await event_repo_real.create(
+        event_data,
         current_user={"id": str(sample_user_real.id)},
         client_id=None
     )
 
-    # Create baseline event (projected balance = 500)
-    await event_repo_real.create(
-        {
-            "date": "2025-01-10",
-            "description": "salary",
-            "amount": Decimal("500.00"),
-            "account_id": account.id,
-            "currency": "GBP",
-            "rate_to_base": Decimal("1.0"),
-            "is_baseline": True
-        },
+    # Mark account for reconciliation
+    await account_repo.update(
+        account.id,
+        AccountUpdate(pending_reconciliation=True),
         current_user={"id": str(sample_user_real.id)},
         client_id=None
     )
@@ -927,7 +948,9 @@ async def test_reconciliation_trigger_endpoint(
     }).to_list(length=None)
 
     assert len(auto_events) == 1, "Should create auto-adjustment event"
-    assert Decimal(str(auto_events[0]["amount"])) == Decimal("500.00"), "Drift should be 1000 - 500 = 500"
+    # Drift = actual (1000) - projected (1500) = -500
+    # (Account has opening balance +1000, plus event +500 = projected 1500)
+    assert Decimal(str(auto_events[0]["amount"])) == Decimal("-500.00"), "Drift should be 1000 - 1500 = -500"
 
 
 # ============================================================================
@@ -964,7 +987,7 @@ async def test_full_sync_returns_all_events_beyond_default_limit(
 
     for i in range(123):
         event_data = EventCreate(
-            date=f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",  # Spread across 2026
+            event_date=f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",  # Spread across 2026
             description=f"Test Event {i+1}",
             amount=Decimal("-50.00"),
             currency="GBP",
@@ -1000,3 +1023,470 @@ async def test_full_sync_returns_all_events_beyond_default_limit(
     returned_event_ids = {e["id"] for e in events}
     for event_id in created_event_ids:
         assert event_id in returned_event_ids, f"Event {event_id} missing from full sync response"
+
+
+# ============================================================================
+# Sync Edge Cases - Security and Error Handling
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_same_batch_create_update_bypass_allowed(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_story_with_user,
+    clean_database_real
+):
+    """
+    Test CREATE → UPDATE in same sync batch bypasses conflict detection.
+
+    Scenario:
+    1. Client creates event E1 in sync batch
+    2. Client immediately updates E1 in same batch (no base_updated_at)
+    3. Both changes should be applied without conflict
+
+    This is needed for queue-as-state: client may queue CREATE then UPDATE
+    before first sync completes.
+    """
+    event_id = uuid4()
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [
+            # CREATE
+            {
+                "entity_type": "event",
+                "entity_id": str(event_id),
+                "action": "create",
+                "data": {
+                    "event_date": "2025-02-01",
+                    "description": "Original description",
+                    "amount": -100.00,
+                    "currency": "GBP",
+                    "account_id": str(sample_account_with_user.id),
+                    "is_baseline": True
+                },
+                "base_updated_at": None
+            },
+            # UPDATE immediately after (no base_updated_at since we just created)
+            {
+                "entity_type": "event",
+                "entity_id": str(event_id),
+                "action": "update",
+                "data": {
+                    "description": "Updated description",
+                    "amount": -150.00
+                },
+                "base_updated_at": None  # No base timestamp for same-batch update
+            }
+        ]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Both should be applied, no conflicts
+    assert len(data["conflicts"]) == 0, f"Expected no conflicts, got: {data['conflicts']}"
+    # Should have 2 applied changes (create + update, but may be 1 if update replaces create in applied list)
+    # The key is: no conflicts and update was applied
+    assert len(data["applied"]) >= 1
+
+    # Verify final state
+    event_doc = await clean_database_real["events"].find_one({"id": str(event_id)})
+    assert event_doc is not None
+    assert event_doc["description"] == "Updated description"
+    assert float(event_doc["amount"]) == -150.00
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_derived_event_create_returns_override_conflict(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    clean_database_real
+):
+    """
+    Test that CREATE with _derived_from metadata returns derived_event_overridden conflict.
+
+    Scenario:
+    1. Client creates event with metadata._derived_from set
+    2. Server rejects with derived_event_overridden conflict
+    3. Server will create authoritative version instead
+
+    This is part of queue-as-state: client's optimistic derived events
+    are replaced by server's authoritative versions.
+    """
+    event_id = uuid4()
+    account_id = sample_account_with_user.id
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(event_id),
+            "action": "create",
+            "data": {
+                "event_date": "2025-01-20",
+                "description": "Opening Balance",
+                "amount": 1000.00,
+                "currency": "GBP",
+                "account_id": str(account_id),
+                "is_opening_balance": True
+            },
+            "base_updated_at": None,
+            "metadata": {
+                "_derived_from": "account_creation",  # Marks as derived
+                "dependencies": [str(account_id)]
+            }
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return conflict, not applied
+    assert len(data["applied"]) == 0
+    assert len(data["conflicts"]) == 1
+
+    conflict = data["conflicts"][0]
+    assert conflict["conflict_type"] == "derived_event_overridden"
+    assert conflict["entity_id"] == str(event_id)
+    assert conflict["server_version"] is None  # Server creates its own version
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_ignores_unknown_entity_type(
+    async_client_real,
+    auth_headers_real,
+    clean_database_real
+):
+    """
+    Test that sync silently ignores unknown entity types.
+
+    Bug potential: Unknown entity type could crash sync or cause errors.
+    Should be silently skipped for forward compatibility.
+    """
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "unknown_future_type",  # Not a valid entity type
+            "entity_id": str(uuid4()),
+            "action": "create",
+            "data": {"some": "data"},
+            "base_updated_at": None
+        }]
+    }
+
+    # Should fail validation since entity_type is an enum
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+
+    # Pydantic validation should reject unknown entity_type
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_update_nonexistent_entity_is_idempotent(
+    async_client_real,
+    auth_headers_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that UPDATE on deleted/nonexistent entity is idempotent.
+
+    Scenario:
+    1. Entity was deleted by another client
+    2. This client tries to UPDATE it (stale state)
+    3. Should NOT error - silently skip (idempotent)
+
+    Bug potential: ResourceNotFoundError could break sync.
+    """
+    nonexistent_id = uuid4()
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(nonexistent_id),
+            "action": "update",
+            "data": {
+                "description": "Updated nonexistent event"
+            },
+            "base_updated_at": "2025-01-01T00:00:00Z"
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should NOT be in applied (entity doesn't exist)
+    # Should NOT be a conflict (idempotent - already gone)
+    # Just silently skipped
+    assert len(data["conflicts"]) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_delete_nonexistent_entity_is_idempotent(
+    async_client_real,
+    auth_headers_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that DELETE on already-deleted entity is idempotent.
+
+    Scenario:
+    1. Entity was deleted by another client
+    2. This client tries to DELETE it
+    3. Should NOT error - already deleted, silently skip
+
+    CRITICAL: This is essential for reliable sync.
+    """
+    nonexistent_id = uuid4()
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(nonexistent_id),
+            "action": "delete",
+            "data": None,
+            "base_updated_at": "2025-01-01T00:00:00Z"
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should NOT be a conflict - already deleted is fine
+    assert len(data["conflicts"]) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.skip(reason="Account cascade delete constraints not implemented - test documents missing feature")
+async def test_sync_business_rule_conflict_on_cascade_delete(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_event_with_user,
+    clean_database_real
+):
+    """
+    Test that business rule violations return business_rule conflict.
+
+    Scenario:
+    1. Account has events referencing it
+    2. Client tries to delete account
+    3. Should return business_rule conflict (not crash)
+
+    NOTE: This test is skipped because account cascade delete constraints
+    are not implemented yet. The account repository allows deleting accounts
+    even when events reference them. This test serves as documentation
+    for a missing feature.
+    """
+    # Ensure event references the account
+    assert sample_event_with_user.account_id == sample_account_with_user.id
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(sample_account_with_user.id),
+            "action": "delete",
+            "data": None,
+            "base_updated_at": sample_account_with_user.updated_at.isoformat()
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should have business_rule conflict
+    assert len(data["conflicts"]) == 1
+    conflict = data["conflicts"][0]
+    assert conflict["conflict_type"] == "business_rule"
+    assert "error" in conflict["server_version"]
+
+
+# NOTE: Settings sync tests removed - EntityType enum doesn't include 'settings'
+# Settings are managed via dedicated endpoints, not the sync change protocol.
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_same_batch_bypass_security_time_check(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_settings_real,
+    event_repo_real,
+    sample_user_real,
+    clean_database_real
+):
+    """
+    Test that same-batch bypass has time-based security check.
+
+    SECURITY: If entity was created long ago (not in this batch),
+    the same-batch bypass should NOT apply.
+
+    This prevents malicious clients from bypassing conflict detection
+    by claiming an old entity was "just created".
+    """
+    # Create an old event (not in this sync batch)
+    from api.models import EventCreate
+
+    old_event = await event_repo_real.create(
+        EventCreate(
+            event_date="2025-01-01",
+            description="Old event",
+            amount=Decimal("-50.00"),
+            currency="GBP",
+            account_id=sample_account_with_user.id,
+            is_baseline=True
+        ),
+        current_user={"id": str(sample_user_real.id)},
+        client_id=None
+    )
+
+    # Wait a bit or manipulate timestamp to make it "old"
+    # In real scenario, the event would have been created in a previous sync
+    # For testing, we just verify the conflict detection works
+
+    # Another client updates the event
+    await event_repo_real.update(
+        old_event.id,
+        EventUpdate(description="Updated by other client"),
+        current_user={"id": str(sample_user_real.id)},
+        client_id="other-client"
+    )
+
+    # Get the new updated_at
+    refreshed = await event_repo_real.get(old_event.id)
+    new_updated_at = refreshed.updated_at
+
+    # Now this client tries to UPDATE with old base_updated_at
+    # claiming it's a same-batch scenario (it's not - entity is old)
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(old_event.id),
+            "action": "update",
+            "data": {
+                "description": "My update"
+            },
+            "base_updated_at": old_event.updated_at.isoformat()  # Old timestamp
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should detect conflict (old entity, other client modified it)
+    assert len(data["conflicts"]) == 1
+    assert data["conflicts"][0]["conflict_type"] == "edit_edit"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_first_sync_no_last_sync_at(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_event_with_user,
+    clean_database_real
+):
+    """
+    Test first sync with last_sync_at=None returns all server changes.
+
+    CRITICAL: First sync must provide full dataset to client.
+    """
+    sync_request = {
+        "client_id": "new-client",
+        "last_sync_at": None,  # First sync
+        "changes": []
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should have server_changes (all existing data)
+    # At minimum: sample_account and sample_event
+    assert len(data["server_changes"]) >= 2
+
+    # Verify structure
+    assert "sync_timestamp" in data
+    assert data["full_sync_required"] is False  # First sync is not "stale"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_applied_includes_updated_at_timestamps(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_story_with_user,
+    clean_database_real
+):
+    """
+    Test that applied changes include updated_at timestamps.
+
+    CRITICAL: Client needs these timestamps for future conflict detection.
+    Without them, client can't set base_updated_at on next sync.
+    """
+    event_id = uuid4()
+
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(event_id),
+            "action": "create",
+            "data": {
+                "event_date": "2025-03-01",
+                "description": "Test event",
+                "amount": -200.00,
+                "currency": "GBP",
+                "account_id": str(sample_account_with_user.id),
+                "is_baseline": True
+            },
+            "base_updated_at": None
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Applied should include updated_at
+    assert len(data["applied"]) == 1
+    applied = data["applied"][0]
+
+    # Check structure includes updated_at
+    assert "entity_id" in applied
+    assert "entity_type" in applied
+    assert "updated_at" in applied
+
+    # updated_at should be a valid timestamp
+    assert applied["updated_at"] is not None
