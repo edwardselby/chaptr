@@ -172,11 +172,14 @@ async def test_expired_token_rejected_by_admin_endpoint(async_client, sample_set
     from api.utils.auth import create_access_token
     from uuid import uuid4
 
-    # Create expired admin token
+    # Create expired admin token (include tenant_id for multi-tenancy)
+    user_id = uuid4()
+    tenant_id = user_id  # Admin is self-anchored
     expired_token = create_access_token(
-        uuid4(),
+        user_id,
         "ExpiredAdmin",
         "admin",
+        tenant_id,
         expires_delta=timedelta(minutes=-1)
     )
 
@@ -213,8 +216,10 @@ async def test_user_role_field_verified_exactly(async_client, sample_settings):
     from api.utils.auth import create_access_token
     from uuid import uuid4
 
-    # Create token with "Admin" instead of "admin"
-    wrong_case_token = create_access_token(uuid4(), "User", "Admin")  # Capital A
+    # Create token with "Admin" instead of "admin" (include tenant_id for multi-tenancy)
+    user_id = uuid4()
+    tenant_id = user_id
+    wrong_case_token = create_access_token(user_id, "User", "Admin", tenant_id)  # Capital A
 
     headers = {"Authorization": f"Bearer {wrong_case_token}"}
     response = await async_client.put("/api/settings", headers=headers, json={
@@ -242,10 +247,12 @@ async def test_modified_role_in_token_rejected(async_client, sample_regular_user
 
     # Create valid admin token for regular user (requires SECRET_KEY)
     # In real attack, attacker doesn't have SECRET_KEY
+    # Include tenant_id for multi-tenancy
     fake_admin_token = create_access_token(
         sample_regular_user.id,
         sample_regular_user.username,
-        "admin"  # Trying to escalate privileges
+        "admin",  # Trying to escalate privileges
+        sample_regular_user.tenant_id
     )
 
     # This would actually succeed because we have the secret key

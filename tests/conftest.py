@@ -305,11 +305,12 @@ def user_repo_real(clean_database_real):
 # ============================================================================
 
 @pytest_asyncio.fixture
-async def sample_account(account_repo):
+async def sample_account(account_repo, sample_user):
     """
     Pre-created test account.
 
     Creates a default account named "Test Account" with GBP currency.
+    Belongs to sample_user's tenant.
     """
     account_data = AccountCreate(
         name="Test Account",
@@ -320,16 +321,21 @@ async def sample_account(account_repo):
         is_archived=False,
         pending_reconciliation=False
     )
-    account = await account_repo.create(account_data)
+    account = await account_repo.create(
+        account_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return account
 
 
 @pytest_asyncio.fixture
-async def sample_account_usd(account_repo):
+async def sample_account_usd(account_repo, sample_user):
     """
     Second test account in USD (not default).
 
     Useful for testing multi-account scenarios.
+    Belongs to sample_user's tenant.
     """
     account_data = AccountCreate(
         name="USD Account",
@@ -340,18 +346,23 @@ async def sample_account_usd(account_repo):
         is_archived=False,
         pending_reconciliation=False
     )
-    account = await account_repo.create(account_data)
+    account = await account_repo.create(
+        account_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return account
 
 
 @pytest_asyncio.fixture
-async def sample_archived_account(account_repo):
+async def sample_archived_account(account_repo, sample_user):
     """
     Archived test account.
 
     Useful for testing archived account filtering.
     Creates account first (non-archived), then archives it.
     This is realistic - accounts are archived after creation, not created archived.
+    Belongs to sample_user's tenant.
     """
     # First create as non-archived (required for opening balance event)
     account_data = AccountCreate(
@@ -363,7 +374,11 @@ async def sample_archived_account(account_repo):
         is_archived=False,
         pending_reconciliation=False
     )
-    account = await account_repo.create(account_data)
+    account = await account_repo.create(
+        account_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
 
     # Then archive the account
     from api.models import AccountUpdate
@@ -375,11 +390,12 @@ async def sample_archived_account(account_repo):
 
 
 @pytest_asyncio.fixture
-async def sample_story(story_repo, sample_account):
+async def sample_story(story_repo, sample_account, sample_user):
     """
     Pre-created test story with PROJECTED funding mode.
 
     Depends on sample_account for default_account_id.
+    Belongs to sample_user's tenant.
     """
     story_data = StoryCreate(
         name="Test Story",
@@ -392,16 +408,21 @@ async def sample_story(story_repo, sample_account):
         goal_amount=None,
         display_currency="GBP"
     )
-    story = await story_repo.create(story_data)
+    story = await story_repo.create(
+        story_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return story
 
 
 @pytest_asyncio.fixture
-async def sample_story_fixed_funding(story_repo, sample_account):
+async def sample_story_fixed_funding(story_repo, sample_account, sample_user):
     """
     Test story with FIXED funding mode.
 
     Includes funding_amount for testing funding mode validation.
+    Belongs to sample_user's tenant.
     """
     story_data = StoryCreate(
         name="Fixed Funding Story",
@@ -414,16 +435,21 @@ async def sample_story_fixed_funding(story_repo, sample_account):
         goal_amount=Decimal("1000.00"),
         display_currency="GBP"
     )
-    story = await story_repo.create(story_data)
+    story = await story_repo.create(
+        story_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return story
 
 
 @pytest_asyncio.fixture
-async def sample_event(event_repo, sample_account, sample_settings):
+async def sample_event(event_repo, sample_account, sample_settings, sample_user):
     """
     Pre-created test event.
 
     Depends on sample_account and sample_settings for account_id and rate_to_base.
+    Belongs to sample_user's tenant.
     """
     event_data = EventCreate(
         event_date=date(2024, 12, 15),
@@ -436,16 +462,21 @@ async def sample_event(event_repo, sample_account, sample_settings):
         is_hypothetical=False,
         is_auto_adjustment=False
     )
-    event = await event_repo.create(event_data)
+    event = await event_repo.create(
+        event_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return event
 
 
 @pytest_asyncio.fixture
-async def sample_baseline_event(event_repo, sample_account, sample_settings):
+async def sample_baseline_event(event_repo, sample_account, sample_settings, sample_user):
     """
     Baseline event (no story_id).
 
     Useful for testing baseline-only filtering.
+    Belongs to sample_user's tenant.
     """
     event_data = EventCreate(
         event_date=date(2024, 12, 10),
@@ -458,16 +489,21 @@ async def sample_baseline_event(event_repo, sample_account, sample_settings):
         is_hypothetical=False,
         is_auto_adjustment=False
     )
-    event = await event_repo.create(event_data)
+    event = await event_repo.create(
+        event_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return event
 
 
 @pytest_asyncio.fixture
-async def sample_story_event(event_repo, sample_account, sample_story):
+async def sample_story_event(event_repo, sample_account, sample_story, sample_user):
     """
     Event associated with a story.
 
     Useful for testing story filtering and cascade delete.
+    Belongs to sample_user's tenant.
     """
     event_data = EventCreate(
         event_date=date(2024, 12, 20),
@@ -480,14 +516,19 @@ async def sample_story_event(event_repo, sample_account, sample_story):
         is_hypothetical=False,
         is_auto_adjustment=False
     )
-    event = await event_repo.create(event_data)
+    event = await event_repo.create(
+        event_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return event
 
 
 @pytest_asyncio.fixture
-async def sample_recurring_rule(recurring_rule_repo, sample_account):
+async def sample_recurring_rule(recurring_rule_repo, sample_account, sample_user):
     """
     Pre-created monthly recurring rule.
+    Belongs to sample_user's tenant.
     """
     rule_data = RecurringRuleCreate(
         description="Monthly Rent",
@@ -499,30 +540,24 @@ async def sample_recurring_rule(recurring_rule_repo, sample_account):
         start_date=date(2024, 1, 1),
         end_date=None
     )
-    rule = await recurring_rule_repo.create(rule_data)
+    rule = await recurring_rule_repo.create(
+        rule_data,
+        tenant_id=sample_user.tenant_id,
+        current_user={"id": str(sample_user.id), "tenant_id": str(sample_user.tenant_id)}
+    )
     return rule
 
 
 @pytest_asyncio.fixture
-async def sample_settings(settings_repo):
+async def sample_settings(settings_repo, sample_user):
     """
-    Pre-created global settings.
+    Pre-created per-tenant settings.
 
-    Creates default settings with GBP base currency and sample rates.
-    Note: Settings is a singleton, so we use update() to initialize it.
+    Creates default settings with GBP base currency for sample_user's tenant.
+    Note: Settings is now per-tenant, using get_or_create_for_tenant.
     """
-    settings_data = SettingsBase(
-        base_currency="GBP",
-        default_currency="GBP",
-        date_format="DD/MM/YYYY",
-        baseline_display_months=1,
-        rates={},  # Empty rates - tests don't need currency conversion
-        server_url="",
-        last_backup_date=None,
-        version="1.0.0"
-    )
-    # Settings is singleton - use update_singleton to initialize
-    settings = await settings_repo.update_singleton(settings_data)
+    # Get or create settings for the tenant
+    settings = await settings_repo.get_or_create_for_tenant(sample_user.tenant_id)
     return settings
 
 
@@ -591,66 +626,62 @@ def valid_event_data(sample_account):
 @pytest_asyncio.fixture
 async def sample_user(user_repo):
     """
-    Pre-created admin user for authentication testing.
+    Pre-created super_admin user for authentication testing.
 
     Username: Edward
     Password: TestPass123
-    Role: admin
+    Role: super_admin
+
+    Note: Created without a creator, so acts as "first user" (bootstrap).
+    This user is the tenant anchor (tenant_id = user_id).
     """
     user_data = UserCreate(
         username="Edward",
         password="TestPass123",  # Meets strength requirements
-        role="admin"
+        role="super_admin"  # Changed from admin to super_admin for multi-tenancy
     )
-    user = await user_repo.create(user_data)
+    user = await user_repo.create(user_data)  # No creator = bootstrap mode
     return user
 
 
 @pytest_asyncio.fixture
 async def sample_user_real(user_repo_real):
     """
-    Pre-created admin user for integration testing with real MongoDB.
+    Pre-created super_admin user for integration testing with real MongoDB.
 
     Username: Edward
     Password: TestPass123
-    Role: admin
+    Role: super_admin
+
+    Note: Created without a creator, so acts as "first user" (bootstrap).
+    This user is the tenant anchor (tenant_id = user_id).
     """
     user_data = UserCreate(
         username="Edward",
         password="TestPass123",
-        role="admin"
+        role="super_admin"  # Changed from admin to super_admin for multi-tenancy
     )
-    user = await user_repo_real.create(user_data)
+    user = await user_repo_real.create(user_data)  # No creator = bootstrap mode
     return user
 
 
 @pytest_asyncio.fixture
-async def sample_settings_real(settings_repo_real):
+async def sample_settings_real(settings_repo_real, sample_user_real):
     """
-    Pre-created global settings for integration testing with real MongoDB.
+    Pre-created per-tenant settings for integration testing with real MongoDB.
 
-    Creates default settings with GBP base currency.
-    Note: Settings is a singleton, so we use update_singleton() to initialize it.
+    Creates default settings with GBP base currency for sample_user_real's tenant.
+    Note: Settings is now per-tenant, using get_or_create_for_tenant.
     """
-    settings_data = SettingsBase(
-        base_currency="GBP",
-        default_currency="GBP",
-        date_format="DD/MM/YYYY",
-        baseline_display_months=1,
-        rates={},  # Empty rates - tests don't need currency conversion
-        server_url="",
-        last_backup_date=None,
-        version="1.0.0"
-    )
-    # Settings is singleton - use update_singleton to initialize
-    settings = await settings_repo_real.update_singleton(settings_data)
+    # Get or create settings for the tenant
+    settings = await settings_repo_real.get_or_create_for_tenant(sample_user_real.tenant_id)
     return settings
 
 
 @pytest_asyncio.fixture
 async def auth_headers_real(sample_user_real):
     """
-    Generate Authorization headers with admin JWT token for real MongoDB integration tests.
+    Generate Authorization headers with super_admin JWT token for real MongoDB integration tests.
 
     Creates valid JWT token for sample_user_real and returns headers dict
     ready to use with async_client_real requests.
@@ -662,17 +693,19 @@ async def auth_headers_real(sample_user_real):
     token = create_access_token(
         user_id=sample_user_real.id,
         username=sample_user_real.username,
-        role=sample_user_real.role
+        role=sample_user_real.role,
+        tenant_id=sample_user_real.tenant_id  # Include tenant_id for multi-tenancy
     )
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest_asyncio.fixture
-async def settings_with_rates_real(mongodb_real):
+async def settings_with_rates_real(mongodb_real, sample_user_real):
     """
     Create default settings with currency rates for recurring event tests (real MongoDB).
 
     Required by generate_recurring_events for rate_to_base calculations.
+    Belongs to sample_user_real's tenant.
     """
     from api.models import Settings
     from api.utils.db import generate_id, utc_now
@@ -682,6 +715,7 @@ async def settings_with_rates_real(mongodb_real):
         base_currency="GBP",
         default_currency="GBP",
         rates={"GBP": Decimal("1.0"), "USD": Decimal("1.27"), "EUR": Decimal("1.17")},
+        tenant_id=sample_user_real.tenant_id,  # Include tenant_id for multi-tenancy
         created_at=utc_now(),
         updated_at=utc_now()
     )
@@ -696,6 +730,7 @@ async def sample_account_with_user(account_repo_real, sample_user_real):
 
     Created with sample_user_real as the owner (created_by field).
     Used for sync tests that need accounts owned by a specific user.
+    Belongs to sample_user_real's tenant.
     """
     from api.models import AccountCreate
 
@@ -707,7 +742,8 @@ async def sample_account_with_user(account_repo_real, sample_user_real):
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        tenant_id=sample_user_real.tenant_id,  # Include tenant_id for multi-tenancy
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None  # No client_id = created via REST API
     )
     return account
@@ -720,6 +756,7 @@ async def sample_story_with_user(story_repo_real, sample_user_real, sample_accou
 
     Created with sample_user_real as the owner (created_by field).
     Used for sync tests that need stories owned by a specific user.
+    Belongs to sample_user_real's tenant.
     """
     from api.models import StoryCreate
 
@@ -731,7 +768,8 @@ async def sample_story_with_user(story_repo_real, sample_user_real, sample_accou
     )
     story = await story_repo_real.create(
         story_data,
-        current_user={"id": str(sample_user_real.id)},
+        tenant_id=sample_user_real.tenant_id,  # Include tenant_id for multi-tenancy
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None  # No client_id = created via REST API
     )
     return story
@@ -745,6 +783,7 @@ async def sample_event_with_user(event_repo_real, sample_account_with_user, samp
     Created with sample_user_real as the owner (created_by field).
     Used for sync tests that need events owned by a specific user.
     Requires sample_settings_real for currency rate lookup.
+    Belongs to sample_user_real's tenant.
     """
     from api.models import EventCreate
     from decimal import Decimal
@@ -760,34 +799,43 @@ async def sample_event_with_user(event_repo_real, sample_account_with_user, samp
     )
     event = await event_repo_real.create(
         event_data,
-        current_user={"id": str(sample_user_real.id)},
+        tenant_id=sample_user_real.tenant_id,  # Include tenant_id for multi-tenancy
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None  # No client_id = created via REST API, not sync
     )
     return event
 
 
 @pytest_asyncio.fixture
-async def sample_regular_user(user_repo):
+async def sample_regular_user(user_repo, sample_user):
     """
     Pre-created regular (non-admin) user for authorization testing.
 
     Username: RegularUser
     Password: TestPass456
     Role: user
+
+    Note: Created by sample_user (super_admin), inherits same tenant_id.
     """
     user_data = UserCreate(
         username="RegularUser",
         password="TestPass456",  # Meets strength requirements
         role="user"
     )
-    user = await user_repo.create(user_data)
+    # Create with sample_user as creator - inherits their tenant_id
+    creator = {
+        "id": str(sample_user.id),
+        "role": sample_user.role,
+        "tenant_id": str(sample_user.tenant_id)
+    }
+    user = await user_repo.create(user_data, creator=creator)
     return user
 
 
 @pytest_asyncio.fixture
 async def auth_headers(sample_user):
     """
-    Generate Authorization headers with admin JWT token.
+    Generate Authorization headers with super_admin JWT token.
 
     Creates valid JWT token for sample_user and returns headers dict
     ready to use with async_client requests.
@@ -799,7 +847,8 @@ async def auth_headers(sample_user):
     token = create_access_token(
         user_id=sample_user.id,
         username=sample_user.username,
-        role=sample_user.role
+        role=sample_user.role,
+        tenant_id=sample_user.tenant_id  # Include tenant_id for multi-tenancy
     )
     return {"Authorization": f"Bearer {token}"}
 
@@ -814,6 +863,7 @@ async def regular_user_auth_headers(sample_regular_user):
     token = create_access_token(
         user_id=sample_regular_user.id,
         username=sample_regular_user.username,
-        role=sample_regular_user.role
+        role=sample_regular_user.role,
+        tenant_id=sample_regular_user.tenant_id  # Include tenant_id for multi-tenancy
     )
     return {"Authorization": f"Bearer {token}"}

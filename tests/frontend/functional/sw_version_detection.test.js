@@ -75,9 +75,9 @@ describe('SW Version Detection - Network Edge Cases', () => {
     // ==================== TIMEOUT SCENARIOS ====================
 
     describe('Timeout Scenarios', () => {
-        it('should return false when fetch times out (AbortError)', async () => {
-            // Simulate AbortController timeout
-            fetchSpy.mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+        it('should return false when getRegistration throws error', async () => {
+            // Simulate registration error
+            navigator.serviceWorker.getRegistration.mockRejectedValue(new Error('Registration error'));
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
@@ -85,23 +85,17 @@ describe('SW Version Detection - Network Edge Cases', () => {
             expect(result).toBe(false);
             expect(consoleWarnSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Version check failed:',
-                expect.any(DOMException)
+                '[SW] Update check failed:',
+                expect.any(Error)
             );
         });
 
-        it('should eventually return result when response is delayed', async () => {
-            // Simulate slow server (1 second delay)
-            fetchSpy.mockImplementation(() =>
-                new Promise(resolve => {
-                    setTimeout(() => {
-                        resolve({
-                            ok: true,
-                            json: async () => ({ version: 'new-version' })
-                        });
-                    }, 1000);
-                })
-            );
+        it('should return result immediately when registration is available', async () => {
+            // Set up waiting worker (update ready)
+            mockRegistration.waiting = {
+                state: 'installed',
+                postMessage: vi.fn()
+            };
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
@@ -109,41 +103,38 @@ describe('SW Version Detection - Network Edge Cases', () => {
             const result = await checkForServiceWorkerUpdate();
             const duration = Date.now() - startTime;
 
-            // Should complete after ~1 second
-            expect(duration).toBeGreaterThanOrEqual(950);
-            expect(result).toBe(true); // Different version detected
+            // Should complete quickly (no network delay)
+            expect(duration).toBeLessThan(100);
+            expect(result).toBe(true);
         });
 
         it('should not block initialization indefinitely on very slow response', async () => {
             // Use fake timers for deterministic timing control
             vi.useFakeTimers();
 
-            // Simulate extremely slow server (10+ seconds) - but we'll abort the test early
-            let responseResolve;
+            // Simulate slow getRegistration
+            let registrationResolve;
             const delayedPromise = new Promise(resolve => {
-                responseResolve = resolve;
+                registrationResolve = resolve;
             });
 
-            fetchSpy.mockImplementation(() => delayedPromise);
+            navigator.serviceWorker.getRegistration.mockImplementation(() => delayedPromise);
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
             // Start check in background
             const checkPromise = checkForServiceWorkerUpdate();
 
-            // Wait a short time to ensure fetch was called (deterministic with fake timers)
+            // Wait a short time
             vi.advanceTimersByTime(100);
             await Promise.resolve(); // Flush microtasks
 
-            // Reject the delayed promise to allow test to complete
-            responseResolve({
-                ok: true,
-                json: async () => { throw new Error('Timeout'); }
-            });
+            // Resolve with no waiting worker
+            registrationResolve(mockRegistration);
 
             const result = await checkPromise;
 
-            // Should return false on JSON parse error
+            // Should return false (no waiting worker)
             expect(result).toBe(false);
 
             // Restore real timers
@@ -151,12 +142,12 @@ describe('SW Version Detection - Network Edge Cases', () => {
         });
     });
 
-    // ==================== NETWORK ERRORS ====================
+    // ==================== REGISTRATION ERRORS ====================
 
-    describe('Network Errors', () => {
-        it('should return false when network connection fails (TypeError)', async () => {
-            // Simulate network error (offline, DNS failure, etc.)
-            fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+    describe('Registration Errors', () => {
+        it('should return false when getRegistration throws TypeError', async () => {
+            // Simulate TypeError in getRegistration
+            navigator.serviceWorker.getRegistration.mockRejectedValue(new TypeError('Invalid scope'));
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
@@ -164,16 +155,16 @@ describe('SW Version Detection - Network Edge Cases', () => {
             expect(result).toBe(false);
             expect(consoleWarnSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Version check failed:',
+                '[SW] Update check failed:',
                 expect.any(TypeError)
             );
         });
 
         it('should return false when server is unreachable (NetworkError)', async () => {
-            // Simulate NetworkError
+            // Simulate NetworkError during registration lookup
             const networkError = new Error('NetworkError');
             networkError.name = 'NetworkError';
-            fetchSpy.mockRejectedValue(networkError);
+            navigator.serviceWorker.getRegistration.mockRejectedValue(networkError);
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
@@ -182,8 +173,9 @@ describe('SW Version Detection - Network Edge Cases', () => {
         });
 
         it('should return false during offline scenario', async () => {
-            // Simulate offline mode
-            fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+            // When offline, registration might still be cached
+            // But no waiting worker means no update
+            mockRegistration.waiting = null;
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
@@ -192,30 +184,21 @@ describe('SW Version Detection - Network Edge Cases', () => {
         });
     });
 
-    // ==================== RESPONSE ERRORS ====================
+    // ==================== REGISTRATION STATE ERRORS ====================
 
-    describe('Response Errors', () => {
-        it('should return false when server returns 500 error', async () => {
-            fetchSpy.mockResolvedValue({
-                ok: false,
-                status: 500,
-                json: async () => { throw new Error('Server error'); }
-            });
+    describe('Registration State Errors', () => {
+        it('should return false when registration returns undefined', async () => {
+            navigator.serviceWorker.getRegistration.mockResolvedValue(undefined);
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
-            // Should catch error and return false
+            // Should handle undefined gracefully and return false
             expect(result).toBe(false);
         });
 
-        it('should return false when response body is invalid', async () => {
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => {
-                    throw new SyntaxError('Unexpected token');
-                }
-            });
+        it('should return false when registration.waiting is undefined', async () => {
+            mockRegistration.waiting = undefined;
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
@@ -224,15 +207,12 @@ describe('SW Version Detection - Network Edge Cases', () => {
         });
     });
 
-    // ==================== RACE CONDITIONS ====================
+    // ==================== CONCURRENT CHECKS ====================
 
-    describe('Race Conditions', () => {
-        it('should handle multiple concurrent version checks correctly', async () => {
-            // All checks should resolve independently
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'abc12345' })
-            });
+    describe('Concurrent Checks', () => {
+        it('should handle multiple concurrent update checks correctly', async () => {
+            // No waiting worker
+            mockRegistration.waiting = null;
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
 
@@ -246,16 +226,14 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // All should return false (no update)
             expect(results).toEqual([false, false, false]);
 
-            // Fetch should be called 3 times
-            expect(fetchSpy).toHaveBeenCalledTimes(3);
+            // getRegistration should be called 3 times
+            expect(navigator.serviceWorker.getRegistration).toHaveBeenCalledTimes(3);
         });
 
         it('should gracefully handle version check during page unload', async () => {
-            // Simulate fetch being aborted during unload
-            fetchSpy.mockImplementation(() =>
-                new Promise((_, reject) => {
-                    setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 100);
-                })
+            // Simulate getRegistration being interrupted during unload
+            navigator.serviceWorker.getRegistration.mockRejectedValue(
+                new DOMException('Aborted', 'AbortError')
             );
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');

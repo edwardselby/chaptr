@@ -56,7 +56,8 @@ class EventRepository(BaseRepository[Event]):
         story_id: Optional[UUID] = None,
         current_user: Optional[dict] = None,
         client_id: Optional[str] = None,
-        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
+        entity_id: Optional[UUID] = None,  # For sync protocol - client-specified ID
+        tenant_id: Optional[UUID] = None  # For multi-tenancy - from current_user
     ) -> Event:
         """
         Create new event with account resolution and rate locking.
@@ -106,28 +107,31 @@ class EventRepository(BaseRepository[Event]):
         ...     story_id=story_id
         ... )
         """
-        # Resolve account_id using 3-level hierarchy
+        # Extract user ID and tenant_id from current_user FIRST (needed for subsequent queries)
+        user_id = self._get_user_id(current_user)
+        if tenant_id is None and current_user:
+            tenant_id = self._get_tenant_id(current_user)
+
+        # Resolve account_id using 3-level hierarchy (tenant-scoped)
         account_id = await resolve_account_id(
             self.db,
             story_id=story_id,
-            explicit_account_id=data.account_id
+            explicit_account_id=data.account_id,
+            tenant_id=tenant_id
         )
 
-        # Lock rate_to_base from current settings if not provided
+        # Lock rate_to_base from current settings if not provided (tenant-scoped)
         # If provided explicitly, use that rate (for manual corrections)
         # Rate is stored permanently and never auto-updates
         if data.rate_to_base is None:
-            rate = await get_rate_to_base(self.db, data.currency)
+            rate = await get_rate_to_base(self.db, data.currency, tenant_id=tenant_id)
         else:
             rate = data.rate_to_base
-
-        # Extract user ID from current_user if authenticated
-        user_id = self._get_user_id(current_user)
 
         # Use provided entity_id (from sync) or generate new ID
         event_id = entity_id if entity_id is not None else generate_id()
 
-        # Create event with resolved account and locked rate
+        # Create event with resolved account, locked rate, and tenant_id
         event = Event(
             id=event_id,
             event_date=data.event_date,
@@ -141,6 +145,7 @@ class EventRepository(BaseRepository[Event]):
             is_hypothetical=data.is_hypothetical,
             is_auto_adjustment=data.is_auto_adjustment,  # Use value from EventCreate data
             is_opening_balance=data.is_opening_balance,  # Use value from EventCreate data
+            tenant_id=tenant_id,  # Multi-tenancy isolation
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
@@ -151,14 +156,15 @@ class EventRepository(BaseRepository[Event]):
         # Insert into MongoDB
         await self.collection.insert_one(event.model_dump(mode="json"))
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "event",
             event.id,
             "create",
             event.model_dump(mode="json"),
             user_id,
-            client_id
+            client_id,
+            tenant_id
         )
 
         return event
@@ -199,6 +205,9 @@ class EventRepository(BaseRepository[Event]):
         # Get existing event
         existing = await self.get(event_id)
 
+        # Get tenant_id for validation queries
+        tenant_id = self._get_tenant_id(current_user)
+
         # Prevent editing auto-adjustment events
         if existing.is_auto_adjustment:
             raise ResourceConflictError(
@@ -209,12 +218,15 @@ class EventRepository(BaseRepository[Event]):
         # Prepare update dictionary
         update_dict = data.model_dump(exclude_unset=True)
 
-        # Validate account_id if being updated
+        # Validate account_id if being updated (tenant-scoped)
         if 'account_id' in update_dict and update_dict['account_id']:
-            account = await self.db['accounts'].find_one({
+            account_query = {
                 "id": to_str(update_dict['account_id']),
                 "is_archived": False
-            })
+            }
+            if tenant_id:
+                account_query["tenant_id"] = str(tenant_id)
+            account = await self.db['accounts'].find_one(account_query)
             if not account:
                 raise ValidationError(
                     f"account_id {update_dict['account_id']} not found or archived"
@@ -236,14 +248,15 @@ class EventRepository(BaseRepository[Event]):
         # Get updated event for change log
         updated_event = await self.get(event_id)
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "event",
             event_id,
             "update",
             updated_event.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            self._get_tenant_id(current_user)
         )
 
         # Return updated event
@@ -284,14 +297,15 @@ class EventRepository(BaseRepository[Event]):
                 "These are managed by the reconciliation system."
             )
 
-        # Log change BEFORE deletion (to capture entity snapshot)
+        # Log change BEFORE deletion (to capture entity snapshot) with tenant_id
         await self.log_change(
             "event",
             event_id,
             "delete",
             event.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            self._get_tenant_id(current_user)
         )
 
         # Hard delete
@@ -306,7 +320,8 @@ class EventRepository(BaseRepository[Event]):
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         skip: int = 0,
-        limit: int = 100
+        limit: int = 100,
+        tenant_id: Optional[UUID] = None
     ) -> list[Event]:
         """
         List events with projection iteration and same-day ordering.
@@ -351,6 +366,8 @@ class EventRepository(BaseRepository[Event]):
         """
         # Build filter query
         filters = {}
+        if tenant_id:
+            filters['tenant_id'] = str(tenant_id)
         if story_id:
             filters['story_id'] = to_str(story_id)
         if account_id:

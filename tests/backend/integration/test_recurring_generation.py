@@ -34,6 +34,7 @@ async def test_generate_monthly_recurring_events(mongodb_real, clean_database_re
     user_id = uuid4()
 
     # Create rule: Monthly on day 25
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=generate_id(),
         description="Monthly Salary",
@@ -47,13 +48,14 @@ async def test_generate_monthly_recurring_events(mongodb_real, clean_database_re
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
     # Assert: Should generate ~2-3 instances (±1 month window)
     assert len(generated) >= 1, "Should generate at least 1 monthly instance"
@@ -98,6 +100,7 @@ async def test_generate_weekly_recurring_events(mongodb_real, clean_database_rea
     user_id = uuid4()
 
     # Create rule: Weekly on Monday (day 1)
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=generate_id(),
         description="Weekly Coffee",
@@ -111,13 +114,14 @@ async def test_generate_weekly_recurring_events(mongodb_real, clean_database_rea
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-b")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-b", tenant_id)
 
     # Assert: Should generate 4-9 weekly instances
     assert len(generated) >= 4, "Should generate at least 4 weekly instances"
@@ -145,6 +149,7 @@ async def test_generate_annual_recurring_events(mongodb_real, clean_database_rea
     user_id = uuid4()
 
     # Create rule: Annual on day 15 of current month (likely within window)
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=generate_id(),
         description="Annual Insurance",
@@ -158,13 +163,14 @@ async def test_generate_annual_recurring_events(mongodb_real, clean_database_rea
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, None)
+    generated = await generate_recurring_events(mongodb_real, user_id, None, tenant_id)
 
     # Assert: Should generate 0-1 annual instances
     assert len(generated) <= 1, "Should generate at most 1 annual instance in ±1 month"
@@ -191,6 +197,7 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_real, clean_d
     user_id = uuid4()
     rule_id = generate_id()
 
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=rule_id,
         description="Monthly Rent",
@@ -204,7 +211,8 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_real, clean_d
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
@@ -224,13 +232,14 @@ async def test_generate_recurring_events_avoids_duplicates(mongodb_real, clean_d
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["events"].insert_one(existing_event.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
     # Assert: Should NOT regenerate the existing instance
     total_events = await mongodb_real["events"].count_documents({"recurring_rule_id": str(rule_id)})
@@ -260,6 +269,7 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_real
     user_id = uuid4()
     rule_id = generate_id()
 
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=rule_id,
         description="Monthly Subscription",
@@ -273,7 +283,8 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_real
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
@@ -296,13 +307,14 @@ async def test_generate_recurring_events_preserves_edited_instances(mongodb_real
         created_at=created_time,
         created_by=user_id,
         updated_at=edited_time,  # Different from created_at
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["events"].insert_one(edited_event.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
     # Assert: Edited event should NOT be in generated list
     generated_dates = [e.event_date for e in generated]
@@ -329,6 +341,7 @@ async def test_generate_recurring_events_respects_end_date(mongodb_real, clean_d
     account_id = generate_id()
     user_id = uuid4()
 
+    tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=generate_id(),
         description="Expired Subscription",
@@ -342,13 +355,14 @@ async def test_generate_recurring_events_respects_end_date(mongodb_real, clean_d
         created_at=utc_now(),
         created_by=user_id,
         updated_at=utc_now(),
-        updated_by=user_id
+        updated_by=user_id,
+        tenant_id=tenant_id
     )
 
     await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
     # Assert: Should NOT generate any events (rule expired)
     assert len(generated) == 0, "Should not generate events for expired rule"
@@ -368,6 +382,7 @@ async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_data
     account_id = generate_id()
     user_id = uuid4()
 
+    tenant_id = settings_with_rates_real.tenant_id
     rules = [
         RecurringRule(
             id=generate_id(),
@@ -382,7 +397,8 @@ async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_data
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
-            updated_by=user_id
+            updated_by=user_id,
+            tenant_id=tenant_id
         ),
         RecurringRule(
             id=generate_id(),
@@ -397,7 +413,8 @@ async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_data
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
-            updated_by=user_id
+            updated_by=user_id,
+            tenant_id=tenant_id
         ),
         RecurringRule(
             id=generate_id(),
@@ -412,7 +429,8 @@ async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_data
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
-            updated_by=user_id
+            updated_by=user_id,
+            tenant_id=tenant_id
         )
     ]
 
@@ -420,7 +438,7 @@ async def test_generate_recurring_events_multiple_rules(mongodb_real, clean_data
         await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
 
     # Act: Generate recurring events
-    generated = await generate_recurring_events(mongodb_real, user_id, "client-a")
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
     # Assert: Should generate instances for all 3 rules
     # Monthly: 2-3, Weekly: 4-9, Annual: 0-1 = total 6-13

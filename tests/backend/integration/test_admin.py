@@ -54,6 +54,7 @@ async def test_clear_changelog_deletes_only_user_entries(
     """
     db = clean_database_real
     user_a_id = str(sample_user_real.id)
+    tenant_id = str(sample_user_real.tenant_id)  # Multi-tenancy: use user's tenant_id
     user_b_id = str(uuid4())  # Different user
 
     # Create entries for User A (will be deleted)
@@ -66,10 +67,11 @@ async def test_clear_changelog_deletes_only_user_entries(
             "data": {"description": f"User A event {i}"},
             "changed_by": user_a_id,  # This is the key field
             "changed_by_client": "client-a",
-            "changed_at": datetime.now(timezone.utc).isoformat()
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "tenant_id": tenant_id  # Multi-tenancy: required for filtering
         })
 
-    # Create entries for User B (must be preserved)
+    # Create entries for User B (must be preserved - same tenant, different user)
     for i in range(3):
         await db["change_log"].insert_one({
             "id": str(uuid4()),
@@ -79,7 +81,8 @@ async def test_clear_changelog_deletes_only_user_entries(
             "data": {"description": f"User B event {i}"},
             "changed_by": user_b_id,  # Different user
             "changed_by_client": "client-b",
-            "changed_at": datetime.now(timezone.utc).isoformat()
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "tenant_id": tenant_id  # Same tenant, different user
         })
 
     # Verify setup
@@ -246,7 +249,7 @@ async def test_nuclear_reset_deletes_all_data_preserves_users_settings(
             currency="GBP",
             current_balance=Decimal("1000.00")
         ),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -258,7 +261,7 @@ async def test_nuclear_reset_deletes_all_data_preserves_users_settings(
             currency="GBP",
             account_id=account.id
         ),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 

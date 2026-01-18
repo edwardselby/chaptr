@@ -52,7 +52,7 @@ async def sample_recurring_rule_with_user(recurring_rule_repo_real, sample_accou
     # Use client_id=None so fixture creation is NOT logged as a sync client change
     rule = await recurring_rule_repo_real.create(
         rule_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None  # Changed from "test-setup" to prevent change_log pollution
     )
     return rule
@@ -488,7 +488,7 @@ async def test_recurring_event_generation_on_sync(
     await event_repo_real.update(
         UUID(edited_event_id),
         EventUpdate(description="EDITED: Custom description"),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id="client-a"
     )
 
@@ -574,7 +574,7 @@ async def test_sync_triggers_reconciliation_creates_auto_events(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -593,7 +593,7 @@ async def test_sync_triggers_reconciliation_creates_auto_events(
     )
     await event_repo_real.create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -686,7 +686,7 @@ async def test_sync_reconciliation_multi_client_propagation(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -705,7 +705,7 @@ async def test_sync_reconciliation_multi_client_propagation(
     )
     await event_repo_real.create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -794,7 +794,7 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -813,7 +813,7 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
     )
     await event_repo_real.create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -829,7 +829,7 @@ async def test_sync_reconciliation_removes_old_auto_adjustments(
     )
     await event_repo_real.create(
         old_auto,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -914,7 +914,7 @@ async def test_reconciliation_trigger_endpoint(
     )
     await event_repo_real.create(
         event_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -922,7 +922,7 @@ async def test_reconciliation_trigger_endpoint(
     await account_repo.update(
         account.id,
         AccountUpdate(pending_reconciliation=True),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -997,7 +997,7 @@ async def test_full_sync_returns_all_events_beyond_default_limit(
         )
         event = await event_repo_real.create(
             event_data,
-            current_user={"id": str(sample_user_real.id)},
+            current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
             client_id=None
         )
         created_event_ids.append(str(event.id))
@@ -1361,7 +1361,7 @@ async def test_sync_same_batch_bypass_security_time_check(
             account_id=sample_account_with_user.id,
             is_baseline=True
         ),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1373,7 +1373,7 @@ async def test_sync_same_batch_bypass_security_time_check(
     await event_repo_real.update(
         old_event.id,
         EventUpdate(description="Updated by other client"),
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id="other-client"
     )
 

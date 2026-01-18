@@ -8,6 +8,8 @@ Implements bidirectional sync protocol:
 POST /api/sync - Bidirectional sync with conflict detection
 GET /api/sync/full - Full dataset download for stale clients
 
+Multi-tenancy: All sync operations are isolated to the current user's tenant.
+
 See docs/chaptr-spec-sync-addendum.md for architecture details.
 """
 
@@ -52,6 +54,19 @@ from api.utils.errors import ResourceNotFoundError, ResourceConflictError
 
 
 router = APIRouter()
+
+
+def get_tenant_id(current_user: dict) -> UUID:
+    """
+    Extract tenant_id from current user for multi-tenancy filtering.
+
+    :param current_user: Current user dict from JWT token
+    :type current_user: dict
+    :return: Tenant UUID
+    :rtype: UUID
+    """
+    return UUID(current_user["tenant_id"])
+
 
 # ==================== Constants ====================
 
@@ -110,7 +125,8 @@ async def handle_create(
     repo: BaseRepository,
     change,
     current_user: dict,
-    client_id: str
+    client_id: str,
+    tenant_id: UUID
 ) -> None:
     """
     Dispatch create operation to appropriate repository.
@@ -118,6 +134,8 @@ async def handle_create(
     For sync protocol, the client specifies entity_id which MUST be used
     instead of server-generated ID. We add the ID to the data dict before
     creating the model.
+
+    Multi-tenancy: Entity is created within the specified tenant.
 
     Raises:
         ResourceConflictError: If creation violates business rules
@@ -128,15 +146,16 @@ async def handle_create(
         return  # Unknown entity type - skip silently
 
     create_data = create_model_class(**change.data)
-    # Pass entity_id to repository - sync protocol requires using client-specified IDs
-    await repo.create(create_data, current_user=current_user, client_id=client_id, entity_id=change.entity_id)
+    # Pass entity_id and tenant_id to repository - sync protocol requires using client-specified IDs
+    await repo.create(create_data, current_user=current_user, client_id=client_id, entity_id=change.entity_id, tenant_id=tenant_id)
 
 
 async def handle_update(
     repo: BaseRepository,
     change,
     current_user: dict,
-    client_id: str
+    client_id: str,
+    tenant_id: UUID
 ) -> Optional[SyncConflict]:
     """
     Dispatch update operation with conflict detection.
@@ -145,18 +164,19 @@ async def handle_update(
         Compare client's base_updated_at with server's current updated_at.
         If different, server was modified after client's last sync -> conflict.
 
+    Multi-tenancy: Verifies entity belongs to tenant before updating.
+
     Returns:
         SyncConflict if edit/edit or delete/edit conflict detected, None if successfully applied.
 
     Raises:
-        ResourceNotFoundError: If entity doesn't exist (handled by caller)
+        ResourceNotFoundError: If entity doesn't exist or doesn't belong to tenant (handled by caller)
     """
-    # Get current server version
+    # Get current server version (with tenant verification)
     try:
-        existing = await repo.get(change.entity_id)
+        existing = await repo.get_for_tenant(change.entity_id, tenant_id)
     except ResourceNotFoundError:
-        # Entity was deleted by another client - idempotent, no conflict
-        # Client tried to update something that's already gone, skip silently
+        # Entity was deleted by another client or doesn't belong to tenant - skip silently
         return None
 
     # Conflict detection: compare timestamps
@@ -183,7 +203,8 @@ async def handle_delete(
     repo: BaseRepository,
     change,
     current_user: dict,
-    client_id: str
+    client_id: str,
+    tenant_id: UUID
 ) -> Optional[SyncConflict]:
     """
     Dispatch delete operation with conflict detection.
@@ -192,17 +213,19 @@ async def handle_delete(
         If server version was modified after client's base_updated_at, someone
         else edited it -> delete/edit conflict.
 
+    Multi-tenancy: Verifies entity belongs to tenant before deleting.
+
     Returns:
         SyncConflict if delete/edit conflict detected, None if successfully applied.
 
     Raises:
-        ResourceNotFoundError: If entity doesn't exist (handled by caller)
+        ResourceNotFoundError: If entity doesn't exist or doesn't belong to tenant (handled by caller)
     """
-    # Get current server version
+    # Get current server version (with tenant verification)
     try:
-        existing = await repo.get(change.entity_id)
+        existing = await repo.get_for_tenant(change.entity_id, tenant_id)
     except ResourceNotFoundError:
-        # Already deleted by another client - not a conflict, skip
+        # Already deleted by another client or doesn't belong to tenant - skip
         return None
 
     # Conflict detection: compare timestamps
@@ -254,8 +277,12 @@ async def sync(
 
     Returns:
         SyncResponse with applied changes, conflicts, and server changes.
+    Multi-tenancy: All operations are isolated to the current user's tenant.
     """
     db = MongoDB.get_database()
+
+    # Extract tenant_id for multi-tenancy isolation
+    tenant_id = get_tenant_id(current_user)
 
     # Capture sync start time - used to include changes created during this sync (e.g., reconciliation)
     sync_start_time = utc_now()
@@ -316,7 +343,7 @@ async def sync(
 
         try:
             if change.action == ChangeAction.CREATE:
-                await handle_create(repo, change, current_user, request.client_id)
+                await handle_create(repo, change, current_user, request.client_id, tenant_id)
                 await append_applied(repo, change.entity_type, change.entity_id)
                 created_in_batch.add(change.entity_id)  # Track for conflict-free updates
 
@@ -328,7 +355,7 @@ async def sync(
                 if skip_conflict_check:
                     # SECURITY: Validate entity was actually created recently
                     # This prevents exploiting same-batch bypass if timing is off
-                    entity = await repo.get(change.entity_id)
+                    entity = await repo.get_for_tenant(change.entity_id, tenant_id)
                     if entity:
                         time_since_create = (sync_start_time - entity.created_at).total_seconds()
                         if time_since_create > SAME_BATCH_MAX_INTERVAL_SECONDS:
@@ -344,21 +371,21 @@ async def sync(
                             await append_applied(repo, change.entity_type, change.entity_id)
                     else:
                         # Entity too old - use normal conflict detection
-                        conflict = await handle_update(repo, change, current_user, request.client_id)
+                        conflict = await handle_update(repo, change, current_user, request.client_id, tenant_id)
                         if conflict:
                             conflicts.append(conflict)
                         else:
                             await append_applied(repo, change.entity_type, change.entity_id)
                 else:
                     # Normal conflict detection
-                    conflict = await handle_update(repo, change, current_user, request.client_id)
+                    conflict = await handle_update(repo, change, current_user, request.client_id, tenant_id)
                     if conflict:
                         conflicts.append(conflict)
                     else:
                         await append_applied(repo, change.entity_type, change.entity_id)
 
             elif change.action == ChangeAction.DELETE:
-                conflict = await handle_delete(repo, change, current_user, request.client_id)
+                conflict = await handle_delete(repo, change, current_user, request.client_id, tenant_id)
                 if conflict:
                     conflicts.append(conflict)
                 else:
@@ -388,7 +415,8 @@ async def sync(
         trigger_reason="sync",
         db=db,
         user_id=user_id,
-        client_id=None  # Server-side change - must appear in all clients' server_changes
+        client_id=None,  # Server-side change - must appear in all clients' server_changes
+        tenant_id=tenant_id  # Multi-tenancy isolation
     )
 
     # ========== POST-RECONCILIATION: Refresh account timestamps ==========
@@ -449,8 +477,11 @@ async def sync(
     # Check staleness BEFORE generating recurring events
     # Otherwise newly generated events might change the oldest timestamp
     if request.last_sync_at:
-        # Check if client is stale (last_sync_at older than oldest change_log entry)
-        oldest_log = await db["change_log"].find_one(sort=[("changed_at", 1)])
+        # Check if client is stale (last_sync_at older than oldest change_log entry for this tenant)
+        oldest_log = await db["change_log"].find_one(
+            {"tenant_id": str(tenant_id)},
+            sort=[("changed_at", 1)]
+        )
 
         if oldest_log:
             # Parse ISO string to datetime for comparison
@@ -467,13 +498,15 @@ async def sync(
     from api.utils.recurring import generate_recurring_events
 
     user_id = UUID(current_user["id"])
-    await generate_recurring_events(db, user_id, request.client_id)
+    await generate_recurring_events(db, user_id, request.client_id, tenant_id)
 
     if not full_sync_required:
         # Query changes since last_sync_at (or all changes for first sync)
         # Include: REST API changes (client_id=None or missing) and other clients' changes
         # Exclude: Only this client's own changes
+        # Multi-tenancy: Only return changes for this tenant
         query = {
+            "tenant_id": str(tenant_id),  # Tenant isolation
             "$or": [
                 {"changed_by_client": {"$in": [None]}},  # REST API changes (field is null)
                 {"changed_by_client": {"$exists": False}},  # Field not present (old fixtures)
@@ -515,12 +548,14 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
     - Stale client (last_sync_at older than oldest change_log entry)
     - Client requests full refresh
 
+    Multi-tenancy: Returns all entities belonging to the current user's tenant.
+
     Returns complete dataset:
-    - All accounts
-    - All stories
-    - All events
-    - All recurring rules
-    - Global settings
+    - All accounts (for tenant)
+    - All stories (for tenant)
+    - All events (for tenant)
+    - All recurring rules (for tenant)
+    - Tenant settings
     - Current sync_timestamp
 
     Client should:
@@ -529,25 +564,22 @@ async def full_sync(current_user: dict = Depends(get_current_user)):
     3. Store sync_timestamp for next incremental sync
     """
     db = MongoDB.get_database()
-    user_id = current_user["id"]
+    tenant_id = get_tenant_id(current_user)
 
-    # Get all entities for this user
+    # Get all entities for this tenant
     account_repo = AccountRepository(db)
     story_repo = StoryRepository(db)
     event_repo = EventRepository(db)
     recurring_rule_repo = RecurringRuleRepository(db)
     settings_repo = SettingsRepository(db)
 
-    # Filter by created_by to ensure user only gets their own data
-    # Note: Accounts don't have created_by field (shared resource in Phase 1)
-    user_filter = {"created_by": user_id}
-
+    # Use tenant-aware methods to filter by tenant
     return {
-        "accounts": [a.model_dump(mode="json") for a in await account_repo.list(limit=1000)],  # All accounts (no user filter)
-        "stories": [s.model_dump(mode="json") for s in await story_repo.list(filters=user_filter, limit=1000)],
-        "events": [e.model_dump(mode="json") for e in await event_repo.list(filters=user_filter, limit=10000)],  # High limit for events
-        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list(filters=user_filter, limit=1000)],
-        "settings": (await settings_repo.get_or_create_default()).model_dump(mode="json"),  # Settings are global
+        "accounts": [a.model_dump(mode="json") for a in await account_repo.list_for_tenant(tenant_id, limit=1000)],
+        "stories": [s.model_dump(mode="json") for s in await story_repo.list_for_tenant(tenant_id, limit=1000)],
+        "events": [e.model_dump(mode="json") for e in await event_repo.list_for_tenant(tenant_id, limit=10000)],
+        "recurring_rules": [r.model_dump(mode="json") for r in await recurring_rule_repo.list_for_tenant(tenant_id, limit=1000)],
+        "settings": (await settings_repo.get_or_create_for_tenant(tenant_id)).model_dump(mode="json"),
         "sync_timestamp": utc_now()
     }
 
@@ -571,12 +603,14 @@ async def trigger_reconciliation_endpoint(
     # This is required for test fixtures to monkey-patch correctly
     db = MongoDB.get_database()
     user_id = UUID(current_user["id"])
+    tenant_id = get_tenant_id(current_user)
 
     reconciled_ids = await trigger_reconciliation(
         trigger_reason="manual",
         db=db,
         user_id=user_id,
-        client_id=None
+        client_id=None,
+        tenant_id=tenant_id  # Multi-tenancy isolation
     )
 
     return {

@@ -260,7 +260,7 @@ async def get_sw_version():
 
 
 # Register route modules
-from api.routes import accounts, stories, events, sync, recurring_rules, auth, projection, admin
+from api.routes import accounts, stories, events, sync, recurring_rules, auth, projection, admin, admin_users
 from api.routes import settings as settings_routes
 
 app.include_router(auth.router, prefix="/api", tags=["authentication"])
@@ -272,6 +272,7 @@ app.include_router(recurring_rules.router, prefix="/api", tags=["recurring-rules
 app.include_router(sync.router, prefix="/api", tags=["sync"])
 app.include_router(projection.router, prefix="/api", tags=["projection"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
+app.include_router(admin_users.router, prefix="/api", tags=["admin-users"])
 
 # Mount static files for frontend
 app.mount("/static", StaticFiles(directory="static"), name="static")

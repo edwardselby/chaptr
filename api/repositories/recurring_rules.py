@@ -61,7 +61,8 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         data: RecurringRuleCreate,
         current_user: Optional[dict] = None,
         client_id: Optional[str] = None,
-        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
+        entity_id: Optional[UUID] = None,  # For sync protocol - client-specified ID
+        tenant_id: Optional[UUID] = None  # For multi-tenancy - from current_user
     ) -> RecurringRule:
         """
         Create new recurring rule.
@@ -94,11 +95,18 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         ...     )
         ... )
         """
-        # Validate account_id exists and not archived
-        account = await self.db['accounts'].find_one({
+        # Get tenant_id from current_user if not explicitly provided
+        if tenant_id is None and current_user:
+            tenant_id = self._get_tenant_id(current_user)
+
+        # Validate account_id exists and not archived (within tenant)
+        account_filter = {
             "id": to_str(data.account_id),
             "is_archived": False
-        })
+        }
+        if tenant_id:
+            account_filter["tenant_id"] = str(tenant_id)
+        account = await self.db['accounts'].find_one(account_filter)
         if not account:
             raise ValidationError(
                 f"account_id {data.account_id} not found or archived"
@@ -110,10 +118,12 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Use provided entity_id (from sync) or generate new ID
         rule_id = entity_id if entity_id is not None else generate_id()
 
-        # Create recurring rule with generated ID and timestamps
+        # Create recurring rule with generated ID, timestamps, and tenant_id
+        rule_data = data.model_dump()
+        rule_data['tenant_id'] = tenant_id  # Override with resolved tenant_id
         rule = RecurringRule(
             id=rule_id,
-            **data.model_dump(),
+            **rule_data,
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
@@ -123,14 +133,15 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Insert into MongoDB
         await self.collection.insert_one(rule.model_dump(mode="json"))
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "recurring_rule",
             rule.id,
             "create",
             rule.model_dump(mode="json"),
             user_id,
-            client_id
+            client_id,
+            tenant_id
         )
 
         return rule
@@ -178,15 +189,21 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Get existing rule
         existing = await self.get(rule_id)
 
+        # Get tenant_id for validation queries
+        tenant_id = self._get_tenant_id(current_user)
+
         # Prepare update dictionary
         update_dict = data.model_dump(exclude_unset=True)
 
-        # Validate account_id if being updated
+        # Validate account_id if being updated (tenant-scoped)
         if 'account_id' in update_dict and update_dict['account_id']:
-            account = await self.db['accounts'].find_one({
+            account_query = {
                 "id": to_str(update_dict['account_id']),
                 "is_archived": False
-            })
+            }
+            if tenant_id:
+                account_query["tenant_id"] = str(tenant_id)
+            account = await self.db['accounts'].find_one(account_query)
             if not account:
                 raise ValidationError(
                     f"account_id {update_dict['account_id']} not found or archived"
@@ -208,26 +225,31 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         # Get updated rule for change log
         updated_rule = await self.get(rule_id)
 
-        # Log change for sync
+        # Log change for sync with tenant_id (tenant_id already extracted above)
         await self.log_change(
             "recurring_rule",
             rule_id,
             "update",
             updated_rule.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            tenant_id
         )
 
         # Spec compliance (line 1347): Regenerate future events with updated rule
         # First, fetch future unedited instances to log deletions for sync protocol
+        # Include tenant_id for security (defense-in-depth)
         today = date.today()
-        events_to_delete = await self.db["events"].find({
+        cascade_query = {
             "recurring_rule_id": to_str(rule_id),
             "event_date": {"$gt": today.isoformat()},
             "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
-        }).to_list(length=None)
+        }
+        if tenant_id:
+            cascade_query["tenant_id"] = str(tenant_id)
+        events_to_delete = await self.db["events"].find(cascade_query).to_list(length=None)
 
-        # Log each deletion to change_log for sync (critical for multi-client sync)
+        # Log each deletion to change_log for sync with tenant_id
         user_id = self._get_user_id(current_user)
         for event_doc in events_to_delete:
             await self.log_change(
@@ -236,21 +258,18 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
                 "delete",
                 event_doc,
                 user_id,
-                client_id
+                client_id,
+                tenant_id
             )
 
-        # Delete future unedited instances
+        # Delete future unedited instances (with tenant_id for security)
         if events_to_delete:
-            await self.db["events"].delete_many({
-                "recurring_rule_id": to_str(rule_id),
-                "event_date": {"$gt": today.isoformat()},
-                "$expr": {"$eq": ["$updated_at", "$created_at"]}
-            })
+            await self.db["events"].delete_many(cascade_query)
 
-        # Regenerate events with updated rule values
-        # Note: Currently regenerates all user rules within ±1 month window
+        # Regenerate events with updated rule values (tenant-scoped)
+        # Note: Currently regenerates all tenant rules within ±1 month window
         # Future optimization: Pass rule_id to generate only for this specific rule
-        await generate_recurring_events(self.db, user_id, client_id)
+        await generate_recurring_events(self.db, user_id, client_id, tenant_id)
 
         # Return updated rule
         return updated_rule
@@ -290,24 +309,33 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         rule = await self.get(rule_id)
 
         # Delete only FUTURE instances that haven't been edited
+        # Include tenant_id for security (defense-in-depth)
+        tenant_id = self._get_tenant_id(current_user)
         today = date.today()
-        await self.db["events"].delete_many({
+        cascade_query = {
             "recurring_rule_id": to_str(rule_id),
             "event_date": {"$gt": today.isoformat()},
             "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
-        })
+        }
+        if tenant_id:
+            cascade_query["tenant_id"] = str(tenant_id)
+        await self.db["events"].delete_many(cascade_query)
 
-        # Delete the rule itself
-        await self.collection.delete_one({"id": to_str(rule_id)})
+        # Delete the rule itself (include tenant_id for security)
+        delete_query = {"id": to_str(rule_id)}
+        if tenant_id:
+            delete_query["tenant_id"] = str(tenant_id)
+        await self.collection.delete_one(delete_query)
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "recurring_rule",
             rule_id,
             "delete",
             rule.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            tenant_id
         )
 
         return True

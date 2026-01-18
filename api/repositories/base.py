@@ -34,7 +34,8 @@ class ChangeLogMixin:
         action: str,  # create, update, delete
         data: Optional[dict],
         user_id: Optional[UUID] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        tenant_id: Optional[UUID] = None
     ) -> None:
         """
         Record change to change_log collection for sync distribution.
@@ -55,6 +56,8 @@ class ChangeLogMixin:
         :type user_id: Optional[UUID]
         :param client_id: Device/client that made the change (None for direct API)
         :type client_id: Optional[str]
+        :param tenant_id: Tenant identifier for multi-tenancy isolation
+        :type tenant_id: Optional[UUID]
         :return: None
         :rtype: None
 
@@ -67,7 +70,8 @@ class ChangeLogMixin:
         ...     "create",
         ...     event.model_dump(mode="json"),
         ...     user_id=UUID(current_user["id"]),
-        ...     client_id=None  # Direct API call
+        ...     client_id=None,  # Direct API call
+        ...     tenant_id=UUID(current_user["tenant_id"])
         ... )
         """
         # Build entry, omitting None values per MongoDB best practice
@@ -80,11 +84,13 @@ class ChangeLogMixin:
             "changed_at": utc_now().isoformat()
         }
 
-        # Only include non-None values for user and client
+        # Only include non-None values for user, client, and tenant
         if user_id is not None:
             entry["changed_by_user"] = str(user_id)
         if client_id is not None:
             entry["changed_by_client"] = client_id
+        if tenant_id is not None:
+            entry["tenant_id"] = str(tenant_id)
 
         await self.db["change_log"].insert_one(entry)
 
@@ -153,6 +159,123 @@ class BaseRepository(Generic[T], ChangeLogMixin):
         >>> await self.log_change("event", event.id, "create", data, user_id, client_id)
         """
         return UUID(current_user["id"]) if current_user else None
+
+    def _get_tenant_id(self, current_user: Optional[Dict[str, Any]]) -> Optional[UUID]:
+        """
+        Extract tenant UUID from current_user dict.
+
+        Helper method for multi-tenancy support. Repositories call this
+        to get the tenant_id for filtering and logging.
+
+        :param current_user: Current user dict from JWT token (contains 'tenant_id' key)
+        :type current_user: Optional[Dict[str, Any]]
+        :return: Tenant UUID or None
+        :rtype: Optional[UUID]
+
+        :Example:
+
+        >>> tenant_id = self._get_tenant_id(current_user)
+        >>> await self.list_for_tenant(tenant_id)
+        """
+        if current_user and current_user.get("tenant_id"):
+            return UUID(current_user["tenant_id"])
+        return None
+
+    def _add_tenant_filter(self, filters: Optional[dict], tenant_id: UUID) -> dict:
+        """
+        Add tenant filter to query for multi-tenancy isolation.
+
+        :param filters: Existing MongoDB filter query
+        :type filters: Optional[dict]
+        :param tenant_id: Tenant identifier to filter by
+        :type tenant_id: UUID
+        :return: Filters dict with tenant_id added
+        :rtype: dict
+
+        :Example:
+
+        >>> query = self._add_tenant_filter({"is_archived": False}, tenant_id)
+        >>> # query = {"is_archived": False, "tenant_id": "uuid-string"}
+        """
+        filters = filters.copy() if filters else {}
+        filters["tenant_id"] = str(tenant_id)
+        return filters
+
+    async def list_for_tenant(
+        self,
+        tenant_id: UUID,
+        filters: Optional[dict] = None,
+        skip: int = 0,
+        limit: int = 100,
+        sort: Optional[list[tuple[str, int]]] = None
+    ) -> list[T]:
+        """
+        List entities filtered by tenant for multi-tenancy isolation.
+
+        :param tenant_id: Tenant identifier to filter by
+        :type tenant_id: UUID
+        :param filters: Additional MongoDB filter query
+        :type filters: Optional[dict]
+        :param skip: Number of documents to skip (pagination)
+        :type skip: int
+        :param limit: Maximum documents to return
+        :type limit: int
+        :param sort: List of (field, direction) tuples for sorting
+        :type sort: Optional[list[tuple[str, int]]]
+        :return: List of entity model instances belonging to tenant
+        :rtype: list[T]
+
+        :Example:
+
+        >>> accounts = await repo.list_for_tenant(
+        ...     tenant_id=UUID(current_user["tenant_id"]),
+        ...     filters={"is_archived": False}
+        ... )
+        """
+        query = self._add_tenant_filter(filters, tenant_id)
+        return await self.list(filters=query, skip=skip, limit=limit, sort=sort)
+
+    async def get_for_tenant(self, resource_id: UUID, tenant_id: UUID) -> T:
+        """
+        Get single entity by ID only if it belongs to the specified tenant.
+
+        :param resource_id: UUID of resource to fetch
+        :type resource_id: UUID
+        :param tenant_id: Tenant identifier to verify ownership
+        :type tenant_id: UUID
+        :return: Entity model instance
+        :rtype: T
+        :raises ResourceNotFoundError: If entity not found or doesn't belong to tenant
+
+        :Example:
+
+        >>> account = await repo.get_for_tenant(account_id, tenant_id)
+        """
+        doc = await self.collection.find_one({
+            "id": str(resource_id),
+            "tenant_id": str(tenant_id)
+        })
+        if not doc:
+            raise ResourceNotFoundError(f"{self.model_class.__name__} not found")
+        return self.model_class(**doc)
+
+    async def count_for_tenant(self, tenant_id: UUID, filters: Optional[dict] = None) -> int:
+        """
+        Count documents matching filters within a tenant.
+
+        :param tenant_id: Tenant identifier to filter by
+        :type tenant_id: UUID
+        :param filters: Additional MongoDB filter query
+        :type filters: Optional[dict]
+        :return: Count of matching documents
+        :rtype: int
+
+        :Example:
+
+        >>> count = await repo.count_for_tenant(tenant_id, {"is_archived": False})
+        """
+        query = self._add_tenant_filter(filters, tenant_id)
+        return await self.count(filters=query)
 
     async def get(self, resource_id: UUID) -> T:
         """
@@ -223,7 +346,8 @@ class BaseRepository(Generic[T], ChangeLogMixin):
         self,
         resource_id: UUID,
         current_user: Optional[dict] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        tenant_id: Optional[UUID] = None
     ) -> bool:
         """
         Hard delete entity by ID with change logging.
@@ -231,36 +355,47 @@ class BaseRepository(Generic[T], ChangeLogMixin):
         Permanently removes document from MongoDB and logs the change
         to change_log for sync protocol.
 
+        Multi-tenancy: If tenant_id is provided, verifies entity belongs
+        to the tenant before deletion (defense-in-depth).
+
         :param resource_id: UUID of resource to delete
         :type resource_id: UUID
         :param current_user: Current authenticated user (optional)
         :type current_user: Optional[dict]
         :param client_id: Client identifier for sync protocol (optional)
         :type client_id: Optional[str]
+        :param tenant_id: Tenant UUID for multi-tenancy verification (optional)
+        :type tenant_id: Optional[UUID]
         :return: True if deleted successfully
         :rtype: bool
-        :raises ResourceNotFoundError: If entity not found
+        :raises ResourceNotFoundError: If entity not found or doesn't belong to tenant
 
         :Example:
 
-        >>> await story_repo.delete(story_id, current_user=user, client_id="client-a")
+        >>> await story_repo.delete(story_id, current_user=user, client_id="client-a", tenant_id=tenant_id)
         True
         """
-        result = await self.collection.delete_one({"id": to_str(resource_id)})
+        # Build delete query with optional tenant filter
+        delete_query = {"id": to_str(resource_id)}
+        if tenant_id:
+            delete_query["tenant_id"] = str(tenant_id)
+
+        result = await self.collection.delete_one(delete_query)
 
         if result.deleted_count == 0:
             raise ResourceNotFoundError(
                 f"{self.model_class.__name__} not found"
             )
 
-        # Log change for sync protocol
+        # Log change for sync protocol with tenant_id
         await self.log_change(
             self.collection_name,
             resource_id,
             "delete",
             None,  # data=None for deletes (entity no longer exists)
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            self._get_tenant_id(current_user) if current_user else tenant_id
         )
 
         return True

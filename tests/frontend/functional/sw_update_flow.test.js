@@ -138,33 +138,29 @@ describe('Service Worker Update Flow', () => {
 
     // ==================== HAPPY PATH TESTS ====================
 
-    describe('Happy Path - Version Comparison', () => {
-        it('should return false when version matches (no update)', async () => {
-            // Mock /sw-version response with current version
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'abc12345' })
-            });
+    describe('Happy Path - Waiting Worker Detection', () => {
+        it('should return false when no waiting worker (no update)', async () => {
+            // Default mock: no waiting worker
+            mockRegistration.waiting = null;
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(fetchSpy).toHaveBeenCalledWith('/sw-version');
         });
 
-        it('should return true when version differs (update available)', async () => {
-            // Mock /sw-version response with new version
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'def67890' })
-            });
+        it('should return true when waiting worker exists (update ready)', async () => {
+            // Mock waiting worker (update ready to install)
+            mockRegistration.waiting = {
+                state: 'installed',
+                postMessage: vi.fn()
+            };
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(true);
             expect(consoleLogSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                expect.stringContaining('[SW] Update available: abc12345 → def67890')
+                '[SW] Update ready (waiting worker found)'
             );
         });
 
@@ -264,46 +260,39 @@ describe('Service Worker Update Flow', () => {
     // ==================== ERROR CASES ====================
 
     describe('Error Handling', () => {
-        it('should return false on /sw-version fetch error', async () => {
-            fetchSpy.mockRejectedValue(new Error('Network error'));
+        it('should return false on getRegistration error', async () => {
+            navigator.serviceWorker.getRegistration.mockRejectedValue(new Error('Registration error'));
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
             expect(consoleWarnSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Version check failed:',
+                '[SW] Update check failed:',
                 expect.any(Error)
             );
         });
 
-        it('should return false on /sw-version 404', async () => {
-            fetchSpy.mockRejectedValue(new Error('404 Not Found'));
+        it('should return false when registration is null', async () => {
+            navigator.serviceWorker.getRegistration.mockResolvedValue(null);
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(consoleWarnSpy).toHaveBeenCalled();
         });
 
-        it('should return false on malformed JSON', async () => {
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => { throw new Error('Invalid JSON'); }
-            });
+        it('should return false when registration has no waiting worker', async () => {
+            mockRegistration.waiting = null;
+            mockRegistration.installing = null;
+            navigator.serviceWorker.getRegistration.mockResolvedValue(mockRegistration);
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(consoleWarnSpy).toHaveBeenCalled();
         });
 
         it('should log error when SW registration fails but continue', async () => {
             navigator.serviceWorker.register.mockRejectedValue(new Error('SW registration failed'));
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: '12345678' })
-            });
 
             // Should not throw
             await expect(initServiceWorker()).resolves.not.toThrow();

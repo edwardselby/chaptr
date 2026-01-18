@@ -80,7 +80,8 @@ async def calculate_global_projection(
     view: str = "all",
     include_hypothetical: bool = False,
     display_currency: Optional[str] = None,
-    db = None
+    db = None,
+    tenant_id: Optional[UUID] = None
 ) -> List[Dict]:
     """
     Calculate global balance projection across all accounts and stories.
@@ -119,14 +120,19 @@ async def calculate_global_projection(
 
     See spec: Projection Engine > Global Calculation
     """
+    # Build tenant filter for multi-tenancy isolation
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
     # Get settings for currency conversion (if needed)
     settings = None
     if display_currency:
-        settings = await db.settings.find_one()
+        settings = await db.settings.find_one(tenant_filter)
 
     # Step 1: Sum all account current_balance as starting point
     # Phase 2.2: Include ALL currencies, convert to base
-    accounts = await db.accounts.find({"is_archived": False}).to_list()
+    # Multi-tenancy: Filter accounts by tenant_id
+    account_query = {"is_archived": False, **tenant_filter}
+    accounts = await db.accounts.find(account_query).to_list()
     starting_balance = Decimal("0")
 
     for acc in accounts:
@@ -141,11 +147,13 @@ async def calculate_global_projection(
     # Step 2: Fetch events in date range
     # Phase 2.2: Filter at database level for performance (Task 255)
     # MongoDB stores dates as strings (YYYY-MM-DD format)
+    # Multi-tenancy: Include tenant_id in event query
     query_filter = {
         "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
-        }
+        },
+        **tenant_filter
     }
 
     # For ALL view, exclude hypothetical unless include_hypothetical=True
@@ -218,7 +226,8 @@ async def calculate_global_projection(
 
 async def calculate_story_starting_balance(
     story: Dict,
-    db
+    db,
+    tenant_id: Optional[UUID] = None
 ) -> Decimal:
     """
     Calculate starting balance for story based on funding mode.
@@ -239,6 +248,9 @@ async def calculate_story_starting_balance(
     """
     funding_mode = story.get("funding_mode", "projected")
 
+    # Build tenant filter for multi-tenancy isolation
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
     if funding_mode == "projected":
         # Calculate projected balance on story start date
         # Uses global projection to include ALL events (baseline + story events)
@@ -247,7 +259,9 @@ async def calculate_story_starting_balance(
 
         # Query for earliest event to ensure we capture all historical data
         # Handles accounts with events spanning decades
+        # Multi-tenancy: Filter events by tenant_id
         earliest_event = await db.events.find_one(
+            tenant_filter,
             sort=[("event_date", 1)]  # Ascending by date
         )
 
@@ -265,7 +279,8 @@ async def calculate_story_starting_balance(
             start_date=early_date,
             end_date=day_before_story,
             include_hypothetical=False,  # Don't include hypothetical events
-            db=db
+            db=db,
+            tenant_id=tenant_id
         )
 
         # Return final balance if events exist
@@ -273,7 +288,9 @@ async def calculate_story_starting_balance(
             return projection[-1]["running_balance"]
         else:
             # No events before story start, return sum of account balances
-            accounts = await db.accounts.find({"is_archived": False}).to_list()
+            # Multi-tenancy: Filter accounts by tenant_id
+            account_query = {"is_archived": False, **tenant_filter}
+            accounts = await db.accounts.find(account_query).to_list()
             return sum(
                 convert_to_base_currency(
                     acc.get("current_balance", Decimal("0")),
@@ -290,7 +307,7 @@ async def calculate_story_starting_balance(
         # Projected_plus mode: Start at projected balance, funding event adds adjustment
         # Recursively calculate projected mode (without the funding adjustment)
         projected_story = {**story, "funding_mode": "projected"}
-        projected_balance = await calculate_story_starting_balance(projected_story, db)
+        projected_balance = await calculate_story_starting_balance(projected_story, db, tenant_id)
         return projected_balance
 
     else:
@@ -305,7 +322,8 @@ async def calculate_story_projection(
     story_id: str,
     start_date: date,
     end_date: date,
-    db = None
+    db = None,
+    tenant_id: Optional[UUID] = None
 ) -> List[Dict]:
     """
     Calculate story-filtered projection with funding modes.
@@ -347,13 +365,17 @@ async def calculate_story_projection(
     """
     from uuid import UUID
 
-    # Step 1: Get story
-    story = await db.stories.find_one({"_id": UUID(story_id)})
+    # Build tenant filter for multi-tenancy isolation
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
+    # Step 1: Get story (use 'id' field, not '_id')
+    story_query = {"id": story_id, **tenant_filter}
+    story = await db.stories.find_one(story_query)
     if not story:
         return []
 
     # Step 2: Calculate starting balance based on funding mode
-    starting_balance = await calculate_story_starting_balance(story, db)
+    starting_balance = await calculate_story_starting_balance(story, db, tenant_id)
 
     # Step 3: Create hypothetical funding event if needed
     # Per spec lines 163-182: Funding adjustments create a funding event
@@ -362,7 +384,7 @@ async def calculate_story_projection(
 
     if funding_mode in ("fixed", "projected_plus"):
         # Get settings to determine rate_to_base for funding currency
-        settings = await db.settings.find_one()
+        settings = await db.settings.find_one(tenant_filter)
         if not settings:
             raise ValueError(
                 "Settings document not found. Database may not be initialized. "
@@ -413,11 +435,13 @@ async def calculate_story_projection(
     # Step 4: Fetch ALL events in date range (not just baseline + this story)
     # Per spec: "running_balance += ALL events (including hidden stories)"
     # MongoDB stores dates as strings (YYYY-MM-DD format)
+    # Multi-tenancy: Filter events by tenant_id
     all_events_query = {
         "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
-        }
+        },
+        **tenant_filter
     }
     all_events = await db.events.find(all_events_query).to_list()
 
@@ -477,8 +501,8 @@ async def calculate_story_projection(
             visible_event_ids.add(event.get("id"))
 
     # Step 7: Add gap indicators (Phase 2.4 - Tasks 2, 3, 4)
-    # Get settings for currency conversion
-    settings = await db.settings.find_one()
+    # Get settings for currency conversion (tenant-scoped)
+    settings = await db.settings.find_one(tenant_filter)
     if not settings:
         raise ValueError(
             "Settings document not found. Database may not be initialized. "
@@ -532,7 +556,8 @@ async def calculate_account_projection(
     account_id: str,
     start_date: date,
     end_date: date,
-    db = None
+    db = None,
+    tenant_id: Optional[UUID] = None
 ) -> List[Dict]:
     """
     Calculate per-account projection.
@@ -552,6 +577,7 @@ async def calculate_account_projection(
         start_date: Projection start date
         end_date: Projection end date
         db: MongoDB database instance
+        tenant_id: Tenant UUID for multi-tenancy isolation
 
     Returns:
         List of events with running_balance for this account
@@ -560,8 +586,12 @@ async def calculate_account_projection(
     """
     from uuid import UUID
 
-    # Step 1: Get account
-    account = await db.accounts.find_one({"_id": UUID(account_id)})
+    # Build tenant filter for multi-tenancy isolation
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
+    # Step 1: Get account (use 'id' field, not '_id')
+    account_query = {"id": account_id, **tenant_filter}
+    account = await db.accounts.find_one(account_query)
     if not account:
         return []
 
@@ -574,13 +604,16 @@ async def calculate_account_projection(
 
     # Step 3: Query events assigned to this account
     # MongoDB stores dates as strings (YYYY-MM-DD format)
-    events = await db.events.find({
-        "account_id": UUID(account_id),
+    # Multi-tenancy: Filter events by tenant_id
+    events_query = {
+        "account_id": account_id,
         "event_date": {
             "$gte": start_date.isoformat(),
             "$lte": end_date.isoformat()
-        }
-    }).to_list()
+        },
+        **tenant_filter
+    }
+    events = await db.events.find(events_query).to_list()
 
     # Step 4: Convert to base currency and add base_amount field
     events_with_base = []

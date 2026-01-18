@@ -87,10 +87,11 @@ def test_verify_password_case_sensitive():
 def test_create_access_token_generates_valid_jwt():
     """JWT token creation generates valid token with correct structure."""
     user_id = uuid4()
+    tenant_id = user_id  # For super_admin, tenant_id = user_id
     username = "Edward"
     role = "admin"
 
-    token = create_access_token(user_id, username, role)
+    token = create_access_token(user_id, username, role, tenant_id)
 
     # Token should have 3 parts (header.payload.signature)
     assert token.count('.') == 2
@@ -100,13 +101,15 @@ def test_create_access_token_generates_valid_jwt():
     assert payload["sub"] == str(user_id)
     assert payload["username"] == username
     assert payload["role"] == role
+    assert payload["tenant_id"] == str(tenant_id)
     assert "exp" in payload
 
 
 def test_create_access_token_admin_gets_24_hour_expiration():
     """Admin users get standard 24-hour token expiration (spec v3.0: all users same)."""
     user_id = uuid4()
-    token = create_access_token(user_id, "Admin", "admin")
+    tenant_id = user_id
+    token = create_access_token(user_id, "Admin", "admin", tenant_id)
 
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     exp_timestamp = payload["exp"]
@@ -122,7 +125,8 @@ def test_create_access_token_admin_gets_24_hour_expiration():
 def test_create_access_token_user_gets_24_hour_expiration():
     """Regular users get standard 24-hour token expiration (spec v3.0: all users same)."""
     user_id = uuid4()
-    token = create_access_token(user_id, "User", "user")
+    tenant_id = uuid4()  # Regular user has different tenant_id
+    token = create_access_token(user_id, "User", "user", tenant_id)
 
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     exp_timestamp = payload["exp"]
@@ -138,9 +142,10 @@ def test_create_access_token_user_gets_24_hour_expiration():
 def test_create_access_token_custom_expiration_overrides_default():
     """Custom expiration delta overrides default expiration."""
     user_id = uuid4()
+    tenant_id = user_id
     custom_delta = timedelta(minutes=30)
 
-    token = create_access_token(user_id, "Admin", "admin", expires_delta=custom_delta)
+    token = create_access_token(user_id, "Admin", "admin", tenant_id, expires_delta=custom_delta)
 
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     exp_timestamp = payload["exp"]
@@ -154,13 +159,16 @@ def test_create_access_token_custom_expiration_overrides_default():
 def test_create_access_token_converts_uuid_to_string():
     """User ID (UUID) is converted to string in token payload."""
     user_id = uuid4()
-    token = create_access_token(user_id, "User", "user")
+    tenant_id = uuid4()
+    token = create_access_token(user_id, "User", "user", tenant_id)
 
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
     # Payload should have string, not UUID object
     assert isinstance(payload["sub"], str)
     assert payload["sub"] == str(user_id)
+    assert isinstance(payload["tenant_id"], str)
+    assert payload["tenant_id"] == str(tenant_id)
 
 
 # ============================================================================
@@ -170,19 +178,22 @@ def test_create_access_token_converts_uuid_to_string():
 def test_decode_access_token_validates_valid_token():
     """Token decoding succeeds with valid token."""
     user_id = uuid4()
-    token = create_access_token(user_id, "Edward", "admin")
+    tenant_id = user_id
+    token = create_access_token(user_id, "Edward", "admin", tenant_id)
 
     payload = decode_access_token(token)
 
     assert payload["sub"] == str(user_id)
     assert payload["username"] == "Edward"
     assert payload["role"] == "admin"
+    assert payload["tenant_id"] == str(tenant_id)
 
 
 def test_decode_access_token_rejects_tampered_token():
     """Token decoding fails if token signature is invalid (tampered)."""
     user_id = uuid4()
-    token = create_access_token(user_id, "Edward", "admin")
+    tenant_id = user_id
+    token = create_access_token(user_id, "Edward", "admin", tenant_id)
 
     # Tamper with token (change last character)
     tampered_token = token[:-1] + "X"
@@ -196,9 +207,10 @@ def test_decode_access_token_rejects_tampered_token():
 def test_decode_access_token_rejects_expired_token():
     """Token decoding fails if token is expired."""
     user_id = uuid4()
+    tenant_id = user_id
     # Create token that expired 1 minute ago
     expired_delta = timedelta(minutes=-1)
-    token = create_access_token(user_id, "Edward", "admin", expires_delta=expired_delta)
+    token = create_access_token(user_id, "Edward", "admin", tenant_id, expires_delta=expired_delta)
 
     with pytest.raises(AuthenticationError) as exc_info:
         decode_access_token(token)
@@ -246,7 +258,8 @@ def test_decode_access_token_rejects_wrong_secret():
 async def test_get_current_user_extracts_user_from_valid_token():
     """get_current_user dependency extracts user info from valid token."""
     user_id = uuid4()
-    token = create_access_token(user_id, "Edward", "admin")
+    tenant_id = user_id
+    token = create_access_token(user_id, "Edward", "admin", tenant_id)
 
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     user = await get_current_user(credentials)
@@ -254,6 +267,7 @@ async def test_get_current_user_extracts_user_from_valid_token():
     assert user["id"] == str(user_id)
     assert user["username"] == "Edward"
     assert user["role"] == "admin"
+    assert user["tenant_id"] == str(tenant_id)
 
 
 @pytest.mark.asyncio
@@ -269,8 +283,9 @@ async def test_get_current_user_rejects_invalid_token():
 async def test_get_current_user_rejects_expired_token():
     """get_current_user dependency rejects expired token."""
     user_id = uuid4()
+    tenant_id = user_id
     expired_delta = timedelta(minutes=-1)
-    token = create_access_token(user_id, "Edward", "admin", expires_delta=expired_delta)
+    token = create_access_token(user_id, "Edward", "admin", tenant_id, expires_delta=expired_delta)
 
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
@@ -340,7 +355,8 @@ def test_password_hash_handles_special_characters():
 def test_token_payload_does_not_contain_password():
     """JWT token payload never contains password (security check)."""
     user_id = uuid4()
-    token = create_access_token(user_id, "Edward", "admin")
+    tenant_id = user_id
+    token = create_access_token(user_id, "Edward", "admin", tenant_id)
 
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 

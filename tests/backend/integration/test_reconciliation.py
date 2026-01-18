@@ -51,7 +51,7 @@ async def account_with_drift(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -74,7 +74,7 @@ async def account_with_drift(
     )
     await EventRepository(account_repo_real.db).create(
         event1,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -89,7 +89,7 @@ async def account_with_drift(
     )
     await EventRepository(account_repo_real.db).create(
         event2,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -119,7 +119,7 @@ async def account_with_auto_adjustment(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -135,7 +135,7 @@ async def account_with_auto_adjustment(
     )
     await EventRepository(account_repo_real.db).create(
         auto_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -176,7 +176,8 @@ async def test_remove_old_auto_adjustments_success(
         account_id=account_with_auto_adjustment.id,
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify removal
@@ -209,7 +210,8 @@ async def test_remove_old_auto_adjustments_no_events(
         account_id=sample_account_with_user.id,
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert removed_count == 0, "Should remove 0 when no auto-adjustments exist"
@@ -281,7 +283,7 @@ async def test_calculate_auto_adjustment_no_drift(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -324,7 +326,7 @@ async def test_calculate_auto_adjustment_negative_drift(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -340,7 +342,7 @@ async def test_calculate_auto_adjustment_negative_drift(
     )
     await EventRepository(mongodb_real).create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -388,7 +390,8 @@ async def test_trigger_reconciliation_with_pending_accounts(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert len(reconciled_ids) > 0, "Should return non-empty list when reconciliation runs"
@@ -431,7 +434,8 @@ async def test_trigger_reconciliation_no_pending_accounts(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert reconciled_ids == [], "Should return empty list when no pending accounts"
@@ -471,7 +475,7 @@ async def test_trigger_reconciliation_removes_old_adjustments(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -498,7 +502,7 @@ async def test_trigger_reconciliation_removes_old_adjustments(
     )
     await EventRepository(mongodb_real).create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -514,7 +518,7 @@ async def test_trigger_reconciliation_removes_old_adjustments(
     )
     await EventRepository(mongodb_real).create(
         old_auto,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -523,7 +527,8 @@ async def test_trigger_reconciliation_removes_old_adjustments(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify old adjustment removed and new one created
@@ -571,7 +576,7 @@ async def test_trigger_reconciliation_multiple_accounts(
         )
         account = await account_repo_real.create(
             account_data,
-            current_user={"id": str(sample_user_real.id)},
+            current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
             client_id=None
         )
 
@@ -597,7 +602,7 @@ async def test_trigger_reconciliation_multiple_accounts(
         )
         await EventRepository(mongodb_real).create(
             event,
-            current_user={"id": str(sample_user_real.id)},
+            current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
             client_id=None
         )
 
@@ -608,7 +613,8 @@ async def test_trigger_reconciliation_multiple_accounts(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert len(reconciled_ids) == 2, "Should process both pending accounts"
@@ -661,7 +667,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_events(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -680,7 +686,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_events(
     )
     await event_repo.create(
         real_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -697,7 +703,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_events(
     )
     await event_repo.create(
         hypothetical_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -761,7 +767,7 @@ async def test_reconciliation_logs_account_update_to_change_log(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -782,7 +788,8 @@ async def test_reconciliation_logs_account_update_to_change_log(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify change_log entry was created for account update
@@ -840,7 +847,7 @@ async def test_reconciliation_returns_correct_account_ids(
         )
         account = await account_repo_real.create(
             account_data,
-            current_user={"id": str(sample_user_real.id)},
+            current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
             client_id=None
         )
 
@@ -859,7 +866,8 @@ async def test_reconciliation_returns_correct_account_ids(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify return type and content
@@ -913,7 +921,7 @@ async def test_reconciliation_updates_account_timestamp(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -932,7 +940,8 @@ async def test_reconciliation_updates_account_timestamp(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify timestamp was updated
@@ -977,7 +986,7 @@ async def test_reconciliation_timestamp_matches_returned_id(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -999,7 +1008,7 @@ async def test_reconciliation_timestamp_matches_returned_id(
     )
     await EventRepository(mongodb_real).create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1008,7 +1017,8 @@ async def test_reconciliation_timestamp_matches_returned_id(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Verify we can use the returned ID
@@ -1055,7 +1065,7 @@ async def test_reconciliation_creates_events_logged_to_change_log(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1077,7 +1087,7 @@ async def test_reconciliation_creates_events_logged_to_change_log(
     )
     await EventRepository(mongodb_real).create(
         event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1091,7 +1101,8 @@ async def test_reconciliation_creates_events_logged_to_change_log(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Count event change_log entries after reconciliation
@@ -1159,7 +1170,7 @@ async def test_calculate_auto_adjustment_excludes_future_events(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1178,7 +1189,7 @@ async def test_calculate_auto_adjustment_excludes_future_events(
     )
     await event_repo.create(
         past_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1196,7 +1207,7 @@ async def test_calculate_auto_adjustment_excludes_future_events(
     )
     await event_repo.create(
         future_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1223,12 +1234,12 @@ async def test_calculate_auto_adjustment_excludes_future_events(
 
 
 # ============================================================================
-# Unit Tests: User Isolation
+# Unit Tests: Tenant Isolation
 # ============================================================================
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_calculate_auto_adjustment_excludes_other_users_events(
+async def test_calculate_auto_adjustment_excludes_other_tenants_events(
     mongodb_real,
     account_repo_real,
     sample_user_real,
@@ -1236,34 +1247,140 @@ async def test_calculate_auto_adjustment_excludes_other_users_events(
     clean_database_real
 ):
     """
-    Test that events created by different users are excluded from drift calculation.
+    Test that events from different tenants are excluded from drift calculation.
 
-    Multi-tenant security: Each user's drift should only consider their own events.
-    This is critical for data isolation.
+    Multi-tenancy security: Each tenant's drift should only consider events
+    within that tenant. This is critical for data isolation.
+
+    Note: Within a tenant, ALL users share data. Multiple users in the same
+    tenant see and affect the same drift calculation. Isolation is at the
+    tenant level, not user level.
 
     Validates:
-    - Events with different created_by are excluded
-    - Only current user's events contribute to projected balance
-    - Drift is calculated correctly for the specific user
+    - Events with different tenant_id are excluded
+    - Events from same-tenant users ARE included (multi-user tenants share data)
+    - Drift is calculated correctly for the specific tenant
     """
     from uuid import uuid4
 
-    # Create account (shared resource in Phase 1)
+    # Create account for sample_user_real's tenant
     account_data = AccountCreate(
-        name="UserIsolationTest",
+        name="TenantIsolationTest",
         currency="GBP",
         current_balance=Decimal("1000.00"),
         is_default=False
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
     event_repo = EventRepository(mongodb_real)
 
-    # Create event as CURRENT USER: +500
+    # Create event as CURRENT TENANT USER: +500
+    tenant1_event = EventCreate(
+        event_date="2025-01-10",
+        description="Tenant1 income",
+        amount=Decimal("500.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True,
+        is_hypothetical=False
+    )
+    await event_repo.create(
+        tenant1_event,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Create event from DIFFERENT TENANT: +3000 (should be EXCLUDED)
+    # This simulates data leakage attempt - event inserted directly with wrong tenant_id
+    other_tenant_id = uuid4()
+    other_tenant_event_doc = {
+        "id": str(uuid4()),
+        "event_date": "2025-01-12",
+        "description": "OtherTenant income",
+        "amount": "3000.00",
+        "account_id": str(account.id),  # Same account, different tenant
+        "currency": "GBP",
+        "rate_to_base": "1.0",
+        "is_baseline": True,
+        "is_hypothetical": False,
+        "is_auto_adjustment": False,
+        "is_opening_balance": False,
+        "tenant_id": str(other_tenant_id),  # DIFFERENT TENANT
+        "created_by": str(uuid4()),
+        "updated_by": str(uuid4()),
+        "created_at": "2025-01-12T00:00:00+00:00",
+        "updated_at": "2025-01-12T00:00:00+00:00",
+        "story_id": None,
+        "recurring_rule_id": None
+    }
+    await mongodb_real["events"].insert_one(other_tenant_event_doc)
+
+    # Calculate drift FOR CURRENT TENANT
+    # Opening balance (tenant1): +1000
+    # Tenant1 event: +500
+    # OtherTenant event: +3000 (EXCLUDED - different tenant_id)
+    # Projected balance = 1000 + 500 = 1500
+    # Actual balance: 1000
+    # Expected drift: 1000 - 1500 = -500
+    adjustment = await calculate_auto_adjustment(
+        account_id=account.id,
+        actual_balance=Decimal("1000.00"),
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    assert adjustment is not None, "Should return adjustment when drift exists"
+    assert adjustment.amount == Decimal("-500.00"), (
+        "Drift should be -500 (1000 actual - 1500 projected). "
+        "Other tenant's event (+3000) should be excluded from projected balance. "
+        "If other tenant's event was included, drift would be -3500."
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_calculate_auto_adjustment_includes_same_tenant_different_user_events(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that events from different users WITHIN THE SAME TENANT are included.
+
+    Multi-tenancy: Users in the same tenant share data. All events within
+    a tenant contribute to drift calculation, regardless of which user
+    created them.
+
+    Validates:
+    - Events with same tenant_id but different created_by ARE included
+    - Multi-user tenants correctly share reconciliation data
+    """
+    from uuid import uuid4
+
+    # Create account for sample_user_real's tenant
+    account_data = AccountCreate(
+        name="SameTenantDiffUserTest",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # Create event as USER 1 (sample_user_real): +500
     user1_event = EventCreate(
         event_date="2025-01-10",
         description="User1 income",
@@ -1276,47 +1393,50 @@ async def test_calculate_auto_adjustment_excludes_other_users_events(
     )
     await event_repo.create(
         user1_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
-    # Create event as DIFFERENT USER: +3000 (should be EXCLUDED)
+    # Create event as USER 2 (DIFFERENT user, SAME tenant): +300
+    # This should be INCLUDED because they're in the same tenant
     other_user_id = uuid4()
-    other_user_event = EventCreate(
+    user2_event = EventCreate(
         event_date="2025-01-12",
-        description="OtherUser income",
-        amount=Decimal("3000.00"),
+        description="User2 income (same tenant)",
+        amount=Decimal("300.00"),
         account_id=account.id,
         currency="GBP",
         rate_to_base=Decimal("1.0"),
         is_baseline=True,
         is_hypothetical=False
     )
+    # Pass same tenant_id but different user_id
     await event_repo.create(
-        other_user_event,
-        current_user={"id": str(other_user_id)},
+        user2_event,
+        current_user={"id": str(other_user_id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
-    # Calculate drift FOR CURRENT USER
-    # Opening balance (created by sample_user_real): +1000
+    # Calculate drift FOR CURRENT TENANT
+    # Opening balance: +1000
     # User1 event: +500
-    # OtherUser event: +3000 (EXCLUDED - different user)
-    # Projected balance = 1000 + 500 = 1500
+    # User2 event: +300 (INCLUDED - same tenant)
+    # Projected balance = 1000 + 500 + 300 = 1800
     # Actual balance: 1000
-    # Expected drift: 1000 - 1500 = -500
+    # Expected drift: 1000 - 1800 = -800
     adjustment = await calculate_auto_adjustment(
         account_id=account.id,
         actual_balance=Decimal("1000.00"),
         db=mongodb_real,
-        user_id=sample_user_real.id
+        user_id=sample_user_real.id,
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert adjustment is not None, "Should return adjustment when drift exists"
-    assert adjustment.amount == Decimal("-500.00"), (
-        "Drift should be -500 (1000 actual - 1500 projected). "
-        "Other user's event (+3000) should be excluded from projected balance. "
-        "If other user's event was included, drift would be -3500."
+    assert adjustment.amount == Decimal("-800.00"), (
+        "Drift should be -800 (1000 actual - 1800 projected). "
+        "User2's event (+300) from same tenant should be INCLUDED. "
+        "Multi-user tenants share data for reconciliation."
     )
 
 
@@ -1354,7 +1474,7 @@ async def test_calculate_auto_adjustment_drift_exactly_at_threshold(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1400,7 +1520,7 @@ async def test_calculate_auto_adjustment_drift_just_above_threshold(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1456,7 +1576,7 @@ async def test_reconciliation_idempotency_second_run_no_change(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1473,7 +1593,7 @@ async def test_reconciliation_idempotency_second_run_no_change(
     )
     await event_repo.create(
         drift_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1488,7 +1608,8 @@ async def test_reconciliation_idempotency_second_run_no_change(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Count [auto] adjustments after first run
@@ -1514,7 +1635,8 @@ async def test_reconciliation_idempotency_second_run_no_change(
         trigger_reason="sync",
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     # Count [auto] adjustments after second run
@@ -1587,7 +1709,8 @@ async def test_remove_old_auto_adjustments_logs_deletion(
         account_id=account_with_auto_adjustment.id,
         db=mongodb_real,
         user_id=sample_user_real.id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=sample_user_real.tenant_id
     )
 
     assert removed_count == 1, "Should remove 1 auto-adjustment"
@@ -1654,7 +1777,7 @@ async def test_calculate_auto_adjustment_includes_story_events(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1669,7 +1792,7 @@ async def test_calculate_auto_adjustment_includes_story_events(
     )
     story = await story_repo.create(
         story_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1689,7 +1812,7 @@ async def test_calculate_auto_adjustment_includes_story_events(
     )
     await event_repo.create(
         story_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1744,7 +1867,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_story_events(
     )
     account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1760,7 +1883,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_story_events(
     )
     story = await story_repo.create(
         story_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1779,7 +1902,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_story_events(
     )
     await event_repo.create(
         real_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
@@ -1797,7 +1920,7 @@ async def test_calculate_auto_adjustment_excludes_hypothetical_story_events(
     )
     await event_repo.create(
         hypothetical_event,
-        current_user={"id": str(sample_user_real.id)},
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 

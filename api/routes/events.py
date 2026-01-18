@@ -29,6 +29,18 @@ def get_event_repo() -> EventRepository:
     return EventRepository(db)
 
 
+def get_tenant_id(current_user: dict) -> UUID:
+    """
+    Extract tenant_id from current user for multi-tenancy filtering.
+
+    :param current_user: Current user dict from JWT token
+    :type current_user: dict
+    :return: Tenant UUID
+    :rtype: UUID
+    """
+    return UUID(current_user["tenant_id"])
+
+
 @router.get("/events", response_model=list[Event])
 async def list_events(
     current_user: dict = Depends(get_current_user),
@@ -85,6 +97,8 @@ async def list_events(
 
     :Example:
 
+    Multi-tenancy: Only returns events belonging to the current user's tenant.
+
     ```bash
     # List all events
     curl http://localhost:8000/api/events
@@ -96,13 +110,15 @@ async def list_events(
     curl "http://localhost:8000/api/events?account_id={account-id}&date_from=2025-01-01&date_to=2025-12-31"
     ```
     """
+    tenant_id = get_tenant_id(current_user)
     return await repo.list_with_ordering(
         story_id=story_id,
         account_id=account_id,
         date_from=date_from,
         date_to=date_to,
         skip=skip,
-        limit=limit
+        limit=limit,
+        tenant_id=tenant_id
     )
 
 
@@ -114,6 +130,8 @@ async def get_event(
 ):
     """
     Get single event by ID.
+
+    Multi-tenancy: Only returns event if it belongs to the current user's tenant.
 
     :param event_id: Event UUID
     :type event_id: UUID
@@ -129,7 +147,8 @@ async def get_event(
     curl http://localhost:8000/api/events/{event-id}
     ```
     """
-    return await repo.get(event_id)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.get_for_tenant(event_id, tenant_id)
 
 
 @router.post("/events", response_model=Event, status_code=201)
@@ -199,8 +218,11 @@ async def create_event(
         "currency": "CAD"
       }'
     ```
+
+    Multi-tenancy: Event is created in the current user's tenant.
     """
-    return await repo.create(data, story_id=story_id, current_user=current_user, client_id=None)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.create(data, story_id=story_id, current_user=current_user, client_id=None, tenant_id=tenant_id)
 
 
 @router.put("/events/{event_id}", response_model=Event)
@@ -231,6 +253,8 @@ async def update_event(
     :raises ResourceNotFoundError: If event not found (404)
     :raises ResourceConflictError: If trying to edit auto-adjustment event (409)
 
+    Multi-tenancy: Only updates event if it belongs to the current user's tenant.
+
     :Example:
 
     ```bash
@@ -245,6 +269,9 @@ async def update_event(
       -d '{"event_date": "2025-06-12"}'
     ```
     """
+    # Verify event belongs to tenant before update
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(event_id, tenant_id)
     return await repo.update(event_id, data, current_user=current_user, client_id=None)
 
 
@@ -261,6 +288,8 @@ async def delete_event(
     - Cannot delete is_auto_adjustment events (managed by reconciliation system)
     - Permanent deletion
 
+    Multi-tenancy: Only deletes event if it belongs to the current user's tenant.
+
     :param event_id: Event UUID
     :type event_id: UUID
     :param repo: Injected EventRepository
@@ -275,5 +304,8 @@ async def delete_event(
     curl -X DELETE http://localhost:8000/api/events/{event-id}
     ```
     """
+    # Verify event belongs to tenant before delete
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(event_id, tenant_id)
     await repo.delete(event_id, current_user=current_user, client_id=None)
     return None

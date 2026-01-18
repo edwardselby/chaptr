@@ -99,13 +99,17 @@ def generate_id() -> UUID:
 async def get_or_404(
     collection: AsyncIOMotorCollection,
     resource_id: UUID | str,
-    resource_name: str
+    resource_name: str,
+    tenant_id: Optional[UUID] = None
 ) -> dict[str, Any]:
     """
-    Fetch document by ID or raise 404.
+    Fetch document by ID or raise 404 with tenant isolation.
 
     Queries MongoDB collection for document with given ID.
-    Raises ResourceNotFoundError if document doesn't exist.
+    Raises ResourceNotFoundError if document doesn't exist or belongs to different tenant.
+
+    Multi-tenancy: If tenant_id is provided, document must belong to that tenant.
+    This prevents cross-tenant data access.
 
     :param collection: MongoDB collection to query
     :type collection: AsyncIOMotorCollection
@@ -113,17 +117,25 @@ async def get_or_404(
     :type resource_id: UUID | str
     :param resource_name: Human-readable name for error message (e.g., "Account")
     :type resource_name: str
+    :param tenant_id: Tenant UUID for multi-tenancy isolation (optional)
+    :type tenant_id: Optional[UUID]
     :return: Document dictionary from MongoDB
     :rtype: dict[str, Any]
-    :raises ResourceNotFoundError: If document not found
+    :raises ResourceNotFoundError: If document not found or belongs to different tenant
 
     :Example:
 
-    >>> doc = await get_or_404(db['accounts'], account_id, "Account")
-    >>> # Raises ResourceNotFoundError("Account not found") if missing
+    >>> doc = await get_or_404(db['accounts'], account_id, "Account", tenant_id=tenant_id)
+    >>> # Raises ResourceNotFoundError("Account not found") if missing or wrong tenant
     """
     id_str = to_str(resource_id)
-    doc = await collection.find_one({"id": id_str})
+    query = {"id": id_str}
+
+    # Multi-tenancy: Add tenant filter if provided
+    if tenant_id:
+        query["tenant_id"] = str(tenant_id)
+
+    doc = await collection.find_one(query)
 
     if not doc:
         raise ResourceNotFoundError(f"{resource_name} not found")
@@ -134,18 +146,19 @@ async def get_or_404(
 async def resolve_account_id(
     db,
     story_id: Optional[UUID] = None,
-    explicit_account_id: Optional[UUID] = None
+    explicit_account_id: Optional[UUID] = None,
+    tenant_id: Optional[UUID] = None
 ) -> UUID:
     """
-    Resolve account_id using 3-level hierarchy.
+    Resolve account_id using 3-level hierarchy with tenant isolation.
 
     Critical business logic for event creation.
     Resolves which account an event should be assigned to.
 
     Resolution Hierarchy:
-    1. User explicit account_id → use it (verify exists and not archived)
-    2. Story's default_account_id → use it
-    3. Global default account (is_default=true) → use it (fallback)
+    1. User explicit account_id → use it (verify exists, not archived, belongs to tenant)
+    2. Story's default_account_id → use it (verify belongs to tenant)
+    3. Tenant default account (is_default=true) → use it (fallback)
     4. No account found → ERROR
 
     :param db: MongoDB database instance
@@ -154,6 +167,8 @@ async def resolve_account_id(
     :type story_id: Optional[UUID]
     :param explicit_account_id: Optional explicit account ID from request
     :type explicit_account_id: Optional[UUID]
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
+    :type tenant_id: Optional[UUID]
     :return: Resolved account UUID
     :rtype: UUID
     :raises ValidationError: If no account could be resolved
@@ -162,20 +177,25 @@ async def resolve_account_id(
     :Example:
 
     >>> # Event with explicit account_id
-    >>> account_id = await resolve_account_id(db, explicit_account_id=acc_id)
+    >>> account_id = await resolve_account_id(db, explicit_account_id=acc_id, tenant_id=tenant_id)
     >>>
     >>> # Event in story with default account
-    >>> account_id = await resolve_account_id(db, story_id=story_id)
+    >>> account_id = await resolve_account_id(db, story_id=story_id, tenant_id=tenant_id)
     >>>
-    >>> # Event with no context (uses global default)
-    >>> account_id = await resolve_account_id(db)
+    >>> # Event with no context (uses tenant default)
+    >>> account_id = await resolve_account_id(db, tenant_id=tenant_id)
     """
+    # Build tenant filter for all queries
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
     # Level 1: Explicit account_id provided
     if explicit_account_id:
-        account = await db['accounts'].find_one({
+        query = {
             "id": to_str(explicit_account_id),
-            "is_archived": False
-        })
+            "is_archived": False,
+            **tenant_filter
+        }
+        account = await db['accounts'].find_one(query)
         if account:
             return explicit_account_id
         raise ValidationError(
@@ -184,25 +204,30 @@ async def resolve_account_id(
 
     # Level 2: Story's default_account_id
     if story_id:
-        story = await db['stories'].find_one({"id": to_str(story_id)})
+        story_query = {"id": to_str(story_id), **tenant_filter}
+        story = await db['stories'].find_one(story_query)
         if story and story.get('default_account_id'):
             account_id = UUID(story['default_account_id'])
-            # Verify account exists and not archived
-            account = await db['accounts'].find_one({
+            # Verify account exists, not archived, and belongs to tenant
+            account_query = {
                 "id": to_str(account_id),
-                "is_archived": False
-            })
+                "is_archived": False,
+                **tenant_filter
+            }
+            account = await db['accounts'].find_one(account_query)
             if account:
                 return account_id
             # Note: If story's default_account_id is archived, we fall through
             # to global default (Level 3) rather than failing. This allows events
             # to continue being created even if the story's account is archived.
 
-    # Level 3: Global default account
-    default = await db['accounts'].find_one({
+    # Level 3: Tenant default account
+    default_query = {
         "is_default": True,
-        "is_archived": False
-    })
+        "is_archived": False,
+        **tenant_filter
+    }
+    default = await db['accounts'].find_one(default_query)
     if default:
         return UUID(default['id'])
 
@@ -212,9 +237,9 @@ async def resolve_account_id(
     )
 
 
-async def get_rate_to_base(db, currency: str) -> Decimal:
+async def get_rate_to_base(db, currency: str, tenant_id: Optional[UUID] = None) -> Decimal:
     """
-    Get conversion rate to base currency from settings.
+    Get conversion rate to base currency from tenant settings.
 
     Locks the current conversion rate for an event.
     Rate is stored permanently on the event and never auto-updates.
@@ -223,6 +248,8 @@ async def get_rate_to_base(db, currency: str) -> Decimal:
     :type db: AsyncIOMotorDatabase
     :param currency: Currency code (e.g., "GBP", "CAD", "USD")
     :type currency: str
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
+    :type tenant_id: Optional[UUID]
     :return: Conversion rate to base currency
     :rtype: Decimal
     :raises ValidationError: If settings not found or rate missing
@@ -230,10 +257,12 @@ async def get_rate_to_base(db, currency: str) -> Decimal:
     :Example:
 
     >>> # Lock CAD to GBP rate at event creation
-    >>> rate = await get_rate_to_base(db, "CAD")
+    >>> rate = await get_rate_to_base(db, "CAD", tenant_id=tenant_id)
     >>> # Returns Decimal("0.58") if that's the current CAD rate
     """
-    settings = await db['settings'].find_one({})
+    # Query settings with tenant filter
+    query = {"tenant_id": str(tenant_id)} if tenant_id else {}
+    settings = await db['settings'].find_one(query)
 
     if not settings:
         raise ValidationError("Settings not configured. Initialize settings first.")

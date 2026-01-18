@@ -21,7 +21,8 @@ async def trigger_reconciliation(
     trigger_reason: str,
     db: AsyncIOMotorDatabase,
     user_id: UUID,
-    client_id: Optional[str] = None
+    client_id: Optional[str] = None,
+    tenant_id: Optional[UUID] = None
 ) -> List[UUID]:
     """
     Trigger reconciliation for all accounts with pending_reconciliation = true.
@@ -32,6 +33,7 @@ async def trigger_reconciliation(
     :param db: MongoDB database instance
     :param user_id: User UUID (from JWT)
     :param client_id: Client identifier for change log
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
     :return: List of account IDs that were reconciled (empty list if none)
     """
     from api.repositories.accounts import AccountRepository
@@ -42,10 +44,11 @@ async def trigger_reconciliation(
     event_repo = EventRepository(db)
 
     # 1. Find all accounts with pending_reconciliation = true
-    # NOTE: Accounts don't have created_by field (shared resource in Phase 1)
-    pending_accounts = await account_repo.collection.find({
-        "pending_reconciliation": True
-    }).to_list(length=None)
+    # Multi-tenancy: Filter by tenant_id if provided
+    account_query = {"pending_reconciliation": True}
+    if tenant_id:
+        account_query["tenant_id"] = str(tenant_id)
+    pending_accounts = await account_repo.collection.find(account_query).to_list(length=None)
 
     if not pending_accounts:
         return []
@@ -53,21 +56,27 @@ async def trigger_reconciliation(
     reconciled_account_ids: List[UUID] = []
     today = datetime.now(timezone.utc).date().isoformat()
 
+    # Build current_user dict with tenant_id for multi-tenancy
+    current_user = {"id": str(user_id)}
+    if tenant_id:
+        current_user["tenant_id"] = str(tenant_id)
+
     for account_doc in pending_accounts:
         account_id = UUID(account_doc["id"])
 
         # 2. Remove old [auto] adjustments for this account
-        await remove_old_auto_adjustments(account_id, db, user_id, client_id)
+        await remove_old_auto_adjustments(account_id, db, user_id, client_id, tenant_id)
 
         # 3. Calculate drift (actual vs projected)
-        drift_event = await calculate_auto_adjustment(account_id, Decimal(str(account_doc["current_balance"])), db, user_id)
+        drift_event = await calculate_auto_adjustment(account_id, Decimal(str(account_doc["current_balance"])), db, user_id, tenant_id)
 
         if drift_event:
             # 4. Create [auto] adjustment event
             await event_repo.create(
                 drift_event,
-                current_user={"id": str(user_id)},
-                client_id=client_id
+                current_user=current_user,
+                client_id=client_id,
+                tenant_id=tenant_id
             )
 
         # 5. Clear pending_reconciliation flag using repository update
@@ -75,7 +84,7 @@ async def trigger_reconciliation(
         await account_repo.update(
             account_id,
             AccountUpdate(pending_reconciliation=False),
-            current_user={"id": str(user_id)},
+            current_user=current_user,
             client_id=client_id
         )
 
@@ -88,7 +97,8 @@ async def calculate_auto_adjustment(
     account_id: UUID,
     actual_balance: Decimal,
     db: AsyncIOMotorDatabase,
-    user_id: UUID
+    user_id: UUID,
+    tenant_id: Optional[UUID] = None
 ) -> Optional[Dict]:
     """
     Calculate drift and return EventCreate if adjustment needed.
@@ -100,6 +110,7 @@ async def calculate_auto_adjustment(
     :param actual_balance: User-entered actual balance
     :param db: MongoDB database instance
     :param user_id: User UUID
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
     :return: EventCreate object or None
     """
     from api.repositories.accounts import AccountRepository
@@ -122,12 +133,15 @@ async def calculate_auto_adjustment(
     # Query all REAL events for this account up to today
     # Exclude hypothetical events: "Reality as anchor - hypotheticals are explicit opt-ins" (spec)
     # Events use "event_date" field consistently everywhere
-    account_events = await db.events.find({
+    # Multi-tenancy: Filter by tenant_id (not created_by - supports multi-user tenants)
+    events_query = {
         "account_id": str(account_id),
-        "created_by": str(user_id),
         "event_date": {"$lte": today_str},
         "is_hypothetical": False  # Only real events affect account drift
-    }).to_list(length=None)
+    }
+    if tenant_id:
+        events_query["tenant_id"] = str(tenant_id)
+    account_events = await db.events.find(events_query).to_list(length=None)
 
     # Event sourcing: Sum all events from £0
     # Note: Old [auto] adjustments have been removed before this function is called
@@ -161,7 +175,8 @@ async def remove_old_auto_adjustments(
     account_id: UUID,
     db: AsyncIOMotorDatabase,
     user_id: UUID,
-    client_id: Optional[str] = None
+    client_id: Optional[str] = None,
+    tenant_id: Optional[UUID] = None
 ) -> int:
     """
     Remove all existing [auto] adjustment events for this account.
@@ -173,6 +188,7 @@ async def remove_old_auto_adjustments(
     :param db: MongoDB database instance
     :param user_id: User UUID
     :param client_id: Client identifier for change log
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
     :return: Number of events deleted
     """
     from api.repositories.events import EventRepository
@@ -180,11 +196,14 @@ async def remove_old_auto_adjustments(
     event_repo = EventRepository(db)
 
     # Find all [auto] adjustment events for this account
-    auto_events = await event_repo.collection.find({
+    # Multi-tenancy: Filter by tenant_id (not created_by - supports multi-user tenants)
+    auto_query = {
         "account_id": str(account_id),
-        "created_by": str(user_id),
         "is_auto_adjustment": True
-    }).to_list(length=None)
+    }
+    if tenant_id:
+        auto_query["tenant_id"] = str(tenant_id)
+    auto_events = await event_repo.collection.find(auto_query).to_list(length=None)
 
     deleted_count = 0
 
@@ -204,7 +223,8 @@ async def remove_old_auto_adjustments(
             "delete",
             event_snapshot,  # Snapshot before deletion (without _id)
             user_id,
-            client_id
+            client_id,
+            tenant_id  # Multi-tenancy: Include tenant_id in change_log
         )
 
         deleted_count += 1

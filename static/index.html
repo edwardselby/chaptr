@@ -450,23 +450,32 @@
         <div class="screen" x-show="currentScreen === 'settings'" x-cloak>
             <div class="screen-content">
 
-                <!-- Admin Check -->
-                <template x-if="!user || user.role !== 'admin'">
-                    <div class="access-denied">
-                        <h2>⚠ Admin Access Required</h2>
-                        <p>Settings are only available to administrators.</p>
-                    </div>
-                </template>
+                <div class="settings-grid">
 
-                <!-- Settings Content (Admin Only) -->
-                <template x-if="user && user.role === 'admin'">
-                    <div class="settings-grid">
+                    <!-- Left Column: Primary Configuration -->
+                    <div class="settings-column-left">
 
-                        <!-- Left Column: Primary Configuration -->
-                        <div class="settings-column-left">
-
-                            <!-- Preferences -->
+                        <!-- My Account (All Users) -->
                         <section class="section">
+                            <div class="section-header">
+                                <h2>My Account</h2>
+                            </div>
+                            <div class="my-account-display">
+                                <div class="user-card" @click="openMyAccountModal()">
+                                    <div class="user-info">
+                                        <span class="user-name" x-text="user?.username || 'Unknown'"></span>
+                                        <span class="tag" x-show="user?.role === 'super_admin'">[super_admin]</span>
+                                        <span class="tag" x-show="user?.role === 'admin'">[admin]</span>
+                                    </div>
+                                    <div class="user-meta">
+                                        <span>Click to edit profile</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Preferences (Admin Only) -->
+                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
                             <div class="section-header">
                                 <h2>Preferences</h2>
                             </div>
@@ -556,10 +565,11 @@
                             </div>
                         </section>
 
-                        <!-- User Management -->
-                        <section class="section">
+                        <!-- User Management (Admin Only) -->
+                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
                             <div class="section-header">
                                 <h2>User Management</h2>
+                                <button class="btn-add" @click="openUserModal()">+ Add User</button>
                             </div>
                             <div class="users-list">
                                 <template x-if="users.length === 0">
@@ -567,22 +577,23 @@
                                         <p>No users configured yet.</p>
                                     </div>
                                 </template>
-                                <template x-for="user in users" :key="user.id">
-                                    <div class="user-card" @click="editUser(user.id)">
+                                <template x-for="u in users" :key="u.id">
+                                    <div class="user-card" @click="editUser(u.id)">
                                         <div class="user-info">
-                                            <span class="user-name" x-text="user.username"></span>
-                                            <span class="tag" x-show="user.role === 'admin'">[admin]</span>
+                                            <span class="user-name" x-text="u.username"></span>
+                                            <span class="tag" x-show="u.role === 'super_admin'">[super_admin]</span>
+                                            <span class="tag" x-show="u.role === 'admin'">[admin]</span>
                                         </div>
                                         <div class="user-meta">
-                                            <span class="user-role" x-text="user.role || 'user'"></span>
+                                            <span class="user-role" x-text="u.role || 'user'"></span>
                                         </div>
                                     </div>
                                 </template>
                             </div>
                         </section>
 
-                        <!-- Backup & Restore -->
-                        <section class="section">
+                        <!-- Backup & Restore (Admin Only) -->
+                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
                             <div class="section-header">
                                 <h2>Backup & Restore</h2>
                             </div>
@@ -626,8 +637,8 @@
                             </div>
                         </section>
 
-                        <!-- Conversion Rates -->
-                        <section class="section">
+                        <!-- Conversion Rates (Admin Only) -->
+                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
                             <div class="section-header">
                                 <h2>Conversion Rates</h2>
                                 <button class="btn-add" @click="addConversionRate()">+ Add Rate</button>
@@ -659,8 +670,8 @@
                             </div>
                         </section>
 
-                        <!-- Sync Settings -->
-                        <section class="section">
+                        <!-- Sync Settings (Admin Only) -->
+                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
                             <div class="section-header">
                                 <h2>Sync Settings</h2>
                             </div>
@@ -700,8 +711,8 @@
                             </div>
                         </section>
 
-                        <!-- Database Tools -->
-                        <section class="section">
+                        <!-- Database Tools (Super Admin Only) -->
+                        <section class="section" x-show="user?.role === 'super_admin'" x-cloak>
                             <div class="section-header">
                                 <h2>Database Tools</h2>
                             </div>
@@ -728,7 +739,6 @@
                         <!-- End Right Column -->
 
                     </div>
-                </template>
 
             </div>
         </div>
@@ -914,6 +924,155 @@
                         class="btn-danger"
                         x-show="accountForm.id"
                         @click="deleteAccount()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div class="modal-overlay" x-show="showUserModal" x-cloak>
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h2 x-text="userModalMode === 'create' ? 'Add User' :
+                           userModalMode === 'self' ? 'Edit My Profile' : 'Edit User'"></h2>
+                <button class="modal-close" @click="showUserModal = false">✕</button>
+            </div>
+            <form @submit.prevent="saveUser" class="modal-body">
+                <div class="form-group">
+                    <label for="user-username">Username</label>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': userFormErrors.username }">
+                        <span class="validation-arrow-left" x-show="userFormErrors.username" x-cloak>&gt;</span>
+
+                        <input
+                            id="user-username"
+                            type="text"
+                            x-model="userForm.username"
+                            placeholder="e.g., Edward"
+                            required
+                            minlength="1"
+                            maxlength="50"
+                            class="form-input"
+                            :class="{ 'validation-error': userFormErrors.username }"
+                            @invalid.prevent="userFormErrors.username = true"
+                            @input="userFormErrors.username = false">
+
+                        <span class="validation-arrow-right" x-show="userFormErrors.username" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="userFormErrors.username" style="color: var(--red)">Username is required</span>
+                        <span x-show="!userFormErrors.username">Display name for UI</span>
+                    </span>
+                </div>
+
+                <!-- Role dropdown (admin mode only, not self-service) -->
+                <div class="form-group" x-show="userModalMode !== 'self'" x-cloak>
+                    <label for="user-role">Role</label>
+
+                    <div class="custom-select"
+                         x-data="{
+                             open: false,
+                             get options() {
+                                 // Base options - all users can create 'user' role
+                                 const opts = [{ value: 'user', label: 'User' }];
+                                 // Only super_admin can create admins (new tenants)
+                                 if (user?.role === 'super_admin') {
+                                     opts.push({ value: 'admin', label: 'Admin' });
+                                 }
+                                 return opts;
+                             },
+                             toggleOpen() {
+                                 this.open = !this.open;
+                             },
+                             getSelectedLabel() {
+                                 const opt = this.options.find(o => o.value === userForm.role);
+                                 return opt ? opt.label : 'Select role';
+                             },
+                             selectOption(value) {
+                                 userForm.role = value;
+                                 this.open = false;
+                             }
+                         }"
+                         @click.away="open = false">
+
+                        <button type="button" class="select-trigger" @click="toggleOpen()">
+                            <span x-text="getSelectedLabel()"></span>
+                            <span class="chevron" :class="{ 'open': open }">▼</span>
+                        </button>
+
+                        <ul class="select-dropdown" x-show="open" x-cloak x-transition>
+                            <template x-for="opt in options" :key="opt.value">
+                                <li @click="selectOption(opt.value)"
+                                    :class="{ 'selected': userForm.role === opt.value }"
+                                    x-text="opt.label"></li>
+                            </template>
+                        </ul>
+                    </div>
+
+                    <span class="form-hint" x-show="user?.role === 'super_admin'">Super admin can create admin users (new tenants) or regular users</span>
+                    <span class="form-hint" x-show="user?.role !== 'super_admin'">Admin users can manage settings and other users within this tenant</span>
+                </div>
+
+                <!-- Current password (self-service mode only, when changing password) -->
+                <div class="form-group" x-show="userModalMode === 'self'" x-cloak>
+                    <label for="user-current-password">Current Password</label>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': userFormErrors.current_password }">
+                        <span class="validation-arrow-left" x-show="userFormErrors.current_password" x-cloak>&gt;</span>
+
+                        <input
+                            id="user-current-password"
+                            type="password"
+                            x-model="userForm.current_password"
+                            placeholder="Required to change password"
+                            class="form-input"
+                            :class="{ 'validation-error': userFormErrors.current_password }"
+                            @input="userFormErrors.current_password = false">
+
+                        <span class="validation-arrow-right" x-show="userFormErrors.current_password" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="userFormErrors.current_password" style="color: var(--red)">Required when changing password</span>
+                        <span x-show="!userFormErrors.current_password">Only needed if changing password</span>
+                    </span>
+                </div>
+
+                <div class="form-group">
+                    <label for="user-password" x-text="userModalMode === 'create' ? 'Password' : 'New Password (optional)'"></label>
+
+                    <div class="field-with-arrows" :class="{ 'has-arrows': userFormErrors.password }">
+                        <span class="validation-arrow-left" x-show="userFormErrors.password" x-cloak>&gt;</span>
+
+                        <input
+                            id="user-password"
+                            type="password"
+                            x-model="userForm.password"
+                            :placeholder="userModalMode === 'create' ? 'Min 8 chars, uppercase, lowercase, number' : 'Leave blank to keep current'"
+                            :required="userModalMode === 'create'"
+                            minlength="8"
+                            class="form-input"
+                            :class="{ 'validation-error': userFormErrors.password }"
+                            @invalid.prevent="userFormErrors.password = true"
+                            @input="userFormErrors.password = false">
+
+                        <span class="validation-arrow-right" x-show="userFormErrors.password" x-cloak>&lt;</span>
+                    </div>
+
+                    <span class="form-hint">
+                        <span x-show="userFormErrors.password" style="color: var(--red)">Password is required (min 8 chars)</span>
+                        <span x-show="!userFormErrors.password">Min 8 chars, must include uppercase, lowercase, and number</span>
+                    </span>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Save</button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        x-show="userModalMode === 'edit' && userForm.id !== user?.id"
+                        @click="deleteUser(userForm.id)">Delete</button>
                 </div>
             </form>
         </div>

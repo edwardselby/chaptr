@@ -145,7 +145,19 @@ window.app = function() {
             username: false,
             password: false
         },
-        userForm: {},
+        userForm: {
+            id: null,
+            username: '',
+            role: 'user',
+            password: '',
+            current_password: ''
+        },
+        userFormErrors: {
+            username: false,
+            password: false,
+            current_password: false
+        },
+        userModalMode: 'create', // 'create' | 'edit' | 'self'
         settingsForm: {},
         balanceForm: {
             account_id: '',
@@ -300,12 +312,23 @@ window.app = function() {
                 this.stories = await storage.getStories();
                 this.accounts = await storage.getAccounts();
                 this.events = await storage.getEvents();
-                this.users = []; // Users still from Dexie (admin only)
+                this.users = []; // Users loaded from admin API for admins
                 this.settings = await storage.getSettings() || { base_currency: 'GBP' };
 
-                // Load users from Dexie if Mode 1
-                if (storage.mode === 'full') {
-                    this.users = await db.users.toArray();
+                // Load users from admin API if user is admin
+                if (this.user?.role === 'admin') {
+                    try {
+                        const response = await apiRequest('/api/admin/users', { method: 'GET' });
+                        if (response.ok) {
+                            this.users = await response.json();
+                        } else {
+                            console.warn('Failed to load users:', response.status);
+                            this.users = [];
+                        }
+                    } catch (error) {
+                        console.warn('Failed to load users (admin only):', error);
+                        this.users = [];
+                    }
                 }
 
                 // Initialize settings form
@@ -1669,28 +1692,227 @@ window.app = function() {
         // ===== SETTINGS =====
 
         /**
-         * Open user modal for adding new user
+         * Open user modal for adding new user (admin only)
          */
         openUserModal() {
+            this.userModalMode = 'create';
             this.userForm = {
+                id: null,
                 username: '',
+                role: 'user',
                 password: '',
-                is_admin: false,
-                role: 'user'
+                current_password: ''
+            };
+            this.userFormErrors = {
+                username: false,
+                password: false,
+                current_password: false
             };
             this.showUserModal = true;
         },
 
         /**
-         * Edit existing user
+         * Open user modal for editing own profile (self-service)
+         */
+        openMyAccountModal() {
+            this.userModalMode = 'self';
+            this.userForm = {
+                id: this.user?.id,
+                username: this.user?.username || '',
+                role: this.user?.role || 'user',
+                password: '',
+                current_password: ''
+            };
+            this.userFormErrors = {
+                username: false,
+                password: false,
+                current_password: false
+            };
+            this.showUserModal = true;
+        },
+
+        /**
+         * Edit existing user (admin only)
          * @param {string} userId - User UUID
          */
         editUser(userId) {
             const user = this.users.find(u => u.id === userId);
             if (user) {
-                this.userForm = { ...user };
+                this.userModalMode = 'edit';
+                this.userForm = {
+                    id: user.id,
+                    username: user.username,
+                    role: user.role,
+                    password: '',
+                    current_password: ''
+                };
+                this.userFormErrors = {
+                    username: false,
+                    password: false,
+                    current_password: false
+                };
                 this.showUserModal = true;
             }
+        },
+
+        /**
+         * Save user (dispatch to create/update based on mode)
+         */
+        async saveUser() {
+            // Reset errors
+            this.userFormErrors = {
+                username: false,
+                password: false,
+                current_password: false
+            };
+
+            // Validate username
+            if (!this.userForm.username || this.userForm.username.trim() === '') {
+                this.userFormErrors.username = true;
+                return;
+            }
+
+            // For create mode, password is required
+            if (this.userModalMode === 'create' && !this.userForm.password) {
+                this.userFormErrors.password = true;
+                return;
+            }
+
+            // For self-service with password change, current_password is required
+            if (this.userModalMode === 'self' && this.userForm.password && !this.userForm.current_password) {
+                this.userFormErrors.current_password = true;
+                return;
+            }
+
+            try {
+                if (this.userModalMode === 'create') {
+                    await this.createUser();
+                } else if (this.userModalMode === 'edit') {
+                    await this.updateUser();
+                } else if (this.userModalMode === 'self') {
+                    await this.updateMyAccount();
+                }
+                this.showUserModal = false;
+                this.showNotification('User saved', 'success');
+            } catch (error) {
+                console.error('Error saving user:', error);
+                this.showNotification(error.message || 'Save failed', 'error');
+            }
+        },
+
+        /**
+         * Create new user (admin only)
+         */
+        async createUser() {
+            const data = {
+                username: this.userForm.username.trim(),
+                role: this.userForm.role || 'user',
+                password: this.userForm.password
+            };
+
+            await apiRequest('/api/admin/users', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            await this.loadData();
+        },
+
+        /**
+         * Update existing user (admin only)
+         */
+        async updateUser() {
+            const data = {
+                username: this.userForm.username.trim(),
+                role: this.userForm.role
+            };
+
+            // Only include password if provided
+            if (this.userForm.password) {
+                data.password = this.userForm.password;
+            }
+
+            await apiRequest(`/api/admin/users/${this.userForm.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+
+            await this.loadData();
+        },
+
+        /**
+         * Update own profile (self-service)
+         */
+        async updateMyAccount() {
+            const data = {
+                username: this.userForm.username.trim()
+            };
+
+            // Only include password if provided
+            if (this.userForm.password) {
+                data.password = this.userForm.password;
+                data.current_password = this.userForm.current_password;
+            }
+
+            const updatedUser = await apiRequest('/api/auth/me', {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+
+            // Update local user state
+            if (updatedUser) {
+                this.user = {
+                    id: updatedUser.id,
+                    username: updatedUser.username,
+                    role: updatedUser.role,
+                    tenant_id: updatedUser.tenant_id
+                };
+            }
+        },
+
+        /**
+         * Delete user with type-username confirmation (admin only)
+         * @param {string} userId - User UUID
+         */
+        async deleteUser(userId) {
+            const user = this.users.find(u => u.id === userId);
+            if (!user) return;
+
+            // Prevent deleting yourself
+            if (user.id === this.user?.id) {
+                this.showNotification('Cannot delete your own account', 'error');
+                return;
+            }
+
+            this.showInput(
+                'Confirm Delete',
+                `Type "${user.username}" to confirm deletion:`,
+                async (typed) => {
+                    if (typed === user.username) {
+                        try {
+                            await apiRequest(`/api/admin/users/${userId}`, {
+                                method: 'DELETE'
+                            });
+                            this.showUserModal = false;
+                            this.showNotification('User deleted', 'success');
+                            await this.loadData();
+                        } catch (error) {
+                            console.error('Error deleting user:', error);
+                            this.showNotification(error.message || 'Delete failed', 'error');
+                        }
+                    } else {
+                        this.showNotification('Username did not match', 'error');
+                    }
+                },
+                '',
+                null,
+                (value) => {
+                    if (value !== user.username) {
+                        return `Type "${user.username}" exactly to confirm`;
+                    }
+                    return null;
+                }
+            );
         },
 
         /**

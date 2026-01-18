@@ -1,11 +1,13 @@
 """
 Settings management endpoints.
 
-Provides GET and PUT operations for application settings using singleton pattern.
-Settings are global (not per-user) and admin-only for modification.
+Provides GET and PUT operations for per-tenant application settings.
+Multi-tenancy: Each tenant has their own settings instance.
+Settings are admin-only for modification within each tenant.
 """
 
 from fastapi import APIRouter, Depends
+from uuid import UUID
 
 from api.config import MongoDB
 from api.models import Settings, SettingsUpdate
@@ -26,15 +28,28 @@ def get_settings_repo() -> SettingsRepository:
     return SettingsRepository(db)
 
 
+def get_tenant_id(current_user: dict) -> UUID:
+    """
+    Extract tenant_id from current user for multi-tenancy filtering.
+
+    :param current_user: Current user dict from JWT token
+    :type current_user: dict
+    :return: Tenant UUID
+    :rtype: UUID
+    """
+    return UUID(current_user["tenant_id"])
+
+
 @router.get("/settings", response_model=Settings)
 async def get_settings(
     current_user: dict = Depends(get_current_user),
     repo: SettingsRepository = Depends(get_settings_repo)
 ):
     """
-    Get application settings (singleton pattern).
+    Get application settings for current tenant.
 
-    If no settings exist, creates default settings with:
+    Multi-tenancy: Returns settings for the current user's tenant.
+    If no settings exist for tenant, creates default settings with:
     - base_currency: GBP
     - default_currency: GBP
     - date_format: DD/MM/YYYY
@@ -52,7 +67,8 @@ async def get_settings(
     curl http://localhost:8000/api/settings
     ```
     """
-    return await repo.get_or_create_default()
+    tenant_id = get_tenant_id(current_user)
+    return await repo.get_or_create_for_tenant(tenant_id)
 
 
 @router.put("/settings", response_model=Settings)
@@ -62,14 +78,16 @@ async def update_settings(
     repo: SettingsRepository = Depends(get_settings_repo)
 ):
     """
-    Update application settings (admin-only).
+    Update application settings for current tenant (admin-only).
 
     Supports partial updates - only provided fields are updated.
     Requires admin role - non-admin users receive 403 Forbidden.
 
+    Multi-tenancy: Updates settings for the current user's tenant only.
+
     Business Rules:
-    - Only one settings document exists (singleton)
-    - Admin-only operation (auth check placeholder until Phase 1.5)
+    - Each tenant has their own settings document
+    - Admin-only operation (requires admin or super_admin role)
     - Changing base_currency affects projection calculations
     - Changing rates affects display conversions (not locked event rates)
 
@@ -105,8 +123,5 @@ async def update_settings(
       -d '{"server_url": "https://chaptr.example.com"}'
     ```
     """
-    # TODO Phase 1.5: Add admin-only check
-    # if not current_user.is_admin:
-    #     raise ResourceConflictError("Settings can only be modified by admins")
-
-    return await repo.update_singleton(data, current_user=current_user, client_id=None)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.update_for_tenant(tenant_id, data, current_user=current_user, client_id=None)

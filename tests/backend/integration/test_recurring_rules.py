@@ -481,9 +481,12 @@ async def test_update_recurring_rule_regenerates_future_events(
         is_default=True
     )
 
+    # Include tenant_id in current_user for multi-tenancy
+    current_user_ctx = {"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)}
+
     test_account = await account_repo_real.create(
         account_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user=current_user_ctx,
         client_id="test-client"
     )
 
@@ -501,16 +504,18 @@ async def test_update_recurring_rule_regenerates_future_events(
 
     sample_recurring_rule = await recurring_rule_repo_real.create(
         rule_data,
-        current_user={"id": str(sample_user_real.id)},
+        current_user=current_user_ctx,
         client_id="test-client"
     )
 
     # Generate future events for the rule (within ±1 month window)
     user_id = sample_recurring_rule.created_by
+    tenant_id = sample_user_real.tenant_id
     generated_events = await generate_recurring_events(
         mongodb_real,
         user_id,
-        client_id="test-client"
+        client_id="test-client",
+        tenant_id=tenant_id
     )
 
     # Verify events were generated

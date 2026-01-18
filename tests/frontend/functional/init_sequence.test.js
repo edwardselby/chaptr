@@ -214,42 +214,43 @@ describe('Initialization Sequence', () => {
 
     describe('Service Worker Update Flow', () => {
         it('should skip Alpine.start() when update detected', async () => {
-            // Mock SW update available
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'new-version-123' })
-            });
+            // Mock waiting worker (update ready)
+            mockRegistration.waiting = {
+                state: 'installed',
+                postMessage: vi.fn()
+            };
 
             const initModule = await import('../../../static/js/init.js');
             await initModule.init();
             await vi.runAllTimersAsync();
 
-            // Alpine.start() should NOT be called
+            // Alpine.start() should NOT be called when update is pending
             expect(window.Alpine.start).not.toHaveBeenCalled();
         });
 
-        it('should still attempt SW registration when update detected', async () => {
-            // Mock SW update available
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'new-version-123' })
-            });
+        it('should send SKIP_WAITING to waiting worker when update detected', async () => {
+            // Mock waiting worker (update ready)
+            const waitingWorker = {
+                state: 'installed',
+                postMessage: vi.fn()
+            };
+            mockRegistration.waiting = waitingWorker;
 
             const initModule = await import('../../../static/js/init.js');
 
             await initModule.init();
             await vi.runAllTimersAsync();
 
-            // SW registration should be attempted (verified by checking mock)
-            expect(navigator.serviceWorker.register).toHaveBeenCalled();
+            // Should send SKIP_WAITING to activate the waiting worker
+            expect(waitingWorker.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
         });
 
         it('should keep loader visible when update detected (will reload soon)', async () => {
-            // Mock SW update available
-            fetchSpy.mockResolvedValue({
-                ok: true,
-                json: async () => ({ version: 'new-version-123' })
-            });
+            // Mock waiting worker (update ready)
+            mockRegistration.waiting = {
+                state: 'installed',
+                postMessage: vi.fn()
+            };
 
             const initModule = await import('../../../static/js/init.js');
             await initModule.init();
@@ -267,8 +268,8 @@ describe('Initialization Sequence', () => {
         it('should continue to load app when checkUpdate throws error', async () => {
             const initModule = await import('../../../static/js/init.js');
 
-            // Make fetch fail (causes checkUpdate to throw)
-            fetchSpy.mockRejectedValue(new Error('Network failure'));
+            // Make getRegistration fail (causes checkUpdate to catch error)
+            navigator.serviceWorker.getRegistration.mockRejectedValue(new Error('Registration failure'));
 
             // Should not throw - init handles errors gracefully
             await expect(initModule.init()).resolves.not.toThrow();

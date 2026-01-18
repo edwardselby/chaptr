@@ -272,7 +272,7 @@ async def test_script_prevents_duplicate_user_creation():
 
 @pytest.mark.asyncio
 async def test_script_creates_user_when_database_empty():
-    """Script creates admin user when no users exist."""
+    """Script creates super_admin user when no users exist (multi-tenancy bootstrap)."""
     from scripts.create_first_user import create_admin_user
     from api.models import User
 
@@ -284,12 +284,14 @@ async def test_script_creates_user_when_database_empty():
         mock_db = MagicMock()
         mock_mongodb.get_database.return_value = mock_db
 
-        # Create mock user to return
+        # Create mock user to return (super_admin with tenant_id = user_id)
+        user_id = uuid4()
         mock_user = User(
-            id=uuid4(),
+            id=user_id,
             username="TestAdmin",
             password_hash="$2b$12$fake_hash",
-            role=UserRole.ADMIN,
+            role=UserRole.SUPER_ADMIN,
+            tenant_id=user_id,  # Multi-tenancy: super_admin is self-anchored
             created_at=MagicMock(),
             updated_at=MagicMock()
         )
@@ -301,12 +303,12 @@ async def test_script_creates_user_when_database_empty():
 
         await create_admin_user("TestAdmin", "ValidPass123")
 
-        # Verify user was created
+        # Verify user was created as super_admin
         mock_repo.create.assert_called_once()
         call_args = mock_repo.create.call_args[0][0]
         assert call_args.username == "TestAdmin"
         assert call_args.password == "ValidPass123"
-        assert call_args.role == UserRole.ADMIN
+        assert call_args.role == UserRole.SUPER_ADMIN
 
 
 @pytest.mark.asyncio

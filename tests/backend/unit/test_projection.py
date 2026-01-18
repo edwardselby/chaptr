@@ -28,6 +28,7 @@ def test_accounts():
     return [
         {
             "_id": UUID("11111111-1111-1111-1111-111111111111"),
+            "id": "11111111-1111-1111-1111-111111111111",
             "name": "Monzo",
             "currency": "GBP",
             "current_balance": Decimal("2500.00"),
@@ -36,6 +37,7 @@ def test_accounts():
         },
         {
             "_id": UUID("22222222-2222-2222-2222-222222222222"),
+            "id": "22222222-2222-2222-2222-222222222222",
             "name": "HSBC",
             "currency": "GBP",
             "current_balance": Decimal("11000.00"),
@@ -44,6 +46,7 @@ def test_accounts():
         },
         {
             "_id": UUID("33333333-3333-3333-3333-333333333333"),
+            "id": "33333333-3333-3333-3333-333333333333",
             "name": "Kat Credit",
             "currency": "CAD",
             "current_balance": Decimal("-500.00"),  # Overdraft
@@ -163,9 +166,11 @@ def mock_db(test_accounts, test_events):
 
             filtered_data = []
             for item in self.data:
-                # Handle account_id queries (exact match)
+                # Handle account_id queries (compare as strings for UUID compatibility)
                 if "account_id" in query:
-                    if item.get("account_id") != query["account_id"]:
+                    query_account_id = str(query["account_id"])
+                    item_account_id = str(item.get("account_id"))
+                    if item_account_id != query_account_id:
                         continue
 
                 # Handle date range queries
@@ -224,7 +229,17 @@ def mock_db(test_accounts, test_events):
                 )
                 return sorted_data[0] if sorted_data else None
 
-            # Handle _id query (exact match)
+            # Handle id query (UUID string - new pattern for multi-tenancy)
+            if query and "id" in query:
+                target_id = query["id"]
+                for item in self.data:
+                    item_id = item.get("id")
+                    # Handle both string and UUID comparisons
+                    if item_id == target_id or str(item_id) == str(target_id):
+                        return item
+                return None
+
+            # Handle _id query (exact match - legacy pattern)
             if query and "_id" in query:
                 target_id = query["_id"]
                 for item in self.data:
@@ -443,6 +458,7 @@ async def test_story_projection_projected_funding_mode(mock_db):
     # Create canada-trip story
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -459,6 +475,11 @@ async def test_story_projection_projected_funding_mode(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -517,6 +538,7 @@ async def test_story_projection_fixed_funding_mode(mock_db):
     # Create skiing story
     skiing_story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "skiing-2025",
         "start_date": date(2024, 12, 23),
         "end_date": date(2024, 12, 30),
@@ -532,6 +554,11 @@ async def test_story_projection_fixed_funding_mode(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -568,6 +595,7 @@ async def test_story_projection_projected_plus_funding_mode(mock_db):
     # Create volvo story
     volvo_story = {
         "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "name": "volvo",
         "start_date": date(2024, 12, 22),
         "end_date": None,  # Ongoing
@@ -583,6 +611,11 @@ async def test_story_projection_projected_plus_funding_mode(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -641,6 +674,7 @@ async def test_hidden_events_affect_balance(mock_db):
     # Create Canada story
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "funding_mode": "projected",
@@ -650,6 +684,7 @@ async def test_hidden_events_affect_balance(mock_db):
     # Create Volvo story
     volvo_story = {
         "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "name": "volvo",
         "start_date": date(2024, 12, 22),
         "funding_mode": "projected",
@@ -661,6 +696,11 @@ async def test_hidden_events_affect_balance(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -733,6 +773,7 @@ async def test_multi_currency_story_projection(mock_db):
     # Create a story with CAD as display currency
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "funding_mode": "fixed",
@@ -747,6 +788,11 @@ async def test_multi_currency_story_projection(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -819,6 +865,7 @@ async def test_story_projection_with_hypothetical_funding(mock_db):
     # Create story with fixed funding
     skiing_story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "skiing-2025",
         "start_date": date(2024, 12, 23),
         "funding_mode": "fixed",
@@ -833,6 +880,11 @@ async def test_story_projection_with_hypothetical_funding(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -878,6 +930,7 @@ async def test_story_filtered_events_only(mock_db):
 
     canada_story = {
         "_id": canada_story_id,
+        "id": str(canada_story_id),
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -893,6 +946,11 @@ async def test_story_filtered_events_only(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -1360,6 +1418,7 @@ async def test_story_spend_up_to_exceeded():
 
     story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "goal_type": "spend_up_to",
         "goal_amount": Decimal("1000.00"),
@@ -1427,6 +1486,7 @@ async def test_story_end_with_at_least_missed():
 
     story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "savings",
         "goal_type": "end_with_at_least",
         "goal_amount": Decimal("3000.00"),
@@ -1477,6 +1537,7 @@ async def test_story_goal_none_no_warnings():
 
     story = {
         "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "name": "volvo",
         "goal_type": "none",  # No goal set
         "goal_amount": Decimal("0.00")
@@ -1705,6 +1766,7 @@ async def test_story_goal_warning_message_includes_shortfall():
     # Test 1: spend_up_to overspent by £234
     story_spend = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "goal_type": "spend_up_to",
         "goal_amount": Decimal("1000.00"),
@@ -1731,6 +1793,7 @@ async def test_story_goal_warning_message_includes_shortfall():
     # Test 2: end_with_at_least short by £500
     story_savings = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "savings",
         "goal_type": "end_with_at_least",
         "goal_amount": Decimal("3000.00"),
@@ -1844,6 +1907,7 @@ async def test_story_goal_with_baseline_events_excluded():
 
     story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "goal_type": "spend_up_to",
         "goal_amount": Decimal("1000.00"),
@@ -1901,6 +1965,7 @@ async def test_story_goal_zero_amount():
 
     story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "no-spend",
         "goal_type": "spend_up_to",
         "goal_amount": Decimal("0.00"),  # Zero budget
@@ -1948,6 +2013,7 @@ async def test_story_projection_includes_gap_indicators(mock_db):
     # Create canada-trip story
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -1961,6 +2027,7 @@ async def test_story_projection_includes_gap_indicators(mock_db):
     # Create volvo story
     volvo_story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "volvo",
         "start_date": date(2024, 12, 15),
         "end_date": date(2025, 1, 15),
@@ -1977,6 +2044,11 @@ async def test_story_projection_includes_gap_indicators(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2090,6 +2162,7 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
     # Create stories
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2102,6 +2175,7 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
 
     volvo_story = {
         "_id": UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         "name": "volvo",
         "start_date": date(2024, 12, 15),
         "end_date": date(2025, 1, 15),
@@ -2114,6 +2188,7 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
 
     home_story = {
         "_id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "name": "home-improvement",
         "start_date": date(2024, 12, 15),
         "end_date": date(2025, 1, 15),
@@ -2129,6 +2204,11 @@ async def test_story_projection_gap_with_multiple_hidden_stories(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2275,6 +2355,7 @@ async def test_story_with_no_story_events_only_baseline(mock_db):
     # Create savings-goal story with no events
     savings_story = {
         "_id": UUID("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+        "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
         "name": "savings-goal",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2293,6 +2374,11 @@ async def test_story_with_no_story_events_only_baseline(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2346,6 +2432,7 @@ async def test_story_where_all_story_events_hidden(mock_db):
     # Create canada-trip story (no events assigned)
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2364,6 +2451,11 @@ async def test_story_where_all_story_events_hidden(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2419,6 +2511,7 @@ async def test_story_with_only_hypothetical_events(mock_db):
     # Create story with fixed funding
     trip_story = {
         "_id": UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+        "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
         "name": "weekend-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2024, 12, 23),
@@ -2434,6 +2527,11 @@ async def test_story_with_only_hypothetical_events(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2484,6 +2582,7 @@ async def test_gap_indicators_with_fixed_funding_mode(mock_db):
     # Create canada-trip with fixed funding
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2501,6 +2600,11 @@ async def test_gap_indicators_with_fixed_funding_mode(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2563,6 +2667,7 @@ async def test_gap_indicators_with_projected_plus_funding(mock_db):
     # Create canada-trip with projected_plus funding
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2580,6 +2685,11 @@ async def test_gap_indicators_with_projected_plus_funding(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2645,6 +2755,7 @@ async def test_gap_currency_conversion_integration(mock_db):
     # Create canada-trip with USD display
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2662,6 +2773,11 @@ async def test_gap_currency_conversion_integration(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 
@@ -2743,6 +2859,7 @@ async def test_multiple_gaps_in_single_story(mock_db):
     # Create canada-trip story
     canada_story = {
         "_id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "name": "canada-trip",
         "start_date": date(2024, 12, 19),
         "end_date": date(2025, 1, 10),
@@ -2761,6 +2878,11 @@ async def test_multiple_gaps_in_single_story(mock_db):
             self.data = stories
 
         async def find_one(self, query):
+            # Handle id query (string UUID - multi-tenancy pattern)
+            story_id = query.get("id")
+            if story_id:
+                return next((s for s in self.data if s.get("id") == story_id), None)
+            # Fallback to _id query (legacy pattern)
             story_id = query.get("_id")
             return next((s for s in self.data if s["_id"] == story_id), None)
 

@@ -141,8 +141,12 @@ async def get_projection(
     # This is required for test fixtures to monkey-patch correctly
     db = MongoDB.get_database()
 
-    # Get settings for base currency
-    settings = await db.settings.find_one()
+    # Extract tenant_id from current_user for multi-tenancy isolation
+    tenant_id = UUID(current_user["tenant_id"]) if current_user.get("tenant_id") else None
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
+    # Get settings for base currency (tenant-scoped)
+    settings = await db.settings.find_one(tenant_filter)
     if not settings:
         raise HTTPException(
             status_code=500,
@@ -152,7 +156,9 @@ async def get_projection(
     base_currency = settings.get("base_currency", "GBP")
 
     # Calculate starting balance (sum of all non-archived account balances in base currency)
-    accounts = await db.accounts.find({"is_archived": False}).to_list()
+    # Multi-tenancy: Filter accounts by tenant_id
+    account_query = {"is_archived": False, **tenant_filter}
+    accounts = await db.accounts.find(account_query).to_list()
     starting_balance = Decimal("0")
 
     for acc in accounts:
@@ -166,8 +172,9 @@ async def get_projection(
     events = []
 
     if story_id:
-        # Check if story exists first
-        story = await db.stories.find_one({"_id": story_id})
+        # Check if story exists first (tenant-scoped, using 'id' field not '_id')
+        story_query = {"id": str(story_id), **tenant_filter}
+        story = await db.stories.find_one(story_query)
         if not story:
             raise HTTPException(
                 status_code=404,
@@ -180,7 +187,8 @@ async def get_projection(
             story_id=str(story_id),
             start_date=start,
             end_date=end,
-            db=db
+            db=db,
+            tenant_id=tenant_id
         )
     else:
         # Global projection (all or all_what_if view)
@@ -190,7 +198,8 @@ async def get_projection(
             end_date=end,
             include_hypothetical=include_hypothetical,
             display_currency=display_currency,
-            db=db
+            db=db,
+            tenant_id=tenant_id
         )
 
     # Determine display currency (use requested or base)

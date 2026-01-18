@@ -2,6 +2,7 @@
 Story management endpoints.
 
 Provides CRUD operations for financial stories (trips, projects, life events).
+Multi-tenancy: All operations are scoped to the current user's tenant.
 """
 
 from fastapi import APIRouter, Depends
@@ -26,15 +27,29 @@ def get_story_repo() -> StoryRepository:
     return StoryRepository(db)
 
 
+def get_tenant_id(current_user: dict) -> UUID:
+    """
+    Extract tenant_id from current user for multi-tenancy filtering.
+
+    :param current_user: Current user dict from JWT token
+    :type current_user: dict
+    :return: Tenant UUID
+    :rtype: UUID
+    """
+    return UUID(current_user["tenant_id"])
+
+
 @router.get("/stories", response_model=list[Story])
 async def list_stories(
     current_user: dict = Depends(get_current_user),
     repo: StoryRepository = Depends(get_story_repo)
 ):
     """
-    List all stories.
+    List all stories for current tenant.
 
     Returns all stories sorted by start_date descending (most recent first).
+
+    Multi-tenancy: Only returns stories belonging to the current user's tenant.
 
     :param repo: Injected StoryRepository
     :type repo: StoryRepository
@@ -47,7 +62,8 @@ async def list_stories(
     curl http://localhost:8000/api/stories
     ```
     """
-    return await repo.list(sort=[("start_date", -1)])
+    tenant_id = get_tenant_id(current_user)
+    return await repo.list_for_tenant(tenant_id, sort=[("start_date", -1)])
 
 
 @router.get("/stories/{story_id}", response_model=Story)
@@ -58,6 +74,8 @@ async def get_story(
 ):
     """
     Get single story by ID.
+
+    Multi-tenancy: Only returns story if it belongs to the current user's tenant.
 
     :param story_id: Story UUID
     :type story_id: UUID
@@ -73,7 +91,8 @@ async def get_story(
     curl http://localhost:8000/api/stories/{story-id}
     ```
     """
-    return await repo.get(story_id)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.get_for_tenant(story_id, tenant_id)
 
 
 @router.post("/stories", response_model=Story, status_code=201)
@@ -129,7 +148,8 @@ async def create_story(
       }'
     ```
     """
-    return await repo.create(data, current_user=current_user, client_id=None)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.create(data, current_user=current_user, client_id=None, tenant_id=tenant_id)
 
 
 @router.put("/stories/{story_id}", response_model=Story)
@@ -149,6 +169,8 @@ async def update_story(
     Business Rules:
     - Changing default_account_id only affects future events, not existing ones
     - Cross-field relationships validated after merge
+
+    Multi-tenancy: Only updates story if it belongs to the current user's tenant.
 
     :param story_id: Story UUID
     :type story_id: UUID
@@ -181,6 +203,9 @@ async def update_story(
       }'
     ```
     """
+    # Verify story belongs to tenant before update
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(story_id, tenant_id)
     return await repo.update(story_id, data, current_user=current_user, client_id=None)
 
 
@@ -200,6 +225,8 @@ async def delete_story(
     - Deletes ALL events with story_id = this story
     - This is irreversible
 
+    Multi-tenancy: Only deletes story if it belongs to the current user's tenant.
+
     :param story_id: Story UUID
     :type story_id: UUID
     :param repo: Injected StoryRepository
@@ -213,5 +240,8 @@ async def delete_story(
     curl -X DELETE http://localhost:8000/api/stories/{story-id}
     ```
     """
+    # Verify story belongs to tenant before delete
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(story_id, tenant_id)
     await repo.delete(story_id, current_user=current_user, client_id=None)
     return None

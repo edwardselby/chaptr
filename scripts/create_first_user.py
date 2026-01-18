@@ -2,8 +2,16 @@
 """
 First user initialization CLI command.
 
-Creates the first admin user for CHAPTR deployment.
+Creates the first super_admin user for CHAPTR deployment.
 Solves the authentication bootstrap problem.
+
+The super_admin is the system-level administrator who can:
+- Create new admin users (which creates new tenants)
+- Manage users within their own tenant
+- Access all system features
+
+Multi-tenancy: The super_admin becomes the anchor of their own tenant
+(tenant_id = user_id).
 
 Usage:
     # Interactive mode
@@ -134,14 +142,14 @@ async def create_admin_user(username: str, password: str) -> None:
             sys.exit(1)
 
         # Validate and create user
-        print(f"\n📝 Creating admin user: {username}")
+        print(f"\n📝 Creating super admin user: {username}")
 
         try:
             # Pydantic validation happens here
             user_data = UserCreate(
                 username=username,
                 password=password,
-                role=UserRole.ADMIN
+                role=UserRole.SUPER_ADMIN
             )
         except ValidationError as e:
             print(f"❌ Password validation failed:")
@@ -149,14 +157,17 @@ async def create_admin_user(username: str, password: str) -> None:
                 print(f"   - {error['msg']}")
             sys.exit(1)
 
-        # Create user (password hashing happens in repository)
+        # Create user (password hashing and tenant assignment happens in repository)
+        # For super_admin created via script, tenant_id = user_id (self-anchored)
         user = await repo.create(user_data)
 
-        print(f"✅ Admin user created successfully!")
+        print(f"✅ Super admin user created successfully!")
         print(f"   User ID: {user.id}")
         print(f"   Username: {user.username}")
         print(f"   Role: {user.role}")
+        print(f"   Tenant ID: {user.tenant_id}")
         print(f"\n🎉 You can now log in to CHAPTR")
+        print(f"   As super_admin, you can create new admin users (tenants)")
 
     except ResourceConflictError as e:
         print(f"❌ Error: {e}")
@@ -171,7 +182,7 @@ async def create_admin_user(username: str, password: str) -> None:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Initialize first admin user for CHAPTR",
+        description="Initialize first super admin user for CHAPTR",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -195,6 +206,7 @@ Notes:
   - Only works if NO users exist (security measure)
   - Password is hashed using bcrypt before storage
   - Requires --confirm flag to prevent accidents
+  - Creates a super_admin who can create new tenants (admin users)
         """
     )
 
@@ -202,7 +214,7 @@ Notes:
         "--confirm",
         action="store_true",
         required=True,
-        help="Confirm admin user creation (required safety flag)"
+        help="Confirm super admin user creation (required safety flag)"
     )
 
     args = parser.parse_args()

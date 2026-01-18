@@ -80,6 +80,7 @@ def create_access_token(
     user_id: UUID,
     username: str,
     role: str,
+    tenant_id: UUID,
     expires_delta: Optional[timedelta] = None
 ) -> str:
     """
@@ -88,7 +89,8 @@ def create_access_token(
     Token payload includes:
     - sub (subject): User ID as string
     - username: Display name
-    - role: User role (admin/user)
+    - role: User role (super_admin/admin/user)
+    - tenant_id: Tenant identifier for multi-tenancy
     - exp (expiration): UTC timestamp
 
     Token is signed with SECRET_KEY using HS256 algorithm.
@@ -101,8 +103,10 @@ def create_access_token(
     :type user_id: UUID
     :param username: User display name
     :type username: str
-    :param role: User role (admin or user)
+    :param role: User role (super_admin, admin, or user)
     :type role: str
+    :param tenant_id: Tenant identifier (admin's user_id)
+    :type tenant_id: UUID
     :param expires_delta: Optional custom expiration timedelta (defaults to 24 hours)
     :type expires_delta: Optional[timedelta]
     :return: Encoded JWT token
@@ -112,7 +116,8 @@ def create_access_token(
 
     >>> from uuid import uuid4
     >>> user_id = uuid4()
-    >>> token = create_access_token(user_id, "Edward", "admin")
+    >>> tenant_id = uuid4()
+    >>> token = create_access_token(user_id, "Edward", "admin", tenant_id)
     >>> # All users get 24-hour tokens per spec v3.0
     """
     if expires_delta:
@@ -127,6 +132,7 @@ def create_access_token(
         "sub": str(user_id),  # Convert UUID to string for JSON serialization
         "username": username,
         "role": role,
+        "tenant_id": str(tenant_id),  # Include tenant_id for multi-tenancy
         "exp": expire
     }
 
@@ -195,7 +201,7 @@ async def get_current_user(
 
     :param credentials: HTTP Bearer credentials from Authorization header
     :type credentials: HTTPAuthorizationCredentials
-    :return: User information dict with id, username, role
+    :return: User information dict with id, username, role, tenant_id
     :rtype: Dict[str, Any]
     :raises AuthenticationError: If token is missing, invalid, or expired
 
@@ -212,7 +218,8 @@ async def get_current_user(
     return {
         "id": payload.get("sub"),
         "username": payload.get("username"),
-        "role": payload.get("role")
+        "role": payload.get("role"),
+        "tenant_id": payload.get("tenant_id")  # Include tenant_id for multi-tenancy
     }
 
 
@@ -220,16 +227,16 @@ async def get_current_admin_user(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    FastAPI dependency: Require admin role for protected endpoint.
+    FastAPI dependency: Require admin or super_admin role for protected endpoint.
 
-    Builds on get_current_user dependency to enforce admin-only access.
-    Used for administrative endpoints like settings updates.
+    Builds on get_current_user dependency to enforce admin-level access.
+    Used for administrative endpoints like settings updates and user management.
 
     :param current_user: Current user from get_current_user dependency
     :type current_user: Dict[str, Any]
     :return: User information (same as current_user)
     :rtype: Dict[str, Any]
-    :raises AuthorizationError: If user is not admin
+    :raises AuthorizationError: If user is not admin or super_admin
 
     :Example:
 
@@ -240,10 +247,43 @@ async def get_current_admin_user(
     >>>     data: SettingsUpdate,
     >>>     current_user: dict = Depends(get_current_admin_user)
     >>> ):
-    >>>     # Only admin users can reach this code
+    >>>     # Only admin or super_admin users can reach this code
     >>>     return await repo.update(data)
     """
-    if current_user["role"] != "admin":
+    if current_user["role"] not in ["admin", "super_admin"]:
         raise AuthorizationError("Admin access required")
+
+    return current_user
+
+
+async def get_current_super_admin_user(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    FastAPI dependency: Require super_admin role for system-level operations.
+
+    Builds on get_current_user dependency to enforce super_admin-only access.
+    Used for system-level operations like creating new tenants (admin users).
+
+    :param current_user: Current user from get_current_user dependency
+    :type current_user: Dict[str, Any]
+    :return: User information (same as current_user)
+    :rtype: Dict[str, Any]
+    :raises AuthorizationError: If user is not super_admin
+
+    :Example:
+
+    >>> from fastapi import Depends
+    >>>
+    >>> @router.post("/admin/users")
+    >>> async def create_admin(
+    >>>     data: UserCreate,
+    >>>     current_user: dict = Depends(get_current_super_admin_user)
+    >>> ):
+    >>>     # Only super_admin users can create new admin (tenants)
+    >>>     return await repo.create(data)
+    """
+    if current_user["role"] != "super_admin":
+        raise AuthorizationError("Super admin access required")
 
     return current_user

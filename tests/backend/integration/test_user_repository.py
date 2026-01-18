@@ -289,16 +289,16 @@ async def test_delete_user_not_found(user_repo):
 
 @pytest.mark.asyncio
 async def test_delete_admin_when_multiple_admins_exist(user_repo, sample_user):
-    """Delete admin succeeds when multiple admins exist."""
-    # Create second admin
+    """Delete super_admin succeeds when multiple super_admins exist."""
+    # Create second super_admin (sample_user is super_admin in multi-tenancy)
     admin_data = UserCreate(
-        username="SecondAdmin",
+        username="SecondSuperAdmin",
         password="AdminPass123",
-        role="admin"
+        role="super_admin"
     )
     second_admin = await user_repo.create(admin_data)
 
-    # Delete first admin (should succeed - second admin exists)
+    # Delete first super_admin (should succeed - second super_admin exists)
     result = await user_repo.delete(sample_user.id)
 
     assert result is True
@@ -357,10 +357,11 @@ async def test_count_users_with_data(user_repo, sample_user, sample_regular_user
 @pytest.mark.asyncio
 async def test_count_users_with_role_filter(user_repo, sample_user, sample_regular_user):
     """Count users with role filter returns correct count."""
-    admin_count = await user_repo.count(filters={"role": "admin"})
+    # sample_user is super_admin (multi-tenancy), sample_regular_user is user
+    super_admin_count = await user_repo.count(filters={"role": "super_admin"})
     user_count = await user_repo.count(filters={"role": "user"})
 
-    assert admin_count == 1
+    assert super_admin_count == 1
     assert user_count == 1
 
 

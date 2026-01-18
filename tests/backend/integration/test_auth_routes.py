@@ -29,7 +29,7 @@ async def test_login_success_with_valid_credentials(async_client, sample_user):
     assert "access_token" in data
     assert data["token_type"] == "bearer"
     assert data["user"]["username"] == "Edward"
-    assert data["user"]["role"] == "admin"
+    assert data["user"]["role"] == "super_admin"  # Multi-tenancy: sample_user is super_admin
     assert "id" in data["user"]
 
 
@@ -173,14 +173,14 @@ async def test_login_returns_user_info_without_password(async_client, sample_use
 
 @pytest.mark.asyncio
 async def test_login_admin_user_gets_admin_role_in_response(async_client, sample_user):
-    """Login for admin user returns admin role."""
+    """Login for super_admin user returns super_admin role (multi-tenancy)."""
     response = await async_client.post("/api/auth/login", json={
         "username": "Edward",
         "password": "TestPass123"
     })
 
     assert response.status_code == 200
-    assert response.json()["user"]["role"] == "admin"
+    assert response.json()["user"]["role"] == "super_admin"
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_get_me_success_with_valid_token(async_client, sample_user, auth_h
     data = response.json()
 
     assert data["username"] == "Edward"
-    assert data["role"] == "admin"
+    assert data["role"] == "super_admin"  # Multi-tenancy: sample_user is super_admin
     assert "id" in data
 
 
@@ -232,11 +232,12 @@ async def test_get_me_fails_with_invalid_token(async_client):
 @pytest.mark.asyncio
 async def test_get_me_fails_with_expired_token(async_client, sample_user):
     """GET /me fails (401) with expired token."""
-    # Create expired token
+    # Create expired token (include tenant_id for multi-tenancy)
     expired_token = create_access_token(
         sample_user.id,
         sample_user.username,
         sample_user.role,
+        sample_user.tenant_id,
         expires_delta=timedelta(minutes=-1)
     )
 

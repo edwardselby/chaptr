@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-tenancy architecture with three-tier role hierarchy: super_admin (system-level), admin (tenant anchor), user (tenant member)
+- Tenant isolation: All data (accounts, events, stories, recurring rules, settings) now scoped by tenant_id
+- Admin user management endpoints: POST/GET/PUT/DELETE /api/admin/users for tenant user CRUD operations
+- Role-based UI visibility in frontend using Alpine.js x-show directives for admin sections
+- Frontend auth utility tests: 19 tests for token storage, retrieval, clearAuth, isAuthenticated (auth_utils.test.js)
+- Frontend role access tests: 51 tests for role validation patterns and UI visibility logic (role_access.test.js)
+- Frontend API auth tests: 22 tests for apiRequest, Bearer token injection, 401 handling (auth_api.test.js)
+- Frontend user management tests: 32 tests for user CRUD payload construction and API calls (user_management.test.js)
+- Migration script for converting existing single-tenant data to multi-tenancy (scripts/migrate_to_multitenancy.py)
+
+### Changed
+- All repositories (accounts, events, stories, recurring_rules, settings, users) now filter queries by tenant_id
+- JWT tokens now include tenant_id claim for automatic tenant scoping
+- User model extended with tenant_id and role fields
+- BaseRepository includes tenant_id in all create/update/delete operations
+- Frontend apiRequest automatically injects Bearer token from localStorage
+- Service worker tests updated to test actual waiting worker detection instead of /sw-version fetch
+
+### Fixed
+- Service worker test alignment: Tests now match actual checkForServiceWorkerUpdate() implementation which checks for registration?.waiting instead of fetching /sw-version
+
 ## [0.6.1] - 2026-01-17
 
 ### Added

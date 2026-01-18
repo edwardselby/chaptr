@@ -264,8 +264,12 @@ async def test_update_recurring_rule_preserves_created_by(async_client, auth_hea
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_event_created_without_auth_has_null_user_fields(event_repo, sample_account, sample_settings):
-    """Events created without authentication have null created_by/updated_by (backward compatible)."""
+async def test_event_created_without_auth_has_null_user_fields(event_repo, sample_account, sample_settings, sample_user):
+    """Events created without authentication have null created_by/updated_by.
+
+    Note: In multi-tenant system, tenant_id is always required but user tracking
+    (created_by/updated_by) can still be null when current_user is None.
+    """
     from api.models import EventCreate
     from datetime import date
     from decimal import Decimal
@@ -280,16 +284,25 @@ async def test_event_created_without_auth_has_null_user_fields(event_repo, sampl
         is_hypothetical=False
     )
 
-    # Create without current_user
-    event = await event_repo.create(event_data, current_user=None)
+    # Create without current_user but with tenant_id (multi-tenant requirement)
+    event = await event_repo.create(
+        event_data,
+        current_user=None,
+        tenant_id=sample_user.tenant_id
+    )
 
     assert event.created_by is None
     assert event.updated_by is None
+    assert event.tenant_id == sample_user.tenant_id  # tenant_id is required
 
 
 @pytest.mark.asyncio
-async def test_story_created_without_auth_has_null_user_fields(story_repo, sample_account):
-    """Stories created without authentication have null created_by/updated_by (backward compatible)."""
+async def test_story_created_without_auth_has_null_user_fields(story_repo, sample_account, sample_user):
+    """Stories created without authentication have null created_by/updated_by.
+
+    Note: In multi-tenant system, tenant_id is always required but user tracking
+    (created_by/updated_by) can still be null when current_user is None.
+    """
     from api.models import StoryCreate, FundingMode, GoalType
     from datetime import date
 
@@ -303,16 +316,25 @@ async def test_story_created_without_auth_has_null_user_fields(story_repo, sampl
         display_currency="GBP"
     )
 
-    # Create without current_user
-    story = await story_repo.create(story_data, current_user=None)
+    # Create without current_user but with tenant_id (multi-tenant requirement)
+    story = await story_repo.create(
+        story_data,
+        current_user=None,
+        tenant_id=sample_user.tenant_id
+    )
 
     assert story.created_by is None
     assert story.updated_by is None
+    assert story.tenant_id == sample_user.tenant_id  # tenant_id is required
 
 
 @pytest.mark.asyncio
-async def test_recurring_rule_created_without_auth_has_null_user_fields(recurring_rule_repo, sample_account):
-    """Recurring rules created without authentication have null created_by/updated_by (backward compatible)."""
+async def test_recurring_rule_created_without_auth_has_null_user_fields(recurring_rule_repo, sample_account, sample_user):
+    """Recurring rules created without authentication have null created_by/updated_by.
+
+    Note: In multi-tenant system, tenant_id is always required but user tracking
+    (created_by/updated_by) can still be null when current_user is None.
+    """
     from api.models import RecurringRuleCreate, Frequency
     from datetime import date
     from decimal import Decimal
@@ -327,11 +349,16 @@ async def test_recurring_rule_created_without_auth_has_null_user_fields(recurrin
         start_date=date(2025, 1, 1)
     )
 
-    # Create without current_user
-    rule = await recurring_rule_repo.create(rule_data, current_user=None)
+    # Create without current_user but with tenant_id (multi-tenant requirement)
+    rule = await recurring_rule_repo.create(
+        rule_data,
+        current_user=None,
+        tenant_id=sample_user.tenant_id
+    )
 
     assert rule.created_by is None
     assert rule.updated_by is None
+    assert rule.tenant_id == sample_user.tenant_id  # tenant_id is required
 
 
 # ============================================================================
@@ -488,7 +515,7 @@ async def test_user_tracking_works_with_role_based_token_expiration(async_client
     # Admin creates event (7-day token)
     from api.utils.auth import create_access_token
 
-    admin_token = create_access_token(sample_user.id, sample_user.username, sample_user.role)
+    admin_token = create_access_token(sample_user.id, sample_user.username, sample_user.role, sample_user.tenant_id)
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     admin_response = await async_client.post("/api/events", headers=admin_headers, json={
@@ -502,7 +529,7 @@ async def test_user_tracking_works_with_role_based_token_expiration(async_client
     })
 
     # Regular user creates event (24-hour token)
-    user_token = create_access_token(sample_regular_user.id, sample_regular_user.username, sample_regular_user.role)
+    user_token = create_access_token(sample_regular_user.id, sample_regular_user.username, sample_regular_user.role, sample_regular_user.tenant_id)
     user_headers = {"Authorization": f"Bearer {user_token}"}
 
     user_response = await async_client.post("/api/events", headers=user_headers, json={

@@ -2,6 +2,7 @@
 Account management endpoints.
 
 Provides CRUD operations for financial accounts (Monzo, HSBC, etc.).
+Multi-tenancy: All operations are scoped to the current user's tenant.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -27,6 +28,18 @@ def get_account_repo() -> AccountRepository:
     return AccountRepository(db)
 
 
+def get_tenant_id(current_user: dict) -> UUID:
+    """
+    Extract tenant_id from current user for multi-tenancy filtering.
+
+    :param current_user: Current user dict from JWT token
+    :type current_user: dict
+    :return: Tenant UUID
+    :rtype: UUID
+    """
+    return UUID(current_user["tenant_id"])
+
+
 @router.get("/accounts", response_model=list[Account])
 async def list_accounts(
     current_user: dict = Depends(get_current_user),
@@ -36,10 +49,12 @@ async def list_accounts(
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """
-    List all accounts.
+    List all accounts for current tenant.
 
     By default, excludes archived accounts. Use include_archived=true
     to include archived accounts in the response.
+
+    Multi-tenancy: Only returns accounts belonging to the current user's tenant.
 
     :param include_archived: Whether to include archived accounts (default: False)
     :type include_archived: bool
@@ -58,9 +73,10 @@ async def list_accounts(
     curl http://localhost:8000/api/accounts?include_archived=true
     ```
     """
+    tenant_id = get_tenant_id(current_user)
     if include_archived:
-        return await repo.list()
-    return await repo.list_active()
+        return await repo.list_for_tenant(tenant_id)
+    return await repo.list_for_tenant(tenant_id, filters={"is_archived": False})
 
 
 @router.get("/accounts/{account_id}", response_model=Account)
@@ -71,6 +87,8 @@ async def get_account(
 ):
     """
     Get single account by ID.
+
+    Multi-tenancy: Only returns account if it belongs to the current user's tenant.
 
     :param account_id: Account UUID
     :type account_id: UUID
@@ -86,21 +104,25 @@ async def get_account(
     curl http://localhost:8000/api/accounts/{account-id}
     ```
     """
-    return await repo.get(account_id)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.get_for_tenant(account_id, tenant_id)
 
 
 @router.post("/accounts", response_model=Account, status_code=201)
 async def create_account(
     data: AccountCreate,
+    current_user: dict = Depends(get_current_user),
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """
-    Create new account.
+    Create new account in current tenant.
 
     Business Rules:
-    - If this is the first account, is_default is automatically set to true
-    - If is_default=true, all other accounts are set to is_default=false
+    - If this is the first account in tenant, is_default is automatically set to true
+    - If is_default=true, all other accounts in tenant are set to is_default=false
     - Server generates UUID and timestamps
+
+    Multi-tenancy: Account is created in the current user's tenant.
 
     :param data: Account creation data
     :type data: AccountCreate
@@ -134,13 +156,15 @@ async def create_account(
       }'
     ```
     """
-    return await repo.create(data, client_id=None)
+    tenant_id = get_tenant_id(current_user)
+    return await repo.create(data, current_user=current_user, client_id=None, tenant_id=tenant_id)
 
 
 @router.put("/accounts/{account_id}", response_model=Account)
 async def update_account(
     account_id: UUID,
     data: AccountUpdate,
+    current_user: dict = Depends(get_current_user),
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """
@@ -149,9 +173,11 @@ async def update_account(
     Supports partial updates - only provided fields are updated.
 
     Business Rules:
-    - If setting is_default=true, all other accounts are set to false
+    - If setting is_default=true, all other accounts in tenant are set to false
     - If balance is updated, pending_reconciliation is automatically set to true
     - balance_updated_at is updated if balance changes
+
+    Multi-tenancy: Only updates account if it belongs to the current user's tenant.
 
     :param account_id: Account UUID
     :type account_id: UUID
@@ -177,7 +203,10 @@ async def update_account(
       -d '{"is_default": true}'
     ```
     """
-    return await repo.update(account_id, data, client_id=None)
+    # Verify account belongs to tenant before update
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(account_id, tenant_id)
+    return await repo.update(account_id, data, current_user=current_user, client_id=None)
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
@@ -197,6 +226,8 @@ async def delete_account(
     - Archived accounts are hidden from active account lists
     - Historical events are retained
 
+    Multi-tenancy: Only archives account if it belongs to the current user's tenant.
+
     :param account_id: Account UUID
     :type account_id: UUID
     :param repo: Injected AccountRepository
@@ -211,5 +242,8 @@ async def delete_account(
     curl -X DELETE http://localhost:8000/api/accounts/{account-id}
     ```
     """
-    await repo.archive(account_id, client_id=None)
+    # Verify account belongs to tenant before archive
+    tenant_id = get_tenant_id(current_user)
+    await repo.get_for_tenant(account_id, tenant_id)
+    await repo.archive(account_id, current_user=current_user, client_id=None)
     return None

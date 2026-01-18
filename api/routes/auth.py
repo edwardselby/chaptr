@@ -11,12 +11,14 @@ Security:
 - Token expires after configured duration (default 24 hours)
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 
 from api.config import MongoDB
-from api.models import LoginRequest, LoginResponse
+from api.models import LoginRequest, LoginResponse, UserUpdate, UserResponse
 from api.repositories.users import UserRepository
-from api.utils.auth import create_access_token, get_current_user
+from api.utils.auth import create_access_token, get_current_user, verify_password
 from api.utils.errors import AuthenticationError
 
 
@@ -95,11 +97,12 @@ async def login(
     if not user:
         raise AuthenticationError("Invalid credentials")
 
-    # Create JWT access token
+    # Create JWT access token with tenant_id for multi-tenancy
     access_token = create_access_token(
         user_id=user.id,
         username=user.username,
-        role=user.role
+        role=user.role,
+        tenant_id=user.tenant_id
     )
 
     # Return token + user info
@@ -109,7 +112,8 @@ async def login(
         user={
             "id": str(user.id),
             "username": user.username,
-            "role": user.role
+            "role": user.role,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None
         }
     )
 
@@ -162,3 +166,77 @@ async def get_me(
     ... }
     """
     return current_user
+
+
+@router.put("/auth/me", response_model=UserResponse)
+async def update_me(
+    data: UserUpdate,
+    current_user: dict = Depends(get_current_user),
+    repo: UserRepository = Depends(get_user_repo)
+):
+    """
+    Update own profile (self-service).
+
+    Allows users to update their own username and password.
+    Role changes are ignored (cannot self-promote).
+    Current password required when changing password.
+
+    :param data: Update data (role field ignored)
+    :type data: UserUpdate
+    :param current_user: Current user from JWT token (injected)
+    :type current_user: dict
+    :param repo: User repository (injected)
+    :type repo: UserRepository
+    :return: Updated user information
+    :rtype: UserResponse
+    :raises AuthenticationError: If current password is incorrect (401)
+    :raises ResourceConflictError: If username already exists (409)
+
+    :Example:
+
+    Request (change username):
+    >>> PUT /api/auth/me
+    >>> Headers: Authorization: Bearer <token>
+    >>> {"username": "NewName"}
+
+    Request (change password - requires current_password):
+    >>> PUT /api/auth/me
+    >>> Headers: Authorization: Bearer <token>
+    >>> {
+    ...     "password": "NewSecure123",
+    ...     "current_password": "OldSecure123"
+    ... }
+
+    Success Response (200):
+    >>> {
+    ...     "id": "550e8400-e29b-41d4-a716-446655440000",
+    ...     "username": "NewName",
+    ...     "role": "user",
+    ...     "created_at": "2024-12-19T10:00:00Z",
+    ...     "updated_at": "2024-12-19T14:00:00Z"
+    ... }
+
+    Failure Response (401 - wrong current password):
+    >>> {"detail": "Current password is incorrect"}
+
+    Failure Response (401 - missing current password for password change):
+    >>> {"detail": "Current password required to change password"}
+
+    Failure Response (409 - username exists):
+    >>> {"detail": "Username 'NewName' already exists"}
+    """
+    user_id = UUID(current_user["id"])
+
+    # If changing password, verify current password first
+    if data.password is not None:
+        if data.current_password is None:
+            raise AuthenticationError("Current password required to change password")
+
+        # Get current user to verify password
+        user = await repo.get(user_id)
+        if not verify_password(data.current_password, user.password_hash):
+            raise AuthenticationError("Current password is incorrect")
+
+    # Update user (role ignored for self-service)
+    updated_user = await repo.update(user_id, data, is_admin_update=False)
+    return UserResponse.from_user(updated_user)

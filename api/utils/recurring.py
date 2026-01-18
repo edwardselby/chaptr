@@ -20,7 +20,8 @@ from api.utils.db import generate_id, utc_now
 async def generate_recurring_events(
     db: AsyncIOMotorDatabase,
     user_id: Optional[UUID] = None,
-    client_id: Optional[str] = None
+    client_id: Optional[str] = None,
+    tenant_id: Optional[UUID] = None
 ) -> list[Event]:
     """
     Generate event instances from recurring rules within ±1 month window.
@@ -29,20 +30,24 @@ async def generate_recurring_events(
     Checks for existing instances to avoid duplicates. Preserves manually edited
     instances (where updated_at != created_at).
 
+    Multi-tenancy: All queries and created entities are scoped to tenant_id.
+
     :param db: MongoDB database instance
     :type db: AsyncIOMotorDatabase
     :param user_id: User ID for created_by/updated_by fields
     :type user_id: Optional[UUID]
     :param client_id: Client ID for change_log tracking (None for server)
     :type client_id: Optional[str]
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
+    :type tenant_id: Optional[UUID]
     :return: List of newly generated events
     :rtype: list[Event]
 
     **Business Rules**:
     - Window: ±1 month from today
-    - Duplicate check: Query by recurring_rule_id + event_date
+    - Duplicate check: Query by recurring_rule_id + event_date + tenant_id
     - Edited instances: Preserved (updated_at != created_at means user edited)
-    - Change logging: All generated events logged for sync distribution
+    - Change logging: All generated events logged for sync distribution with tenant_id
     - Rule lifecycle: Generated events independent of rule after creation
 
     **See Spec**: Recurring Rules > Event Generation
@@ -52,7 +57,8 @@ async def generate_recurring_events(
     >>> from api.config import MongoDB
     >>> db = MongoDB.get_database()
     >>> user_id = UUID("...")
-    >>> events = await generate_recurring_events(db, user_id, "client-a")
+    >>> tenant_id = UUID("...")
+    >>> events = await generate_recurring_events(db, user_id, "client-a", tenant_id)
     >>> print(f"Generated {len(events)} recurring event instances")
     """
     today = date.today()
@@ -61,8 +67,11 @@ async def generate_recurring_events(
 
     generated = []
 
-    # Fetch settings for currency conversion rates
-    settings_doc = await db["settings"].find_one({})
+    # Build tenant filter for all queries
+    tenant_filter = {"tenant_id": str(tenant_id)} if tenant_id else {}
+
+    # Fetch settings for currency conversion rates (tenant-scoped)
+    settings_doc = await db["settings"].find_one(tenant_filter)
     if not settings_doc:
         # Settings should exist before recurring events are generated
         # This should be initialized during app startup or first-time setup
@@ -72,8 +81,10 @@ async def generate_recurring_events(
 
     settings = Settings(**settings_doc)
 
-    # Fetch all active recurring rules for this user
-    cursor = db["recurring_rules"].find({"created_by": str(user_id)})
+    # Fetch all active recurring rules for this tenant
+    # Use tenant_id for filtering, not created_by (supports multi-user tenants)
+    rules_query = {**tenant_filter}
+    cursor = db["recurring_rules"].find(rules_query)
 
     async for rule_doc in cursor:
         rule = RecurringRule(**rule_doc)
@@ -132,11 +143,13 @@ async def generate_recurring_events(
         for dt in dates:
             event_date = dt.date()
 
-            # Check if instance already exists
-            existing = await db["events"].find_one({
+            # Check if instance already exists (tenant-scoped)
+            existing_query = {
                 "recurring_rule_id": str(rule.id),
-                "event_date": event_date.isoformat()
-            })
+                "event_date": event_date.isoformat(),
+                **tenant_filter
+            }
+            existing = await db["events"].find_one(existing_query)
 
             if existing:
                 # Instance already exists, skip (preserves edits)
@@ -146,14 +159,15 @@ async def generate_recurring_events(
             # If currency not in rates, default to 1.0
             rate_to_base = settings.rates.get(rule.currency, Decimal("1.0"))
 
-            # Look up account to determine baseline status
-            account_doc = await db["accounts"].find_one({"id": str(rule.account_id)})
+            # Look up account to determine baseline status (tenant-scoped)
+            account_query = {"id": str(rule.account_id), **tenant_filter}
+            account_doc = await db["accounts"].find_one(account_query)
             is_baseline = False
             if account_doc:
                 # Recurring events inherit baseline status from account
                 is_baseline = account_doc.get("is_default", False)
 
-            # Create new event instance
+            # Create new event instance with tenant_id
             now = utc_now()  # Single timestamp for both created_at and updated_at
             event = Event(
                 id=generate_id(),
@@ -166,6 +180,7 @@ async def generate_recurring_events(
                 story_id=None,  # Recurring events not tied to stories by default
                 is_baseline=is_baseline,  # Inherit from account's is_default
                 recurring_rule_id=rule.id,  # Link to parent rule
+                tenant_id=tenant_id,  # Multi-tenancy isolation
                 created_at=now,
                 created_by=user_id,
                 updated_at=now,
@@ -175,7 +190,7 @@ async def generate_recurring_events(
             # Insert into events collection
             await db["events"].insert_one(event.model_dump(mode="json"))
 
-            # Log change for sync distribution
+            # Log change for sync distribution (include tenant_id)
             change_entry = {
                 "id": str(generate_id()),
                 "entity_type": "event",
@@ -184,7 +199,8 @@ async def generate_recurring_events(
                 "data": event.model_dump(mode="json"),
                 "changed_by_user": str(user_id) if user_id else None,
                 "changed_by_client": client_id,
-                "changed_at": utc_now().isoformat()
+                "changed_at": utc_now().isoformat(),
+                "tenant_id": str(tenant_id) if tenant_id else None
             }
 
             # Omit None values per MongoDB best practice

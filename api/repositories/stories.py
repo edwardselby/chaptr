@@ -52,21 +52,25 @@ class StoryRepository(BaseRepository[Story]):
         data: StoryCreate,
         current_user: Optional[dict] = None,
         client_id: Optional[str] = None,
-        entity_id: Optional[UUID] = None  # For sync protocol - client-specified ID
+        entity_id: Optional[UUID] = None,  # For sync protocol - client-specified ID
+        tenant_id: Optional[UUID] = None  # For multi-tenancy - from current_user
     ) -> Story:
         """
-        Create new story.
+        Create new story with tenant isolation.
 
         Business Rules:
         - default_account_id must exist and not be archived
         - Funding mode and amount relationship validated by Pydantic
         - Goal type and amount relationship validated by Pydantic
         - Auto-populates created_by/updated_by if user authenticated
+        - tenant_id required for multi-tenancy isolation
 
         :param data: Story creation data
         :type data: StoryCreate
         :param current_user: Current authenticated user (from JWT token)
         :type current_user: Optional[dict]
+        :param tenant_id: Tenant identifier for multi-tenancy
+        :type tenant_id: Optional[UUID]
         :return: Created story
         :rtype: Story
         :raises ValidationError: If default_account_id references non-existent or archived account
@@ -79,14 +83,21 @@ class StoryRepository(BaseRepository[Story]):
         ...     display_currency="GBP",
         ...     funding_mode=FundingMode.FIXED,
         ...     funding_amount=Decimal("15000")
-        ... ))
+        ... ), current_user=user, tenant_id=UUID(user["tenant_id"]))
         """
-        # Validate default_account_id if provided
+        # Get tenant_id from current_user if not explicitly provided
+        if tenant_id is None and current_user:
+            tenant_id = self._get_tenant_id(current_user)
+
+        # Validate default_account_id if provided (within tenant)
         if data.default_account_id:
-            account = await self.db['accounts'].find_one({
+            account_filter = {
                 "id": to_str(data.default_account_id),
                 "is_archived": False
-            })
+            }
+            if tenant_id:
+                account_filter["tenant_id"] = str(tenant_id)
+            account = await self.db['accounts'].find_one(account_filter)
             if not account:
                 raise ValidationError(
                     f"default_account_id {data.default_account_id} not found or archived"
@@ -98,10 +109,12 @@ class StoryRepository(BaseRepository[Story]):
         # Use provided entity_id (from sync) or generate new ID
         story_id = entity_id if entity_id is not None else generate_id()
 
-        # Create story with generated ID and timestamps
+        # Create story with generated ID, timestamps, and tenant_id
+        story_data = data.model_dump()
+        story_data['tenant_id'] = tenant_id  # Override with resolved tenant_id
         story = Story(
             id=story_id,
-            **data.model_dump(),
+            **story_data,
             created_at=utc_now(),
             created_by=user_id,
             updated_at=utc_now(),
@@ -111,14 +124,15 @@ class StoryRepository(BaseRepository[Story]):
         # Insert into MongoDB
         await self.collection.insert_one(story.model_dump(mode="json"))
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "story",
             story.id,
             "create",
             story.model_dump(mode="json"),
             user_id,
-            client_id
+            client_id,
+            tenant_id
         )
 
         return story
@@ -159,6 +173,9 @@ class StoryRepository(BaseRepository[Story]):
         # Get existing story
         existing = await self.get(story_id)
 
+        # Get tenant_id for validation queries
+        tenant_id = self._get_tenant_id(current_user)
+
         # Prepare update dictionary
         update_dict = data.model_dump(exclude_unset=True)
 
@@ -170,12 +187,15 @@ class StoryRepository(BaseRepository[Story]):
         # This ensures funding_mode + funding_amount and goal_type + goal_amount are valid
         StoryBase(**merged)
 
-        # Validate default_account_id if being updated
+        # Validate default_account_id if being updated (tenant-scoped)
         if 'default_account_id' in update_dict and update_dict['default_account_id']:
-            account = await self.db['accounts'].find_one({
+            account_query = {
                 "id": to_str(update_dict['default_account_id']),
                 "is_archived": False
-            })
+            }
+            if tenant_id:
+                account_query["tenant_id"] = str(tenant_id)
+            account = await self.db['accounts'].find_one(account_query)
             if not account:
                 raise ValidationError(
                     f"default_account_id {update_dict['default_account_id']} not found or archived"
@@ -197,14 +217,15 @@ class StoryRepository(BaseRepository[Story]):
         # Get updated story for change log
         updated_story = await self.get(story_id)
 
-        # Log change for sync
+        # Log change for sync with tenant_id
         await self.log_change(
             "story",
             story_id,
             "update",
             updated_story.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            self._get_tenant_id(current_user)
         )
 
         # Return updated story
@@ -238,24 +259,29 @@ class StoryRepository(BaseRepository[Story]):
         # Verify story exists and get snapshot for change log
         story = await self.get(story_id)
 
-        # Log change BEFORE deletion (to capture entity snapshot)
+        # Log change BEFORE deletion (to capture entity snapshot) with tenant_id
         await self.log_change(
             "story",
             story_id,
             "delete",
             story.model_dump(mode="json"),
             self._get_user_id(current_user),
-            client_id
+            client_id,
+            self._get_tenant_id(current_user)
         )
 
         # CASCADE: Delete all events belonging to this story
-        await self.db['events'].delete_many({
-            'story_id': to_str(story_id)
-        })
+        # Include tenant_id for security (defense-in-depth)
+        tenant_id = self._get_tenant_id(current_user)
+        cascade_query = {'story_id': to_str(story_id)}
+        if tenant_id:
+            cascade_query['tenant_id'] = str(tenant_id)
+        await self.db['events'].delete_many(cascade_query)
 
-        # Delete the story itself
-        result = await self.collection.delete_one({
-            'id': to_str(story_id)
-        })
+        # Delete the story itself (include tenant_id for security)
+        delete_query = {'id': to_str(story_id)}
+        if tenant_id:
+            delete_query['tenant_id'] = str(tenant_id)
+        result = await self.collection.delete_one(delete_query)
 
         return True
