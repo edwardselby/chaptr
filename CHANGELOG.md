@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frontend role access tests: 51 tests for role validation patterns and UI visibility logic (role_access.test.js)
 - Frontend API auth tests: 22 tests for apiRequest, Bearer token injection, 401 handling (auth_api.test.js)
 - Frontend user management tests: 32 tests for user CRUD payload construction and API calls (user_management.test.js)
+- Backend tenant isolation tests: 16 tests for cross-tenant access blocking, sync isolation, and tenant assignment rules (test_tenant_isolation.py)
+- Frontend tenant sync tests: 15 tests for sync payload tenant_id, response application, user state context, and storage adapter (tenant_sync.test.js)
 - Migration script for converting existing single-tenant data to multi-tenancy (scripts/migrate_to_multitenancy.py)
 
 ### Changed
