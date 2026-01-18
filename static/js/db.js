@@ -268,5 +268,32 @@ db.clearAllData = async function() {
     // Note: users and settings are preserved to maintain login and preferences
 };
 
+/**
+ * Get stored tenant_id from sync_meta.
+ *
+ * Used to detect tenant changes on login - if the new user's tenant_id
+ * differs from the stored one, the database should be cleared to prevent
+ * data leakage between tenants.
+ *
+ * @returns {Promise<string|null>} Stored tenant_id or null if not set
+ */
+db.getTenantId = async function() {
+    const meta = await db.sync_meta.get('tenant_id');
+    return meta?.value || null;
+};
+
+/**
+ * Store tenant_id in sync_meta.
+ *
+ * Called after login to track which tenant's data is in the local database.
+ * On subsequent logins, this is compared to detect tenant changes.
+ *
+ * @param {string} tenantId - Tenant identifier to store
+ * @returns {Promise<void>}
+ */
+db.setTenantId = async function(tenantId) {
+    await db.sync_meta.put({ id: 'tenant_id', value: tenantId });
+};
+
 // Export database instance
 export { db };

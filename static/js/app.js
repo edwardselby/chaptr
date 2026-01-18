@@ -315,8 +315,8 @@ window.app = function() {
                 this.users = []; // Users loaded from admin API for admins
                 this.settings = await storage.getSettings() || { base_currency: 'GBP' };
 
-                // Load users from admin API if user is admin
-                if (this.user?.role === 'admin') {
+                // Load users from admin API if user is admin or super_admin
+                if (['admin', 'super_admin'].includes(this.user?.role)) {
                     try {
                         const response = await apiRequest('/api/admin/users', { method: 'GET' });
                         if (response.ok) {
@@ -4086,6 +4086,19 @@ window.app = function() {
 
                     this.user = data.user;
                     this.isAuthenticated = true;
+
+                    // Check if tenant has changed - clear database if so
+                    // This prevents data leakage when different tenants use the same device
+                    const storedTenantId = await db.getTenantId();
+                    const newTenantId = data.user.tenant_id;
+
+                    if (storedTenantId && storedTenantId !== newTenantId) {
+                        console.log('[CHAPTR] Tenant changed, clearing local database...');
+                        await db.clearAllData();
+                    }
+
+                    // Store current tenant_id for future comparisons
+                    await db.setTenantId(newTenantId);
 
                     // Initialize app components (without re-checking auth)
                     this.setDefaultProjectionDates();

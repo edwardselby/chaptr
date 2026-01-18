@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Multi-tenancy architecture with three-tier role hierarchy: super_admin (system-level), admin (tenant anchor), user (tenant member)
+- Tenant change database clearing: IndexedDB automatically clears when different tenant logs in, preventing data leakage between tenants
+- Tenant ID tracking helpers in db.js: getTenantId() and setTenantId() for detecting tenant changes
+- Frontend tenant change tests: 15 tests for tenant ID storage, change detection, data isolation, and edge cases (tenant_change.test.js)
 - Tenant isolation: All data (accounts, events, stories, recurring rules, settings) now scoped by tenant_id
 - Admin user management endpoints: POST/GET/PUT/DELETE /api/admin/users for tenant user CRUD operations
 - Role-based UI visibility in frontend using Alpine.js x-show directives for admin sections
@@ -30,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Service worker test alignment: Tests now match actual checkForServiceWorkerUpdate() implementation which checks for registration?.waiting instead of fetching /sw-version
+- Super_admin users can now see user management section: Frontend loadData() now checks for both 'admin' and 'super_admin' roles when loading users
+- Tenant data leakage on login: Different tenant logging in on same device now clears IndexedDB to prevent seeing previous tenant's data
 
 ## [0.6.1] - 2026-01-17
 
