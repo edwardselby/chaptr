@@ -1118,6 +1118,14 @@ class SyncResponse(BaseModel):
         default=False,
         description="True if client is stale and should call GET /api/sync/full"
     )
+    rates_updated: bool = Field(
+        default=False,
+        description="True if currency rates were refreshed during this sync"
+    )
+    rates: Optional[dict] = Field(
+        default=None,
+        description="Updated currency rates (only present when rates_updated=true)"
+    )
 
 
 class FullSyncResponse(BaseModel):

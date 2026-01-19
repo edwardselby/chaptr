@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Auto-sync feature: Configurable periodic sync with intervals Off, 1m, 5m, 1h, 1d (app.js, index.html, db.js)
+- Countdown timer in sync button: Shows time until next auto-sync, persists across page refreshes via localStorage
+- Pending sync indicator: Amber "pending sync (X)" badge when sync queued while tab was hidden
+- Entity-aware sync notifications: "Synced 3 events" for single type, "Synced 5 changes" for mixed types (app.js:formatSyncResult)
+- Auto-sync unit tests: 38 tests for timer lifecycle, visibility handling, interval changes (auto_sync.test.js)
+- Sync notification tests: 19 tests for formatSyncResult entity-aware messaging (sync_notifications.test.js)
+- Automatic currency rate updates: Lazy refresh pattern fetches rates from frankfurter.app during sync (api/services/currency.py)
+- Two-level throttling for rate refresh: In-memory 60s throttle + database 24h refresh interval with exponential backoff on failures
+- GlobalConfigRepository: System-level metadata storage for refresh status tracking (api/repositories/global_config.py)
+- Currency dropdown on account creation: 20 popular currencies selectable (GBP, USD, EUR, etc.) instead of manual entry
+- Read-only currency rates display: Rates panel shows auto-updated rates filtered to user's account currencies
+- availableCurrencies/displayRates computed properties: Filter displayed rates to currencies user has accounts for (app.js)
+- Currency service unit tests: 20 tests covering throttling, refresh logic, API mocking, backoff (test_currency_service.py)
+- Currency display unit tests: 15 tests for availableCurrencies and displayRates logic (currency_display.test.js)
+
+### Changed
+- Sync interval settings visible to all users, not just admins (per-device preference)
+- Auto-sync default changed from 5 minutes to Off (db.js:117)
+- Balance modal starts empty instead of 0, allowing immediate typing
+- Sync notifications improved: "X conflicts" → "X sync conflicts", "Sync complete" → "Already in sync"
+- Notification area max-width increased from 200px to 320px
+- Currency rates now read-only: Removed manual rate CRUD from settings, rates update automatically from sync
+- SyncResponse extended: Added rates_updated and rates fields to return refreshed currency rates
+
+### Fixed
+- Overlapping gap indicators in story views: Time gaps no longer overlap with hidden events gaps; historical gap no longer overlaps with first event's hidden events gap (projection.js:472-476, 346-351)
+- Number inputs: Scroll wheel no longer accidentally changes values (blurs field on wheel event)
+- Notification font sizes on mobile: Fixed from 22px to 11px base (17px desktop) to match UI
+
 ## [0.9.0] - 2026-01-19
 
 ### Added

@@ -6,7 +6,9 @@ database operations and HTTP request handling.
 """
 
 from api.repositories.base import BaseRepository
+from api.repositories.global_config import GlobalConfigRepository
 
 __all__ = [
     "BaseRepository",
+    "GlobalConfigRepository",
 ]

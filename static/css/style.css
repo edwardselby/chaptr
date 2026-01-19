@@ -157,7 +157,7 @@ body::before {
     display: flex;
     align-items: center;
     gap: 2px;
-    font-size: 22px; /* Doubled from 11px for better visibility */
+    font-size: 11px;
     color: var(--text-dim);
     background: transparent;
     border: none;
@@ -167,7 +167,7 @@ body::before {
 
 .sync-pending-count {
     font-weight: 400;
-    font-size: 22px; /* Doubled from 11px for better visibility */
+    font-size: 11px;
     color: var(--text-dim);
 }
 
@@ -175,15 +175,24 @@ body::before {
     display: none; /* Remove "pending" text */
 }
 
+/* Auto-sync pending indicator (waiting to sync when tab becomes visible) */
+.sync-pending-indicator.auto-sync-pending {
+    color: var(--amber);
+}
+
+.sync-pending-indicator.auto-sync-pending .sync-pending-count {
+    color: var(--amber);
+}
+
 /* ===== INLINE NOTIFICATION AREA ===== */
 
 .notification-area {
     display: flex;
     align-items: center;
-    font-size: 22px; /* Doubled from 11px for better visibility */
+    font-size: 11px;
     padding: 4px 8px;
     background: transparent;
-    max-width: 200px;
+    max-width: 320px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -971,6 +980,7 @@ body::before {
 }
 
 .cmd-btn {
+    position: relative;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     color: var(--green-bright);
@@ -1006,6 +1016,18 @@ body::before {
     color: var(--text-dim);
     letter-spacing: 0.5px;
     text-transform: uppercase;
+}
+
+/* Auto-sync indicator inside sync button - positioned absolutely to avoid affecting layout */
+.auto-sync-indicator {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    font-size: 0.55rem;
+    color: var(--green-dim);
+    letter-spacing: 0.3px;
+    text-align: center;
 }
 
 /* Empty State */
@@ -1733,6 +1755,24 @@ body::before {
     box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1);
 }
 
+/* Select input styling */
+select.select-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234af626' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    cursor: pointer;
+}
+
+select.select-input option {
+    background: var(--bg-primary);
+    color: var(--text-bright);
+    padding: 8px;
+}
+
 /* Date picker calendar icon styling */
 input[type="date"] {
     position: relative;
@@ -2397,6 +2437,64 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
 
 .btn-small.btn-danger:hover {
     background: rgba(244, 67, 54, 0.1);
+}
+
+/* Currency rates panel */
+.rates-panel {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+}
+
+.rates-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    margin-bottom: 12px;
+}
+
+.rates-table-display {
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+.rate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+
+.rate-row:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+}
+
+.rate-currency {
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+.rate-value {
+    color: var(--text-dim);
+}
+
+.rate-number {
+    color: var(--green);
+    font-weight: 500;
+}
+
+.rates-empty {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+.settings-hint {
+    font-size: 0.75rem;
+    color: rgba(74, 246, 38, 0.6);
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
 }
 
 /* Backup actions */
@@ -3407,6 +3505,20 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
         font-size: 17px; /* Was 11px */
     }
 
+    /* Rates panel */
+    .rates-hint {
+        font-size: 17px;
+    }
+
+    .rate-row {
+        font-size: 20px;
+        padding: 12px 16px;
+    }
+
+    .rates-empty {
+        font-size: 17px;
+    }
+
     /* Toast notifications */
     .toast {
         font-size: 20px; /* Was 13px */
@@ -3474,5 +3586,18 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
 
     .btn-login {
         font-size: 21px; /* Was 14px */
+    }
+
+    /* Notification and sync indicators */
+    .notification-area {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .sync-pending-indicator {
+        font-size: 17px; /* Was 11px */
+    }
+
+    .sync-pending-count {
+        font-size: 17px; /* Was 11px */
     }
 }

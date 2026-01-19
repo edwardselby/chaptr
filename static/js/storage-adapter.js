@@ -949,15 +949,36 @@ class StorageAdapter {
             // 4. Process sync response (includes auto-resolution of derived event conflicts)
             await this.processSyncResponse(syncData);
 
+            // 5. Handle currency rates refresh (lazy update from server)
+            if (syncData.rates_updated && syncData.rates) {
+                console.log(`[CHAPTR] Currency rates updated: ${Object.keys(syncData.rates).length} currencies`);
+                // Update local settings with new rates
+                const currentSettings = await db.settings.get(1);
+                if (currentSettings) {
+                    await db.settings.update(1, {
+                        rates: syncData.rates
+                    });
+                }
+            }
+
             // Count only unresolved conflicts (auto-resolved conflicts are suppressed)
             const unresolvedConflicts = await db.getUnresolvedConflicts();
+
+            // Build breakdown by entity type for clearer notifications
+            const appliedByType = {};
+            for (const item of syncData.applied) {
+                const type = item.entity_type;
+                appliedByType[type] = (appliedByType[type] || 0) + 1;
+            }
 
             console.log(`[CHAPTR] Sync complete: ${syncData.applied.length} applied, ${unresolvedConflicts.length} unresolved conflicts (${syncData.conflicts.length} total, ${syncData.conflicts.length - unresolvedConflicts.length} auto-resolved)`);
 
             return {
                 success: true,
                 applied: syncData.applied.length,
-                conflicts: unresolvedConflicts.length
+                appliedByType: appliedByType,
+                conflicts: unresolvedConflicts.length,
+                ratesUpdated: syncData.rates_updated || false
             };
 
         } catch (error) {

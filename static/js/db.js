@@ -114,7 +114,7 @@ db.on('ready', async () => {
             },
             baseline_display_months: 3,
             date_format: 'DD MMM',
-            auto_sync_interval: 300000 // 5 minutes
+            auto_sync_interval: 0 // seconds (0 = off, 300 = 5min, 3600 = 1hr, 86400 = 1day)
         });
         console.log('Default settings initialized');
     }

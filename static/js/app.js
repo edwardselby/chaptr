@@ -70,6 +70,12 @@ window.app = function() {
         SYNC_TIMEOUT_MS: 30000,        // Maximum 30 seconds for sync operation
         MIN_SPINNER_DURATION_MS: 1000, // Minimum 1 second for spinner visibility
 
+        // Auto-Sync State
+        autoSyncTimerId: null,         // Timer ID for auto-sync
+        autoSyncPending: false,        // Sync pending while tab was hidden
+        autoSyncCountdown: '',         // Countdown display string (e.g., "4:32")
+        countdownTimerId: null,        // Timer ID for countdown display updates
+
         // Notification State
         currentNotification: null,      // { message: string, type: string }
         notificationTimeout: null,       // Timeout ID for auto-dismiss
@@ -233,6 +239,9 @@ window.app = function() {
             // Load data from storage adapter
             await this.loadData();
 
+            // Start auto-sync timer based on settings
+            this.startAutoSyncTimer();
+
             // Check for unresolved conflicts
             await this.checkForConflicts();
 
@@ -245,12 +254,15 @@ window.app = function() {
             });
 
             // DEFENSIVE: Reset spinner if page becomes visible (catches tab switching/background)
+            // Also handles auto-sync pause/resume on tab visibility
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden && this.syncButtonSpinner) {
                     console.warn('Page became visible with spinner active - resetting sync state');
                     this.isSyncing = false;
                     this.syncButtonSpinner = false;
                 }
+                // Handle auto-sync pause/resume
+                this.handleAutoSyncVisibilityChange();
             });
 
             // DEFENSIVE: Reset spinner before page unload (catches navigation/refresh)
@@ -298,6 +310,13 @@ window.app = function() {
                     }
                 };
             })());
+
+            // Prevent scroll wheel from changing number input values
+            document.addEventListener('wheel', (event) => {
+                if (event.target.type === 'number') {
+                    event.target.blur();
+                }
+            }, { passive: true });
 
             console.log('CHAPTR ready!');
         },
@@ -610,6 +629,43 @@ window.app = function() {
             return titles[this.currentScreen] || '';
         },
 
+        /**
+         * Get unique currencies from user's accounts
+         *
+         * Always includes base currency, plus currencies from all accounts.
+         * Used to filter which rates are displayed in settings.
+         *
+         * @returns {string[]} Array of currency codes
+         */
+        get availableCurrencies() {
+            const currencies = new Set([this.settings?.base_currency || 'GBP']);
+            for (const account of this.accounts) {
+                if (account.currency) {
+                    currencies.add(account.currency);
+                }
+            }
+            return Array.from(currencies);
+        },
+
+        /**
+         * Filter rates to only show currencies user has accounts for
+         *
+         * Returns rates dictionary filtered to availableCurrencies.
+         * Used in settings screen for read-only rates display.
+         *
+         * @returns {Object} Filtered rates dictionary
+         */
+        get displayRates() {
+            const available = this.availableCurrencies;
+            const rates = {};
+            for (const [currency, rate] of Object.entries(this.settings?.rates || {})) {
+                if (available.includes(currency)) {
+                    rates[currency] = rate;
+                }
+            }
+            return rates;
+        },
+
         // ===== PROJECTION =====
 
         /**
@@ -903,9 +959,9 @@ window.app = function() {
                 const result = await storage.manualSync();
 
                 if (result.conflicts && result.conflicts > 0) {
-                    this.showNotification(`${result.conflicts} conflicts`, 'warning');
+                    this.showNotification(`${result.conflicts} sync conflicts`, 'warning');
                 } else if (result.applied && result.applied > 0) {
-                    this.showNotification(`Synced ${result.applied}`, 'success');
+                    this.showNotification(this.formatSyncResult(result), 'success');
                 }
 
                 // Update queue count
@@ -1977,68 +2033,13 @@ window.app = function() {
                     rates: updated.rates || {}
                 };
 
+                // Restart auto-sync timer with new interval (force reset countdown)
+                this.startAutoSyncTimer(true);
+
             } catch (error) {
                 console.error('Error updating settings:', error);
                 this.showNotification('Update failed', 'error');
             }
-        },
-
-        /**
-         * Add a new conversion rate
-         */
-        addConversionRate() {
-            this.showInput(
-                'Add Currency',
-                'Enter currency code (e.g., EUR, CAD):',
-                (currency) => {
-                    const upperCurrency = currency.toUpperCase();
-
-                    // Continue with rate input
-                    this.showInput(
-                        'Conversion Rate',
-                        `Enter conversion rate: 1 ${this.settingsForm.base_currency} = ? ${upperCurrency}\n\nExample: If 1 GBP = 1.27 USD, enter 1.27:`,
-                        (rate) => {
-                            this.settingsForm.rates[upperCurrency] = parseFloat(rate);
-                            // Note: User must click "Save Rates" button to persist
-                        },
-                        '1.27',
-                        null,
-                        (value) => {
-                            const rateNum = parseFloat(value);
-                            if (isNaN(rateNum) || rateNum <= 0) {
-                                return 'Please enter a valid positive number';
-                            }
-                            return null; // Valid
-                        }
-                    );
-                },
-                'EUR',
-                null,
-                (value) => {
-                    const upper = value.toUpperCase();
-                    if (upper.length !== 3) {
-                        return 'Currency code must be 3 letters';
-                    }
-                    return null; // Valid
-                }
-            );
-        },
-
-        /**
-         * Delete conversion rate
-         * @param {string} currency - Currency code
-         */
-        deleteRate(currency) {
-            this.showConfirm(
-                'Remove Currency',
-                `Remove ${currency} conversion rate?`,
-                () => {
-                    delete this.settingsForm.rates[currency];
-                    // Note: User must click "Save Rates" button to persist
-                },
-                'Remove',
-                'danger'
-            );
         },
 
         /**
@@ -2208,14 +2209,11 @@ window.app = function() {
                     // Check for unresolved conflicts after sync (auto-resolved conflicts are suppressed)
                     const unresolvedConflicts = await db.getUnresolvedConflicts();
                     if (unresolvedConflicts.length > 0) {
-                        this.showNotification(
-                            `${unresolvedConflicts.length} conflicts`,
-                            'warning'
-                        );
+                        this.showNotification(`${unresolvedConflicts.length} sync conflicts`, 'warning');
                     } else if (result.applied && result.applied > 0) {
-                        this.showNotification(`Synced ${result.applied}`, 'success');
+                        this.showNotification(this.formatSyncResult(result), 'success');
                     } else {
-                        this.showNotification('Sync complete', 'success');
+                        this.showNotification('Already in sync', 'success');
                     }
 
                     // Reload data to reflect server changes
@@ -2244,6 +2242,294 @@ window.app = function() {
                 this.isSyncing = false;
                 this.syncButtonSpinner = false;
                 await this.updateSyncQueueCount(); // Refresh count
+
+                // Reset auto-sync countdown after sync
+                this.resetAutoSyncTimer();
+            }
+        },
+
+        /**
+         * Normalize auto_sync_interval to seconds
+         *
+         * Handles migration from milliseconds (old format) to seconds (new format).
+         * Values > 86400 are assumed to be milliseconds and are converted.
+         *
+         * @param {number} value - Raw interval value from settings
+         * @returns {number} - Interval in seconds (0 = off)
+         */
+        normalizeAutoSyncInterval(value) {
+            if (!value || value <= 0) return 0;
+            // If value > 86400 (1 day in seconds), assume it's milliseconds
+            if (value > 86400) {
+                return Math.round(value / 1000);
+            }
+            return value;
+        },
+
+        /**
+         * Format sync interval for display
+         *
+         * @param {number} seconds - Interval in seconds
+         * @returns {string} - Formatted interval (e.g., "1m", "5m", "1h", "1d")
+         */
+        formatSyncInterval(seconds) {
+            if (seconds === 60) return '1m';
+            if (seconds === 300) return '5m';
+            if (seconds === 3600) return '1h';
+            if (seconds === 86400) return '1d';
+            if (seconds >= 86400) return `${Math.round(seconds / 86400)}d`;
+            if (seconds >= 3600) return `${Math.round(seconds / 3600)}h`;
+            if (seconds >= 60) return `${Math.round(seconds / 60)}m`;
+            return `${seconds}s`;
+        },
+
+        /**
+         * Format countdown for display (mm:ss or ss)
+         *
+         * @param {number} seconds - Remaining seconds
+         * @returns {string} - Formatted countdown (e.g., "4:32" or "45")
+         */
+        formatCountdown(seconds) {
+            if (seconds <= 0) return '';
+            if (seconds < 60) return `${seconds}`;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        },
+
+        /**
+         * Format sync result for notification display
+         *
+         * Returns entity-aware message when single type, generic "changes" for mixed types.
+         * Examples: "Synced 3 events", "Synced 1 account", "Synced 5 changes"
+         *
+         * @param {Object} result - Sync result with applied count and appliedByType breakdown
+         * @param {number} result.applied - Total number of applied changes
+         * @param {Object} result.appliedByType - Breakdown by entity type (e.g., { event: 3, account: 1 })
+         * @returns {string} - Formatted message for notification
+         */
+        formatSyncResult(result) {
+            if (!result.applied || result.applied === 0) {
+                return 'Already in sync';
+            }
+
+            const typeLabels = {
+                event: { singular: 'event', plural: 'events' },
+                account: { singular: 'account', plural: 'accounts' },
+                story: { singular: 'story', plural: 'stories' },
+                recurring_rule: { singular: 'rule', plural: 'rules' },
+                settings: { singular: 'settings', plural: 'settings' }
+            };
+
+            const types = Object.keys(result.appliedByType || {});
+
+            // Single entity type: show specific label
+            if (types.length === 1) {
+                const type = types[0];
+                const count = result.appliedByType[type];
+                const labels = typeLabels[type] || { singular: type, plural: type + 's' };
+                const label = count === 1 ? labels.singular : labels.plural;
+                return `Synced ${count} ${label}`;
+            }
+
+            // Multiple types: use generic "changes"
+            return `Synced ${result.applied} changes`;
+        },
+
+        /**
+         * Get stored next sync timestamp from localStorage
+         * @returns {number|null} - Timestamp in ms or null
+         */
+        getStoredNextSyncTime() {
+            try {
+                const stored = localStorage.getItem('chaptr_next_auto_sync');
+                return stored ? parseInt(stored, 10) : null;
+            } catch (e) {
+                return null;
+            }
+        },
+
+        /**
+         * Store next sync timestamp in localStorage
+         * @param {number} timestamp - Timestamp in ms
+         */
+        setStoredNextSyncTime(timestamp) {
+            try {
+                if (timestamp) {
+                    localStorage.setItem('chaptr_next_auto_sync', timestamp.toString());
+                } else {
+                    localStorage.removeItem('chaptr_next_auto_sync');
+                }
+            } catch (e) {
+                // localStorage not available
+            }
+        },
+
+        /**
+         * Start auto-sync timer
+         *
+         * Sets up periodic sync based on settings.auto_sync_interval.
+         * If tab is hidden when timer fires, queues sync for when tab becomes visible.
+         * Persists next sync time to localStorage for countdown continuity across refreshes.
+         *
+         * @param {boolean} forceReset - If true, ignores stored time and starts fresh (use when interval changes)
+         */
+        startAutoSyncTimer(forceReset = false) {
+            this.stopAutoSyncTimer(); // Clear any existing timer
+
+            const intervalSeconds = this.normalizeAutoSyncInterval(this.settings.auto_sync_interval);
+            if (!intervalSeconds || intervalSeconds <= 0) {
+                console.log('[CHAPTR] Auto-sync disabled');
+                this.autoSyncCountdown = '';
+                this.setStoredNextSyncTime(null);
+                return;
+            }
+
+            const intervalMs = intervalSeconds * 1000;
+            const now = Date.now();
+            let nextSyncTime;
+
+            if (forceReset) {
+                // User changed interval - start fresh
+                nextSyncTime = now + intervalMs;
+                this.setStoredNextSyncTime(nextSyncTime);
+                console.log(`[CHAPTR] Auto-sync interval changed to ${intervalSeconds}s`);
+            } else {
+                // Check if we have a stored next sync time that's still valid
+                nextSyncTime = this.getStoredNextSyncTime();
+
+                if (!nextSyncTime || nextSyncTime <= now) {
+                    // Set new next sync time
+                    nextSyncTime = now + intervalMs;
+                    this.setStoredNextSyncTime(nextSyncTime);
+                }
+            }
+
+            // Calculate initial delay (time until stored next sync)
+            const initialDelay = Math.max(0, nextSyncTime - now);
+
+            console.log(`[CHAPTR] Starting auto-sync timer: ${intervalSeconds}s (first in ${Math.round(initialDelay / 1000)}s)`);
+
+            // Start countdown display
+            this.startCountdownDisplay();
+
+            // Use setTimeout for first sync to honor stored time, then setInterval
+            const scheduleNextSync = async () => {
+                // Update next sync time for future
+                const newNextSyncTime = Date.now() + intervalMs;
+                this.setStoredNextSyncTime(newNextSyncTime);
+
+                // Skip if offline or already syncing
+                if (!navigator.onLine || this.isSyncing) {
+                    console.log('[CHAPTR] Auto-sync skipped (offline/syncing)');
+                    return;
+                }
+
+                // Check if there's anything to sync
+                const queueCount = await db.sync_queue.count();
+                if (queueCount === 0) {
+                    console.log('[CHAPTR] Auto-sync: nothing to sync');
+                    return;
+                }
+
+                // If tab is hidden, queue sync for when user returns
+                if (document.hidden) {
+                    this.autoSyncPending = true;
+                    console.log(`[CHAPTR] Auto-sync queued (${queueCount} pending, tab hidden)`);
+                    return;
+                }
+
+                console.log(`[CHAPTR] Auto-sync triggered (${queueCount} pending)`);
+                await this.triggerManualSync();
+            };
+
+            // First sync after initial delay
+            this.autoSyncTimerId = setTimeout(async () => {
+                await scheduleNextSync();
+
+                // Then set up regular interval
+                this.autoSyncTimerId = setInterval(scheduleNextSync, intervalMs);
+            }, initialDelay);
+        },
+
+        /**
+         * Start countdown display update interval
+         */
+        startCountdownDisplay() {
+            this.stopCountdownDisplay();
+
+            // Update countdown every second
+            this.countdownTimerId = setInterval(() => {
+                const nextSyncTime = this.getStoredNextSyncTime();
+                if (!nextSyncTime) {
+                    this.autoSyncCountdown = '';
+                    return;
+                }
+
+                const remainingMs = nextSyncTime - Date.now();
+                if (remainingMs <= 0) {
+                    this.autoSyncCountdown = '';
+                    return;
+                }
+
+                this.autoSyncCountdown = this.formatCountdown(Math.ceil(remainingMs / 1000));
+            }, 1000);
+
+            // Initial update
+            const nextSyncTime = this.getStoredNextSyncTime();
+            if (nextSyncTime) {
+                const remainingMs = nextSyncTime - Date.now();
+                this.autoSyncCountdown = remainingMs > 0 ? this.formatCountdown(Math.ceil(remainingMs / 1000)) : '';
+            }
+        },
+
+        /**
+         * Stop countdown display update interval
+         */
+        stopCountdownDisplay() {
+            if (this.countdownTimerId) {
+                clearInterval(this.countdownTimerId);
+                this.countdownTimerId = null;
+            }
+            this.autoSyncCountdown = '';
+        },
+
+        /**
+         * Stop auto-sync timer
+         */
+        stopAutoSyncTimer() {
+            if (this.autoSyncTimerId) {
+                clearInterval(this.autoSyncTimerId);
+                clearTimeout(this.autoSyncTimerId); // Could be either
+                this.autoSyncTimerId = null;
+                console.log('[CHAPTR] Auto-sync timer stopped');
+            }
+            this.stopCountdownDisplay();
+        },
+
+        /**
+         * Handle visibility change for auto-sync
+         *
+         * When tab becomes visible and sync was pending, triggers sync immediately.
+         */
+        async handleAutoSyncVisibilityChange() {
+            if (!document.hidden && this.autoSyncPending) {
+                console.log('[CHAPTR] Tab visible - triggering pending auto-sync');
+                this.autoSyncPending = false;
+                await this.triggerManualSync();
+            }
+        },
+
+        /**
+         * Reset auto-sync timer after manual sync
+         *
+         * Called after a successful sync to reset the countdown.
+         */
+        resetAutoSyncTimer() {
+            const intervalSeconds = this.normalizeAutoSyncInterval(this.settings.auto_sync_interval);
+            if (intervalSeconds > 0) {
+                const nextSyncTime = Date.now() + (intervalSeconds * 1000);
+                this.setStoredNextSyncTime(nextSyncTime);
             }
         },
 
@@ -2548,7 +2834,7 @@ window.app = function() {
             this.balanceForm = {
                 account_id: activeAccounts.length === 1 ? activeAccounts[0].id : '',
                 projected_balance: 0,
-                actual_balance: 0,
+                actual_balance: '',  // Empty so user can type immediately without deleting
                 drift: null,
                 currency: this.settings.base_currency || 'GBP'
             };
@@ -4200,6 +4486,8 @@ window.app = function() {
          * Logout user
          */
         logout() {
+            // Stop auto-sync timer before logout
+            this.stopAutoSyncTimer();
             clearAuth();
             // Reload page to reset all state and show login screen
             window.location.reload();

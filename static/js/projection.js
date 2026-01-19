@@ -343,6 +343,13 @@ export async function calculateProjection(
                 display_currency: displayCurrency || settings.base_currency
             };
 
+            //: If first event has gap_indicator position='before', remove it to prevent
+            //: visual overlap with historical events indicator (both render at top)
+            const firstEvent = rowsWithGaps[0];
+            if (firstEvent?.gap_indicator?.position === 'before') {
+                delete firstEvent.gap_indicator;
+            }
+
             // Prepend to results
             rowsWithGaps.unshift(historicalIndicator);
         }
@@ -469,7 +476,13 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
             const nextRow = rows[i + 1];
             const gapDays = daysBetween(row.event_date, nextRow.event_date);
 
-            if (gapDays > thresholdDays) {
+            //: Skip time gap if hidden events gap already covers this space
+            //: (prevents visual overlap of "X days" and "Y hidden events")
+            const hasHiddenEventsAfterCurrent = row.gap_indicator?.position === 'after';
+            const hasHiddenEventsBeforeNext = nextRow.gap_indicator?.position === 'before';
+            const hiddenEventsGapExists = hasHiddenEventsAfterCurrent || hasHiddenEventsBeforeNext;
+
+            if (gapDays > thresholdDays && !hiddenEventsGapExists) {
                 withGaps.push({
                     id: `gap-${i}`,
                     isGap: true,

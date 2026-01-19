@@ -301,3 +301,35 @@ class SettingsRepository(BaseRepository[Settings]):
         updated_settings = await self.get_or_create_default()
 
         return updated_settings
+
+    async def update_rates(self, tenant_id: UUID, rates: dict) -> Settings:
+        """
+        Update currency rates for a specific tenant.
+
+        Used by the CurrencyService for automatic rate updates.
+        This is a convenience method that only updates the rates field.
+
+        :param tenant_id: Tenant identifier
+        :type tenant_id: UUID
+        :param rates: Currency rates dictionary (e.g., {"USD": 1.27, "EUR": 1.17})
+        :type rates: dict
+        :return: Updated settings
+        :rtype: Settings
+
+        :Example:
+
+        >>> await repo.update_rates(tenant_id, {"USD": 1.27, "EUR": 1.17, "GBP": 1.0})
+        """
+        # Get or create settings for tenant
+        existing = await self.get_or_create_for_tenant(tenant_id)
+
+        # Convert float rates to strings for consistency
+        rates_str = {k: str(v) for k, v in rates.items()}
+
+        # Update only the rates field
+        await self.collection.update_one(
+            {"id": str(existing.id), "tenant_id": str(tenant_id)},
+            {"$set": {"rates": rates_str, "updated_at": utc_now()}}
+        )
+
+        return await self.get_or_create_for_tenant(tenant_id)

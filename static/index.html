@@ -117,10 +117,19 @@
 
             <!-- Sync badge (shows when NO notification and queue has items) -->
             <div class="sync-pending-indicator"
-                 x-show="!currentNotification && syncQueueCount > 0 && !isSyncing"
+                 x-show="!currentNotification && !autoSyncPending && syncQueueCount > 0 && !isSyncing"
                  @click="manualSync()"
                  title="Click to sync now">
                 <span>(</span>
+                <span class="sync-pending-count" x-text="syncQueueCount"></span>
+                <span>)</span>
+            </div>
+
+            <!-- Auto-sync pending badge (shows when sync queued while tab was hidden) -->
+            <div class="sync-pending-indicator auto-sync-pending"
+                 x-show="!currentNotification && autoSyncPending && !isSyncing"
+                 title="Sync will trigger when you return">
+                <span>pending sync (</span>
                 <span class="sync-pending-count" x-text="syncQueueCount"></span>
                 <span>)</span>
             </div>
@@ -601,41 +610,31 @@
                             </div>
                         </section>
 
-                        <!-- Conversion Rates (Admin Only) -->
-                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
+                        <!-- Currency Rates (Read-only, auto-updated) -->
+                        <section class="section">
                             <div class="section-header">
-                                <h2>Conversion Rates</h2>
-                                <button class="btn-add" @click="addConversionRate()">+ Add Rate</button>
+                                <h2>Currency Rates</h2>
                             </div>
-                            <div class="rates-table">
-                                <div class="table-header">
-                                    <div class="table-col">Currency</div>
-                                    <div class="table-col">Rate to <span x-text="settingsForm.base_currency"></span></div>
-                                    <div class="table-col">Actions</div>
+                            <div class="rates-panel">
+                                <div class="rates-hint">Rates update automatically from your base currency</div>
+                                <div class="rates-table-display" x-show="Object.keys(displayRates).filter(c => c !== settingsForm.base_currency).length > 0">
+                                    <template x-for="[currency, rate] in Object.entries(displayRates).sort()" :key="currency">
+                                        <div class="rate-row" x-show="currency !== settingsForm.base_currency">
+                                            <span class="rate-currency" x-text="currency"></span>
+                                            <span class="rate-value">
+                                                1 <span x-text="settingsForm.base_currency"></span> = <span class="rate-number" x-text="Number(rate).toFixed(2)"></span> <span x-text="currency"></span>
+                                            </span>
+                                        </div>
+                                    </template>
                                 </div>
-                                <template x-for="(rate, currency) in settingsForm.rates" :key="currency">
-                                    <div class="table-row">
-                                        <div class="table-col" x-text="currency"></div>
-                                        <div class="table-col">
-                                            <input
-                                                type="number"
-                                                x-model.number="settingsForm.rates[currency]"
-                                                step="0.01"
-                                                class="form-input">
-                                        </div>
-                                        <div class="table-col">
-                                            <button class="btn-small btn-danger" @click="deleteRate(currency)">Remove</button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-                            <div class="panel-actions">
-                                <button class="btn-primary" @click="updateSettings()">Save Rates</button>
+                                <div class="rates-empty" x-show="Object.keys(displayRates).filter(c => c !== settingsForm.base_currency).length === 0">
+                                    Create accounts in other currencies to see rates
+                                </div>
                             </div>
                         </section>
 
-                        <!-- Sync Settings (Admin Only) -->
-                        <section class="section" x-show="['admin', 'super_admin'].includes(user?.role)" x-cloak>
+                        <!-- Sync Settings (All Users - per-device preference) -->
+                        <section class="section">
                             <div class="section-header">
                                 <h2>Sync Settings</h2>
                             </div>
@@ -648,11 +647,13 @@
                                         x-data="window.settingsDropdown(
                                             'sync-interval',
                                             [
+                                                { value: 0, label: 'Off' },
+                                                { value: 60, label: 'Every minute' },
                                                 { value: 300, label: 'Every 5 minutes' },
                                                 { value: 3600, label: 'Every hour' },
                                                 { value: 86400, label: 'Every day' }
                                             ],
-                                            () => Number(settingsForm.auto_sync_interval),
+                                            () => normalizeAutoSyncInterval(settingsForm.auto_sync_interval),
                                             (value) => { settingsForm.auto_sync_interval = Number(value); updateSettings(); }
                                         )"
                                         @click.away="open = false"
@@ -666,7 +667,7 @@
                                         <ul class="select-dropdown" x-show="open" x-cloak x-transition>
                                             <template x-for="opt in options" :key="opt.value">
                                                 <li @click="selectOption(opt.value)"
-                                                    :class="{ 'selected': Number(settingsForm.auto_sync_interval) === opt.value }"
+                                                    :class="{ 'selected': normalizeAutoSyncInterval(settingsForm.auto_sync_interval) === opt.value }"
                                                     x-text="opt.label"></li>
                                             </template>
                                         </ul>
@@ -841,30 +842,34 @@
                 <div class="form-group">
                     <label for="account-currency">Currency</label>
 
-                    <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.currency }">
-                        <span class="validation-arrow-left" x-show="accountFormErrors.currency" x-cloak>&gt;</span>
+                    <select
+                        id="account-currency"
+                        x-model="accountForm.currency"
+                        required
+                        class="form-input select-input">
+                        <option value="GBP">GBP - British Pound</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="CAD">CAD - Canadian Dollar</option>
+                        <option value="AUD">AUD - Australian Dollar</option>
+                        <option value="JPY">JPY - Japanese Yen</option>
+                        <option value="CHF">CHF - Swiss Franc</option>
+                        <option value="NZD">NZD - New Zealand Dollar</option>
+                        <option value="SEK">SEK - Swedish Krona</option>
+                        <option value="NOK">NOK - Norwegian Krone</option>
+                        <option value="DKK">DKK - Danish Krone</option>
+                        <option value="PLN">PLN - Polish Zloty</option>
+                        <option value="CZK">CZK - Czech Koruna</option>
+                        <option value="HUF">HUF - Hungarian Forint</option>
+                        <option value="SGD">SGD - Singapore Dollar</option>
+                        <option value="HKD">HKD - Hong Kong Dollar</option>
+                        <option value="INR">INR - Indian Rupee</option>
+                        <option value="MXN">MXN - Mexican Peso</option>
+                        <option value="BRL">BRL - Brazilian Real</option>
+                        <option value="ZAR">ZAR - South African Rand</option>
+                    </select>
 
-                        <input
-                            id="account-currency"
-                            type="text"
-                            x-model="accountForm.currency"
-                            placeholder="GBP"
-                            required
-                            pattern="[A-Z]{3}"
-                            maxlength="3"
-                            class="form-input"
-                            :class="{ 'validation-error': accountFormErrors.currency }"
-                            style="text-transform: uppercase"
-                            @invalid.prevent="accountFormErrors.currency = true"
-                            @input="accountFormErrors.currency = false; accountForm.currency = accountForm.currency.toUpperCase()">
-
-                        <span class="validation-arrow-right" x-show="accountFormErrors.currency" x-cloak>&lt;</span>
-                    </div>
-
-                    <span class="form-hint">
-                        <span x-show="accountFormErrors.currency" style="color: var(--red)">⚠️ Currency must be 3 uppercase letters (e.g., GBP, USD, EUR)</span>
-                        <span x-show="!accountFormErrors.currency">3-letter ISO code (GBP, USD, EUR)</span>
-                    </span>
+                    <span class="form-hint">Select the currency for this account</span>
                 </div>
                 <div class="form-group">
                     <label for="account-balance">Current Balance</label>
@@ -2045,10 +2050,12 @@
             <span class="cmd-label" x-text="getDollarLabel()"></span>
         </button>
 
-        <!-- Sync Button -->
+        <!-- Sync Button with Auto-Sync Indicator -->
         <button class="cmd-btn" @click="triggerManualSync()" :disabled="isSyncing">
             <span class="cmd-key" :class="{ 'spinning': syncButtonSpinner }">↻</span>
             <span class="cmd-label">Sync</span>
+            <span class="auto-sync-indicator" x-show="normalizeAutoSyncInterval(settings.auto_sync_interval) > 0" x-cloak
+                  x-text="autoSyncCountdown || formatSyncInterval(normalizeAutoSyncInterval(settings.auto_sync_interval))"></span>
         </button>
 
         <!-- Help Button -->

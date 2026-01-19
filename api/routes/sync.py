@@ -48,6 +48,8 @@ from api.repositories.stories import StoryRepository
 from api.repositories.accounts import AccountRepository
 from api.repositories.recurring_rules import RecurringRuleRepository
 from api.repositories.settings import SettingsRepository
+from api.repositories.global_config import GlobalConfigRepository
+from api.services.currency import CurrencyService
 from api.utils.auth import get_current_user
 from api.utils.db import utc_now
 from api.utils.errors import ResourceNotFoundError, ResourceConflictError
@@ -529,12 +531,29 @@ async def sync(
                 data=log_entry.get("data")  # None for deletes
             ))
 
+    # ========== CURRENCY REFRESH PHASE: Lazy update currency rates ==========
+    # Check if rates need refreshing (two-level throttle: in-memory + database)
+    settings_repo = SettingsRepository(db)
+    global_config_repo = GlobalConfigRepository(db)
+
+    # Get current settings to determine base currency
+    settings = await settings_repo.get_or_create_for_tenant(tenant_id)
+
+    updated_rates = await CurrencyService.maybe_refresh_rates(
+        tenant_id=tenant_id,
+        base_currency=settings.base_currency,
+        settings_repo=settings_repo,
+        global_config_repo=global_config_repo
+    )
+
     return SyncResponse(
         applied=applied,
         conflicts=conflicts,
         server_changes=server_changes,
         sync_timestamp=utc_now(),
-        full_sync_required=full_sync_required
+        full_sync_required=full_sync_required,
+        rates_updated=updated_rates is not None,
+        rates=updated_rates
     )
 
 
