@@ -38,15 +38,11 @@ class StorageAdapter {
      * @returns {Promise<string>} Detected mode ('full', 'sync-only', or 'basic')
      */
     async init() {
-        console.log('[CHAPTR] Initializing storage adapter...');
-
         // 1. Check for forced mode
         const forcedMode = this.getForcedMode();
         if (forcedMode) {
             this.mode = forcedMode;
-            console.log(`[CHAPTR] Mode forced: ${this.mode}`);
             await this.bootstrap();
-            this.logModeCapabilities();
             return this.mode;
         }
 
@@ -54,12 +50,10 @@ class StorageAdapter {
         try {
             await db.open();
             this.mode = 'full';
-            console.log('[CHAPTR] Mode detected: Full (Dexie + Offline)');
             await this.bootstrap();
-            this.logModeCapabilities();
             return this.mode;
         } catch (error) {
-            console.warn('[CHAPTR] Dexie unavailable:', error.message);
+            // Dexie unavailable, try next mode
         }
 
         // 3. Try Mode 2 (Sync-Only): Online sync without Dexie
@@ -67,20 +61,16 @@ class StorageAdapter {
             try {
                 await this.testSyncEndpoint();
                 this.mode = 'sync-only';
-                console.log('[CHAPTR] Mode detected: Sync-Only (Online required)');
                 await this.bootstrap();
-                this.logModeCapabilities();
                 return this.mode;
             } catch (error) {
-                console.warn('[CHAPTR] Sync endpoint unavailable:', error.message);
+                // Sync endpoint unavailable, try next mode
             }
         }
 
         // 4. Fallback Mode 3 (Basic): Direct REST
         this.mode = 'basic';
-        console.log('[CHAPTR] Mode detected: Basic (Limited functionality)');
         await this.bootstrap();
-        this.logModeCapabilities();
         return this.mode;
     }
 
@@ -151,22 +141,6 @@ class StorageAdapter {
     }
 
     /**
-     * Log mode capabilities to console
-     *
-     * Displays current mode and available features for debugging.
-     */
-    logModeCapabilities() {
-        const capabilities = {
-            offline: this.mode === 'full',
-            sync: this.mode !== 'basic',
-            storage: this.mode === 'full' ? 'IndexedDB (Dexie)' : 'Memory'
-        };
-
-        console.log('[CHAPTR] Initialized in mode:', this.mode);
-        console.log('[CHAPTR] Capabilities:', capabilities);
-    }
-
-    /**
      * Bootstrap data based on detected mode
      *
      * Mode 1 & 2: GET /api/sync/full (efficient single request)
@@ -197,10 +171,7 @@ class StorageAdapter {
         const accountCount = await db.accounts.count();
 
         if (accountCount === 0) {
-            console.log('[CHAPTR] Dexie empty, fetching full sync...');
             await this.fetchAndPopulateDexie();
-        } else {
-            console.log(`[CHAPTR] Dexie loaded (${accountCount} accounts)`);
         }
 
         // Load last sync timestamp from metadata
@@ -217,7 +188,6 @@ class StorageAdapter {
      * @returns {Promise<void>}
      */
     async bootstrap_SyncOnly() {
-        console.log('[CHAPTR] Fetching full sync (Mode 2)...');
         const response = await apiRequest('/api/sync/full', { method: 'GET' });
         const data = await response.json();
 
@@ -228,8 +198,6 @@ class StorageAdapter {
         this.memoryStore.recurring_rules = data.recurring_rules;
         this.memoryStore.settings = data.settings;
         this.lastSyncAt = data.sync_timestamp;
-
-        console.log(`[CHAPTR] Memory loaded (${data.accounts.length} accounts)`);
     }
 
     /**
@@ -240,8 +208,6 @@ class StorageAdapter {
      * @returns {Promise<void>}
      */
     async bootstrap_Basic() {
-        console.log('[CHAPTR] Fetching via REST endpoints (Mode 3)...');
-
         // Sequential REST calls (5 endpoints)
         const [accountsRes, storiesRes, eventsRes, rulesRes, settingsRes] = await Promise.all([
             apiRequest('/api/accounts', { method: 'GET' }),
@@ -257,8 +223,6 @@ class StorageAdapter {
         this.memoryStore.events = await eventsRes.json();
         this.memoryStore.recurring_rules = await rulesRes.json();
         this.memoryStore.settings = await settingsRes.json();
-
-        console.log(`[CHAPTR] Memory loaded (${this.memoryStore.accounts.length} accounts)`);
     }
 
     /**
@@ -282,8 +246,6 @@ class StorageAdapter {
         // Store sync timestamp
         await db.sync_meta.put({ id: 'lastSyncAt', value: data.sync_timestamp });
         this.lastSyncAt = data.sync_timestamp;
-
-        console.log('[CHAPTR] Dexie populated from full sync');
     }
 
     // ==================== CRUD Operations ====================
@@ -456,7 +418,6 @@ class StorageAdapter {
         // This ensures user doesn't lose their current work
         await this.checkQueueLimit();
 
-        console.log(`[CHAPTR] Created account with entity_id: ${localId} (queued for sync)`);
         return fullData;
     }
 
@@ -546,7 +507,6 @@ class StorageAdapter {
         // 3. Queue limit check after write (see createAccount_Full for rationale)
         await this.checkQueueLimit();
 
-        console.log(`[CHAPTR] Updated account ${accountId} (queued for sync)`);
         return await db.accounts.get(accountId);
     }
 
@@ -643,7 +603,6 @@ class StorageAdapter {
 
         if (queuedEventChanges.length > 0) {
             await db.sync_queue.bulkDelete(queuedEventChanges.map(q => q.id));
-            console.log(`[CHAPTR] Cascade deleted ${queuedEventChanges.length} orphaned queue entries for account ${accountId}`);
         }
 
         // 1. Soft delete in Dexie (mark as archived)
@@ -657,8 +616,6 @@ class StorageAdapter {
 
         // 3. Queue limit check after write (see createAccount_Full for rationale)
         await this.checkQueueLimit();
-
-        console.log(`[CHAPTR] Deleted account ${accountId} (queued for sync)`);
     }
 
     async deleteAccount_SyncOnly(accountId) {
@@ -931,16 +888,13 @@ class StorageAdapter {
      */
     async manualSync() {
         if (this.mode !== 'full') {
-            console.log('[CHAPTR] Manual sync not needed - Mode 2/3 syncs immediately');
             return {
                 success: true,
                 message: 'No sync needed',
-                applied: 0,      // ← Add missing field
-                conflicts: 0     // ← Add missing field
+                applied: 0,
+                conflicts: 0
             };
         }
-
-        console.log('[CHAPTR] Starting manual sync...');
 
         try {
             // 0. Clean up stale queue items first
@@ -950,11 +904,8 @@ class StorageAdapter {
             const pending = await db.getPendingSyncQueue();
 
             if (pending.length === 0) {
-                console.log('[CHAPTR] No pending changes to sync');
                 return { success: true, message: 'No changes to sync' };
             }
-
-            console.log(`[CHAPTR] Syncing ${pending.length} pending changes...`);
 
             // 2. Format changes for sync protocol
             const changes = pending.map(c => {
@@ -1052,10 +1003,6 @@ class StorageAdapter {
             }
         }
 
-        if (cleaned > 0) {
-            console.log(`[CHAPTR] Cleaned ${cleaned} stale queue items`);
-        }
-
         return cleaned;
     }
 
@@ -1077,7 +1024,6 @@ class StorageAdapter {
 
             // Skip only if there's already an unresolved conflict for this exact entity+type
             if (existingUnresolvedConflict) {
-                console.log(`[CHAPTR] Skipping duplicate conflict for ${conflict.entity_type} ${conflict.entity_id} (already exists as unresolved)`);
                 continue;
             }
 
@@ -1107,12 +1053,9 @@ class StorageAdapter {
                     const sv = conflict.server_version;
                     if (sv.id && sv.account_id && sv.amount !== undefined && sv.date) {
                         await db.events.put(conflict.server_version);
-                        console.log(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id} (applied server version)`);
                     } else {
                         console.error(`[CHAPTR] Invalid server_version for conflict ${conflict.entity_id}: missing required fields`, sv);
                     }
-                } else {
-                    console.warn(`[CHAPTR] Auto-resolved derived event conflict: ${conflict.entity_id} (no server version provided)`);
                 }
 
                 // Remove from queue (no longer needs to be synced)
@@ -1186,7 +1129,6 @@ class StorageAdapter {
 
         for (const acc of allAccounts) {
             if (acc.pending_reconciliation && !pendingAccountIds.has(acc.id)) {
-                console.log(`[CHAPTR] Clearing stale pending_reconciliation for account ${acc.id} (${acc.name})`);
                 await db.accounts.update(acc.id, { pending_reconciliation: false });
             }
         }
@@ -1275,7 +1217,6 @@ class StorageAdapter {
                     try {
                         await db[tableName].delete(item.entity_id);
                         deletedCount++;
-                        console.log(`[CHAPTR] Deleted unsynced ${item.entity_type}: ${item.entity_id}`);
                     } catch (error) {
                         console.error(`[CHAPTR] Failed to delete ${item.entity_type} ${item.entity_id}:`, error);
                     }
@@ -1287,8 +1228,6 @@ class StorageAdapter {
 
         // Clear the sync queue
         await db.clearSyncQueue();
-
-        console.log(`[CHAPTR] Cleared ${count} items from sync queue (${deletedCount} entities deleted)`);
 
         return count;
     }

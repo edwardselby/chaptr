@@ -263,29 +263,6 @@ export async function calculateProjection(
         if (view !== 'all' && storyId) {
             const gaps = detectGapsBetweenVisibleEvents(allEventsWithBase, visibleEventIds);
 
-            console.log('[CHAPTR] Gap detection for story view:', {
-                totalGaps: gaps.length,
-                gaps: gaps.map(g => ({
-                    after_event_id: g.after_event_id,
-                    before_event_id: g.before_event_id,
-                    hidden_count: g.hidden_event_count,
-                    delta: g.delta_base,
-                    hidden_event_dates: g.hidden_events.map(e => e.event_date),
-                    start_date: g.start_date,
-                    end_date: g.end_date
-                }))
-            });
-
-            // Also log the sorted events to see ordering
-            console.log('[CHAPTR] Event ordering (first 10):', allEventsWithBase.slice(0, 10).map(e => ({
-                date: e.event_date,
-                desc: e.description,
-                visible: visibleEventIds.has(e.id),
-                is_baseline: e.is_baseline,
-                is_opening: e.is_opening_balance,
-                is_adjustment: e.is_auto_adjustment
-            })));
-
             // Build index of results by event ID for fast lookup
             const resultsByEventId = {};
             for (const result of results) {
@@ -323,15 +300,6 @@ export async function calculateProjection(
                             settings.rates
                         );
                     }
-
-                    console.log('[CHAPTR] Attaching gap to event:', {
-                        targetEventId,
-                        eventDate: targetEvent.event_date,
-                        eventDesc: targetEvent.description,
-                        position,
-                        hiddenCount: gap.hidden_event_count,
-                        delta: deltaDisplay
-                    });
 
                     // Attach gap_indicator field (matches backend format from core/projection.py:514)
                     resultsByEventId[targetEventId].gap_indicator = {

@@ -211,7 +211,6 @@ window.app = function() {
 
             // If not authenticated, stop here (login screen will show)
             if (!this.isAuthenticated) {
-                console.log('Not authenticated - showing login screen');
                 return;
             }
 
@@ -237,7 +236,6 @@ window.app = function() {
 
             // Setup network reconnection handler - auto-retry sync when online
             window.addEventListener('online', async () => {
-                console.log('Network reconnected - triggering auto-sync...');
                 await this.updateSyncQueueCount();
                 if (this.syncQueueCount > 0) {
                     await this.manualSync();
@@ -339,8 +337,6 @@ window.app = function() {
 
                 // Initialize filtered stories (show all non-archived by default)
                 this.filteredStories = this.stories.filter(s => !s.is_archived);
-
-                console.log(`[CHAPTR] Loaded: ${this.accounts.length} accounts, ${this.stories.length} stories, ${this.events.length} events`);
 
                 // Update dashboard projection summary
                 await this.updateDashboardProjection();
@@ -531,8 +527,6 @@ window.app = function() {
 
                 // Set flag to refresh projection
                 this.needsProjectionRefresh = true;
-
-                console.log('[CHAPTR] Full sync complete - timestamp updated to', data.sync_timestamp);
             } catch (error) {
                 console.error('[CHAPTR] Full sync error:', error);
             } finally {
@@ -1051,8 +1045,6 @@ window.app = function() {
                             dependencies: [createdAccount.id]
                         }
                     );
-
-                    console.log(`[CHAPTR] Queued opening balance event ${openingEventData.id} for account ${createdAccount.id}`);
                 }
             }
 
@@ -1439,8 +1431,6 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('story', localId, 'create', story);
 
-            console.log(`[CHAPTR] Created story with entity_id: ${localId} (queued for sync)`);
-
             // 3. Reload data
             await this.loadData();
         },
@@ -1470,8 +1460,6 @@ window.app = function() {
 
             // 2. Queue for sync (include base_updated_at for conflict detection)
             await db.queueChange('story', storyId, 'update', storyUpdates, baseUpdatedAt);
-
-            console.log(`[CHAPTR] Updated story ${storyId} (queued for sync)`);
 
             // 3. Reload data
             await this.loadData();
@@ -1529,8 +1517,6 @@ window.app = function() {
 
             // 2. Queue for sync (send null data per spec - delete should not send entity data)
             await db.queueChange('story', storyId, 'delete', null, baseUpdatedAt);
-
-            console.log(`[CHAPTR] Deleted story ${storyId} (queued for sync)`);
 
             // 3. Reload data
             await this.loadData();
@@ -1615,8 +1601,6 @@ window.app = function() {
             // 2. Queue for sync
             await db.queueChange('event', localId, 'create', event);
 
-            console.log(`[CHAPTR] Created event with entity_id: ${localId} (queued for sync)`);
-
             // 3. Reload data
             await this.loadData();
         },
@@ -1656,8 +1640,6 @@ window.app = function() {
             // 2. Queue for sync (include base_updated_at for conflict detection)
             await db.queueChange('event', eventId, 'update', eventUpdates, baseUpdatedAt);
 
-            console.log(`[CHAPTR] Updated event ${eventId} (queued for sync)`);
-
             // 3. Reload data
             await this.loadData();
         },
@@ -1683,9 +1665,7 @@ window.app = function() {
             // 2. Queue for sync (send null data per spec - delete should not send entity data)
             await db.queueChange('event', eventId, 'delete', null, baseUpdatedAt);
 
-            console.log(`[CHAPTR] Deleted event ${eventId} (queued for sync)`);
-
-            // 4. Reload data
+            // 3. Reload data
             await this.loadData();
         },
 
@@ -2029,8 +2009,6 @@ window.app = function() {
                 link.download = `chaptr-backup-${toLocalISODate(new Date())}.json`;
                 link.click();
                 URL.revokeObjectURL(url);
-
-                console.log('Backup downloaded');
             } catch (error) {
                 console.error('Error downloading backup:', error);
                 this.showNotification('Download failed', 'error');
@@ -2253,19 +2231,15 @@ window.app = function() {
 
                 // Clear all local data (preserves users and settings)
                 await db.clearAllData();
-                console.log('[CHAPTR] Local database cleared');
 
                 // Clear reactive state immediately
                 this.accounts = [];
                 this.stories = [];
                 this.events = [];
                 this.projectionRows = [];
-                console.log('[CHAPTR] Reactive state cleared');
 
                 // Trigger full sync to re-download all data
                 await this.fullSync();
-
-                console.log('[CHAPTR] Database reset complete');
             } catch (error) {
                 console.error('[CHAPTR] Clear database error:', error);
                 this.showNotification('Reset failed', 'error');
@@ -2302,12 +2276,9 @@ window.app = function() {
                 }
 
                 const data = await response.json();
-                console.log('[CHAPTR] Cleared change log:', data.deleted_count, 'entries');
 
                 // Trigger full sync
                 await this.fullSync();
-
-                console.log(`[CHAPTR] Reset complete - cleared ${data.deleted_count} change log entries`);
             } catch (error) {
                 console.error('[CHAPTR] Clear database + changelog error:', error);
                 this.showNotification('Reset failed', 'error');
@@ -2349,7 +2320,6 @@ window.app = function() {
                         }
 
                         const data = await response.json();
-                        console.log('[CHAPTR] Nuclear reset complete:', data);
 
                         // Clear local database
                         await db.clearAllData();
@@ -2360,8 +2330,6 @@ window.app = function() {
 
                         // Resync (will get empty state)
                         await this.fullSync();
-
-                        console.log('[CHAPTR] Nuclear reset complete - all data wiped');
                     } catch (error) {
                         console.error('[CHAPTR] Nuclear reset error:', error);
                         this.showNotification(error.message || 'Nuclear reset failed', 'error');
@@ -2478,11 +2446,9 @@ window.app = function() {
 
             // Open modal with auto-selected story (or baseline if none)
             if (selectedStory) {
-                console.log(`[CHAPTR] Auto-selected story: ${selectedStory.name}`);
                 this.openEventModalForStory(selectedStory.id);
             } else {
                 // No story covers today - create baseline event
-                console.log('[CHAPTR] No story covers today - creating baseline event');
                 this.openEventModal();
             }
         },
@@ -2718,8 +2684,6 @@ window.app = function() {
 
                 await storage.updateAccount(account.id, updates);
 
-                console.log(`[CHAPTR] Created optimistic adjustment event ${adjustmentEvent.id} for account ${account.id} (drift: ${drift})`);
-
                 this.showBalanceModal = false;
 
                 // Reload to show adjustment event in projection
@@ -2738,9 +2702,6 @@ window.app = function() {
          * Edit story funding (projection context)
          */
         editFunding() {
-            // TODO PR2 Stage 4: Implement funding edit
-            console.log('Edit funding - Projection context, view:', this.currentView);
-
             if (this.currentView === 'all' || this.currentView === 'baseline') {
                 this.showNotification('Select story first', 'error');
                 return;
@@ -3206,8 +3167,6 @@ window.app = function() {
                     _derived_from: 'recurring_rule_creation',
                     dependencies: [createdRule.id]
                 });
-
-                console.log(`[CHAPTR] Generated ${instances.length} recurring instances for rule ${createdRule.id}`);
             }
 
             this.showNotification('Recurring rule created', 'success');
@@ -3275,8 +3234,6 @@ window.app = function() {
                 await db.sync_queue.where({ entity_id: instance.id }).delete();
             }
 
-            console.log(`[CHAPTR] Deleted ${futureInstances.length} future unedited instances for rule ${this.eventForm.id}`);
-
             // Regenerate instances for ±30 days
             const account = await db.accounts.get(resolvedAccountId);
             const isBaseline = account ? (account.is_default || false) : false;
@@ -3298,8 +3255,6 @@ window.app = function() {
                     _derived_from: 'recurring_rule_creation',
                     dependencies: [updatedRule.id]
                 });
-
-                console.log(`[CHAPTR] Regenerated ${instances.length} recurring instances for rule ${updatedRule.id}`);
             }
 
             this.showNotification('Recurring rule updated', 'success');
@@ -3521,7 +3476,6 @@ window.app = function() {
          */
         async triggerReconciliation() {
             // DEPRECATED: Queue-as-state handles this via optimistic events
-            console.log('[CHAPTR] triggerReconciliation() called but deprecated - using queue-as-state');
             return;
         },
 
@@ -3532,7 +3486,6 @@ window.app = function() {
             this.conflicts = await db.getUnresolvedConflicts();
 
             if (this.conflicts.length > 0) {
-                console.log(`Found ${this.conflicts.length} unresolved conflicts`);
 
                 // Enrich conflicts with full entity data from IndexedDB
                 // This fixes the issue where client_version may only contain partial update data
@@ -3560,12 +3513,6 @@ window.app = function() {
 
                 this.currentConflictIndex = 0;
                 this.currentConflict = this.conflicts[0];
-
-                // Debug: Log conflict data to diagnose display issues
-                console.log('[CHAPTR] Current conflict data:', this.currentConflict);
-                console.log('[CHAPTR] Client version:', this.currentConflict?.client_version);
-                console.log('[CHAPTR] Server version:', this.currentConflict?.server_version);
-
                 this.showConflictModal = true;
             }
         },
@@ -3651,7 +3598,6 @@ window.app = function() {
                     await db.sync_queue
                         .where({ entity_type: conflict.entity_type, entity_id: conflict.entity_id })
                         .delete();
-                    console.log(`[CHAPTR] Cleared existing queue items for ${conflict.entity_type} ${conflict.entity_id}`);
 
                     // Task 117: Queue resolution for sync ONLY if keeping client version
                     // If keeping server version, server already has it - no need to sync back
@@ -3683,7 +3629,6 @@ window.app = function() {
                     await db.sync_queue
                         .where({ entity_type: conflict.entity_type, entity_id: conflict.entity_id })
                         .delete();
-                    console.log(`[CHAPTR] Cleared existing queue items for ${conflict.entity_type} ${conflict.entity_id} (delete case)`);
 
                     await db.queueChange(
                         conflict.entity_type,
@@ -3696,7 +3641,6 @@ window.app = function() {
 
                 // Task 118: Mark conflict as resolved
                 await db.resolveConflict(conflict.id);
-                console.log(`[CHAPTR] Marked conflict ${conflict.id} as resolved`);
 
                 // Task 119: Process next conflict if multiple exist
                 this.currentConflictIndex++;
@@ -3712,9 +3656,7 @@ window.app = function() {
                     await this.updateDashboardProjection();
 
                     // Trigger sync to send resolved changes
-                    console.log('[CHAPTR] Syncing resolved conflict changes...');
                     await this.manualSync();
-                    console.log('[CHAPTR] Sync complete after conflict resolution');
                 }
             } catch (error) {
                 console.error('Error resolving conflict:', error);
@@ -4022,10 +3964,8 @@ window.app = function() {
         async checkAuth() {
             const token = localStorage.getItem('auth_token');
             const cachedUser = localStorage.getItem('user');
-            console.log('[AUTH] Checking authentication, token present:', !!token, 'online:', navigator.onLine);
 
             if (!token) {
-                console.log('[AUTH] No token found');
                 this.isAuthenticated = false;
                 return;
             }
@@ -4036,7 +3976,6 @@ window.app = function() {
                 try {
                     this.user = JSON.parse(cachedUser);
                     this.isAuthenticated = true;
-                    console.log('[AUTH] Offline mode - using cached user:', this.user.username);
                     return;
                 } catch (e) {
                     console.warn('[AUTH] Failed to parse cached user data');
@@ -4045,14 +3984,11 @@ window.app = function() {
 
             // Online: Verify token with backend
             try {
-                console.log('[AUTH] Verifying token with /api/auth/me');
                 const response = await fetch('/api/auth/me', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 });
-
-                console.log('[AUTH] Token verification response status:', response.status);
 
                 if (response.ok) {
                     const user = await response.json();
@@ -4060,10 +3996,8 @@ window.app = function() {
                     this.isAuthenticated = true;
                     // Cache user data for offline use
                     localStorage.setItem('user', JSON.stringify(user));
-                    console.log('[AUTH] Authenticated as:', user.username);
                 } else {
                     // Token invalid or expired
-                    console.log('[AUTH] Token verification failed - clearing auth');
                     this.isAuthenticated = false;
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('user');
@@ -4076,7 +4010,6 @@ window.app = function() {
                     try {
                         this.user = JSON.parse(cachedUser);
                         this.isAuthenticated = true;
-                        console.log('[AUTH] Network unavailable - using cached user:', this.user.username);
                         return;
                     } catch (e) {
                         console.warn('[AUTH] Failed to parse cached user data');
@@ -4084,7 +4017,6 @@ window.app = function() {
                 }
 
                 // No cached data available - must be online to authenticate
-                console.log('[AUTH] No cached user data, cannot authenticate offline');
                 this.isAuthenticated = false;
             }
         },

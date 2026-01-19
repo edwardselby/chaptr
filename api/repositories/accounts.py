@@ -414,12 +414,6 @@ class AccountRepository(BaseRepository[Account]):
             is_opening_balance=True  # Mark as opening balance event
         )
 
-        # Debug logging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"Creating opening balance event with is_opening_balance={event_data.is_opening_balance}")
-        logger.info(f"Event data dict: {event_data.model_dump()}")
-
         # Use EventRepository to create the event
         # This ensures proper validation, change log, etc.
         # Pass tenant_id from account to ensure event has correct tenant
@@ -430,8 +424,3 @@ class AccountRepository(BaseRepository[Account]):
             client_id=client_id,
             tenant_id=account.tenant_id
         )
-
-        # Log for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"Created opening balance event: {created_event.id} for account {account.id} with amount {account.current_balance}")
