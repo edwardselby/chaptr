@@ -7,40 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-01-19
+
 ### Added
-- Service worker cache strategy tests: 21 tests verifying precache/runtime cache separation and external resource handling (sw_cache_strategy.test.js)
 - Multi-tenancy architecture with three-tier role hierarchy: super_admin (system-level), admin (tenant anchor), user (tenant member)
+- Tenant isolation: All data (accounts, events, stories, recurring rules, settings) now scoped by tenant_id
 - Tenant change database clearing: IndexedDB automatically clears when different tenant logs in, preventing data leakage between tenants
 - Tenant ID tracking helpers in db.js: getTenantId() and setTenantId() for detecting tenant changes
-- Frontend tenant change tests: 15 tests for tenant ID storage, change detection, data isolation, and edge cases (tenant_change.test.js)
-- Tenant isolation: All data (accounts, events, stories, recurring rules, settings) now scoped by tenant_id
 - Admin user management endpoints: POST/GET/PUT/DELETE /api/admin/users for tenant user CRUD operations
 - Role-based UI visibility in frontend using Alpine.js x-show directives for admin sections
+- Migration script for converting existing single-tenant data to multi-tenancy (scripts/migrate_to_multitenancy.py)
+- Service worker cache strategy tests: 21 tests verifying precache/runtime cache separation (sw_cache_strategy.test.js)
+- Frontend tenant change tests: 15 tests for tenant ID storage, change detection, data isolation (tenant_change.test.js)
 - Frontend auth utility tests: 19 tests for token storage, retrieval, clearAuth, isAuthenticated (auth_utils.test.js)
 - Frontend role access tests: 51 tests for role validation patterns and UI visibility logic (role_access.test.js)
 - Frontend API auth tests: 22 tests for apiRequest, Bearer token injection, 401 handling (auth_api.test.js)
 - Frontend user management tests: 32 tests for user CRUD payload construction and API calls (user_management.test.js)
-- Backend tenant isolation tests: 16 tests for cross-tenant access blocking, sync isolation, and tenant assignment rules (test_tenant_isolation.py)
-- Frontend tenant sync tests: 15 tests for sync payload tenant_id, response application, user state context, and storage adapter (tenant_sync.test.js)
-- Migration script for converting existing single-tenant data to multi-tenancy (scripts/migrate_to_multitenancy.py)
+- Backend tenant isolation tests: 16 tests for cross-tenant access blocking, sync isolation (test_tenant_isolation.py)
+- Frontend tenant sync tests: 15 tests for sync payload tenant_id, response application (tenant_sync.test.js)
 
 ### Changed
-- Conflict resolution modal: Version panels are now clickable instead of footer buttons, with hover effects and "Click to select" prompt
+- Conflict resolution modal: Version panels now clickable instead of footer buttons with hover effects
 - Conflict resolution modal: Wider on desktop (1100px), panels stack vertically on mobile (<768px)
-- Service worker runtime cache: Renamed to 'external-resources-v1', now only caches external CDN resources (not /static/ files)
-- All repositories (accounts, events, stories, recurring_rules, settings, users) now filter queries by tenant_id
-- JWT tokens now include tenant_id claim for automatic tenant scoping
+- Service worker runtime cache: Only caches external CDN resources, /static/ files handled by precache only
+- All repositories now filter queries by tenant_id for data isolation
+- JWT tokens include tenant_id claim for automatic tenant scoping
 - User model extended with tenant_id and role fields
 - BaseRepository includes tenant_id in all create/update/delete operations
 - Frontend apiRequest automatically injects Bearer token from localStorage
-- Service worker tests updated to test actual waiting worker detection instead of /sw-version fetch
 
 ### Fixed
-- Stale CSS/JS after deployments: Service worker runtime cache was serving old /static/ files; now only precache handles app shell with MD5 revision hashes
+- Stale CSS/JS after deployments: Service worker runtime cache was serving old /static/ files
 - Removed hardcoded ?v=2 query string from CSS link that bypassed precache versioning
-- Service worker test alignment: Tests now match actual checkForServiceWorkerUpdate() implementation which checks for registration?.waiting instead of fetching /sw-version
-- Super_admin users can now see user management section: Frontend loadData() now checks for both 'admin' and 'super_admin' roles when loading users
-- Tenant data leakage on login: Different tenant logging in on same device now clears IndexedDB to prevent seeing previous tenant's data
+- Super_admin users can now see user management section
+- Tenant data leakage on login: Different tenant logging in now clears IndexedDB
 
 ## [0.6.1] - 2026-01-17
 
