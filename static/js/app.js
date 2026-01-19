@@ -4012,11 +4012,17 @@ window.app = function() {
 
         /**
          * Check if user is authenticated
-         * Verifies token with backend
+         * Verifies token with backend (online) or uses cached user data (offline)
+         *
+         * Offline-first approach:
+         * - If offline with cached user data, proceed without server verification
+         * - If online, verify token with server
+         * - When back online with expired token, API calls will return 401 and trigger re-login
          */
         async checkAuth() {
             const token = localStorage.getItem('auth_token');
-            console.log('[AUTH] Checking authentication, token present:', !!token);
+            const cachedUser = localStorage.getItem('user');
+            console.log('[AUTH] Checking authentication, token present:', !!token, 'online:', navigator.onLine);
 
             if (!token) {
                 console.log('[AUTH] No token found');
@@ -4024,8 +4030,21 @@ window.app = function() {
                 return;
             }
 
+            // Offline-first: If offline and we have cached user data, trust it
+            // Token validation will happen when back online via API calls
+            if (!navigator.onLine && cachedUser) {
+                try {
+                    this.user = JSON.parse(cachedUser);
+                    this.isAuthenticated = true;
+                    console.log('[AUTH] Offline mode - using cached user:', this.user.username);
+                    return;
+                } catch (e) {
+                    console.warn('[AUTH] Failed to parse cached user data');
+                }
+            }
+
+            // Online: Verify token with backend
             try {
-                // Verify token with backend
                 console.log('[AUTH] Verifying token with /api/auth/me');
                 const response = await fetch('/api/auth/me', {
                     headers: {
@@ -4039,6 +4058,8 @@ window.app = function() {
                     const user = await response.json();
                     this.user = user;
                     this.isAuthenticated = true;
+                    // Cache user data for offline use
+                    localStorage.setItem('user', JSON.stringify(user));
                     console.log('[AUTH] Authenticated as:', user.username);
                 } else {
                     // Token invalid or expired
@@ -4048,10 +4069,23 @@ window.app = function() {
                     localStorage.removeItem('user');
                 }
             } catch (error) {
-                console.error('[AUTH] Auth check error:', error);
+                // Network error - check if we can use cached data
+                console.warn('[AUTH] Network error during auth check:', error.message);
+
+                if (cachedUser) {
+                    try {
+                        this.user = JSON.parse(cachedUser);
+                        this.isAuthenticated = true;
+                        console.log('[AUTH] Network unavailable - using cached user:', this.user.username);
+                        return;
+                    } catch (e) {
+                        console.warn('[AUTH] Failed to parse cached user data');
+                    }
+                }
+
+                // No cached data available - must be online to authenticate
+                console.log('[AUTH] No cached user data, cannot authenticate offline');
                 this.isAuthenticated = false;
-                localStorage.removeItem('auth_token');
-                localStorage.removeItem('user');
             }
         },
 

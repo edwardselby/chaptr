@@ -10,12 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Backup tenant isolation: Backups now include tenant_id (v1.1 format) and restore rejects cross-tenant backups
 - Backup/restore tenant isolation tests: 14 tests for tenant validation, legacy compatibility, security scenarios
+- Offline-aware authentication: Users can continue using the app offline even if JWT expires (uses cached user data from localStorage)
+- Offline authentication tests: 14 tests for offline auth scenarios (no token, online verification, offline with cache, network error fallback)
 
 ### Changed
 - Backup format version bumped to 1.1 with tenant_id field for cross-tenant protection
+- checkAuth() now checks navigator.onLine and uses cached user data when offline instead of requiring server verification
 
 ### Fixed
 - Pending reconciliation notice now clears after sync: Stale `pending_reconciliation` flags from interrupted syncs are cleaned up
+- Pending reconciliation notice emoji: Replaced ⚠ with [!!] for terminal aesthetic consistency
 
 ## [0.7.0] - 2026-01-19
 
