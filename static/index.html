@@ -382,7 +382,7 @@
                                     <span class="balance-value" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></span>
                                 </div>
                                 <div class="account-pending" x-show="account.pending_reconciliation">
-                                    <span class="pending-indicator">⚠ Pending reconciliation</span>
+                                    <span class="pending-indicator">[!!] Pending reconciliation</span>
                                 </div>
                             </div>
                         </template>

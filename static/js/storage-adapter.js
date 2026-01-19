@@ -1177,6 +1177,20 @@ class StorageAdapter {
             }
         }
 
+        // Clean up stale pending_reconciliation flags
+        // If an account has pending_reconciliation: true but no pending queue entry,
+        // it means reconciliation already ran on server but we missed the update
+        const allAccounts = await db.accounts.toArray();
+        const pendingQueue = await db.sync_queue.where('entity_type').equals('account').toArray();
+        const pendingAccountIds = new Set(pendingQueue.map(q => q.entity_id));
+
+        for (const acc of allAccounts) {
+            if (acc.pending_reconciliation && !pendingAccountIds.has(acc.id)) {
+                console.log(`[CHAPTR] Clearing stale pending_reconciliation for account ${acc.id} (${acc.name})`);
+                await db.accounts.update(acc.id, { pending_reconciliation: false });
+            }
+        }
+
         // Update sync metadata
         this.lastSyncAt = syncData.sync_timestamp;
         await db.sync_meta.put({ id: 'lastSyncAt', value: syncData.sync_timestamp });

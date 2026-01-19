@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Backup format version bumped to 1.1 with tenant_id field for cross-tenant protection
 
+### Fixed
+- Pending reconciliation notice now clears after sync: Stale `pending_reconciliation` flags from interrupted syncs are cleaned up
+
 ## [0.7.0] - 2026-01-19
 
 ### Added
