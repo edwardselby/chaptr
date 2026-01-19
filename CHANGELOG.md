@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Backup tenant isolation: Backups now include tenant_id (v1.1 format) and restore rejects cross-tenant backups
+- Backup/restore tenant isolation tests: 14 tests for tenant validation, legacy compatibility, security scenarios
+
+### Changed
+- Backup format version bumped to 1.1 with tenant_id field for cross-tenant protection
+
 ## [0.7.0] - 2026-01-19
 
 ### Added

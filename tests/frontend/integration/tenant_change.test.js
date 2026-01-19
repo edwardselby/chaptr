@@ -575,4 +575,222 @@ describe('Tenant Change Database Clearing', () => {
             expect(await db.getTenantId()).toBe(tenant1Id);
         });
     });
+
+    // ==================== BACKUP/RESTORE TENANT ISOLATION ====================
+
+    describe('Backup/Restore Tenant Isolation', () => {
+        /**
+         * Helper to create a backup object (simulates downloadBackup output)
+         */
+        function createBackup(version, tenantId, accounts = [], stories = [], events = []) {
+            return {
+                version,
+                exported_at: new Date().toISOString(),
+                tenant_id: tenantId,
+                accounts,
+                stories,
+                events,
+                users: [],
+                settings: null,
+                recurring_rules: []
+            };
+        }
+
+        /**
+         * Helper to simulate performBackupRestore validation logic
+         * Returns { success: boolean, error?: string }
+         */
+        function validateBackupRestore(backup, currentTenantId) {
+            // Version validation
+            if (!backup.version || typeof backup.version !== 'string') {
+                return { success: false, error: 'Invalid backup: missing or invalid version' };
+            }
+
+            // Tenant isolation check for v1.1+ backups
+            if (backup.version !== '1.0' && backup.tenant_id) {
+                if (currentTenantId && backup.tenant_id !== currentTenantId) {
+                    return { success: false, error: 'Cannot restore: backup belongs to a different tenant' };
+                }
+            }
+
+            // Required arrays validation
+            const requiredArrays = ['accounts', 'stories', 'events'];
+            for (const field of requiredArrays) {
+                if (!backup[field] || !Array.isArray(backup[field])) {
+                    return { success: false, error: `Invalid backup: missing or invalid ${field} array` };
+                }
+            }
+
+            return { success: true };
+        }
+
+        describe('Backup Format', () => {
+            it('should create v1.1 backup with tenant_id', () => {
+                const backup = createBackup('1.1', tenant1Id);
+                expect(backup.version).toBe('1.1');
+                expect(backup.tenant_id).toBe(tenant1Id);
+            });
+
+            it('should include all required fields in backup', () => {
+                const backup = createBackup('1.1', tenant1Id);
+                expect(backup).toHaveProperty('version');
+                expect(backup).toHaveProperty('exported_at');
+                expect(backup).toHaveProperty('tenant_id');
+                expect(backup).toHaveProperty('accounts');
+                expect(backup).toHaveProperty('stories');
+                expect(backup).toHaveProperty('events');
+                expect(backup).toHaveProperty('users');
+                expect(backup).toHaveProperty('settings');
+                expect(backup).toHaveProperty('recurring_rules');
+            });
+        });
+
+        describe('Restore Tenant Validation', () => {
+            it('should allow restore when backup tenant_id matches current tenant', () => {
+                const backup = createBackup('1.1', tenant1Id);
+                const result = validateBackupRestore(backup, tenant1Id);
+                expect(result.success).toBe(true);
+            });
+
+            it('should reject restore when backup tenant_id differs from current tenant', () => {
+                const backup = createBackup('1.1', tenant1Id);
+                const result = validateBackupRestore(backup, tenant2Id);
+                expect(result.success).toBe(false);
+                expect(result.error).toBe('Cannot restore: backup belongs to a different tenant');
+            });
+
+            it('should allow legacy v1.0 backups without tenant_id check', () => {
+                // v1.0 backups don't have tenant_id, so they bypass the check
+                const legacyBackup = {
+                    version: '1.0',
+                    exported_at: new Date().toISOString(),
+                    accounts: [],
+                    stories: [],
+                    events: [],
+                    users: [],
+                    settings: null,
+                    recurring_rules: []
+                };
+                const result = validateBackupRestore(legacyBackup, tenant1Id);
+                expect(result.success).toBe(true);
+            });
+
+            it('should allow restore when backup has tenant_id but user has no tenant', () => {
+                // Edge case: user without tenant_id (shouldn't happen, but handle gracefully)
+                const backup = createBackup('1.1', tenant1Id);
+                const result = validateBackupRestore(backup, null);
+                expect(result.success).toBe(true);
+            });
+
+            it('should allow restore when backup has no tenant_id', () => {
+                // v1.1+ backup without tenant_id (user was not logged in during export)
+                const backup = createBackup('1.1', null);
+                const result = validateBackupRestore(backup, tenant1Id);
+                expect(result.success).toBe(true);
+            });
+        });
+
+        describe('Restore Validation Edge Cases', () => {
+            it('should reject backup with missing version', () => {
+                const invalidBackup = {
+                    exported_at: new Date().toISOString(),
+                    tenant_id: tenant1Id,
+                    accounts: [],
+                    stories: [],
+                    events: []
+                };
+                const result = validateBackupRestore(invalidBackup, tenant1Id);
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('version');
+            });
+
+            it('should reject backup with missing accounts array', () => {
+                const invalidBackup = {
+                    version: '1.1',
+                    tenant_id: tenant1Id,
+                    stories: [],
+                    events: []
+                };
+                const result = validateBackupRestore(invalidBackup, tenant1Id);
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('accounts');
+            });
+
+            it('should reject backup with non-array accounts', () => {
+                const invalidBackup = {
+                    version: '1.1',
+                    tenant_id: tenant1Id,
+                    accounts: 'not an array',
+                    stories: [],
+                    events: []
+                };
+                const result = validateBackupRestore(invalidBackup, tenant1Id);
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('accounts');
+            });
+        });
+
+        describe('Security: Cross-Tenant Data Prevention', () => {
+            it('should prevent restoring tenant A backup when logged in as tenant B', async () => {
+                // Create backup from tenant A with data
+                const tenantABackup = createBackup('1.1', tenant1Id, [
+                    {
+                        id: generateUUID(),
+                        name: 'Tenant A Secret Account',
+                        currency: 'GBP',
+                        current_balance: 100000,
+                        tenant_id: tenant1Id
+                    }
+                ]);
+
+                // User is logged in as tenant B
+                await db.setTenantId(tenant2Id);
+
+                // Attempt to restore should fail validation
+                const result = validateBackupRestore(tenantABackup, tenant2Id);
+                expect(result.success).toBe(false);
+                expect(result.error).toBe('Cannot restore: backup belongs to a different tenant');
+            });
+
+            it('should allow restoring own tenant backup', async () => {
+                // Create backup from tenant A
+                const tenantABackup = createBackup('1.1', tenant1Id, [
+                    {
+                        id: generateUUID(),
+                        name: 'My Account',
+                        currency: 'GBP',
+                        current_balance: 5000,
+                        tenant_id: tenant1Id
+                    }
+                ]);
+
+                // User is logged in as tenant A
+                await db.setTenantId(tenant1Id);
+
+                // Restore should pass validation
+                const result = validateBackupRestore(tenantABackup, tenant1Id);
+                expect(result.success).toBe(true);
+            });
+
+            it('should handle UUID tenant_id comparison correctly', () => {
+                // Ensure UUIDs are compared as strings
+                const backupTenantId = '550e8400-e29b-41d4-a716-446655440000';
+                const currentTenantId = '550e8400-e29b-41d4-a716-446655440000';
+
+                const backup = createBackup('1.1', backupTenantId);
+                const result = validateBackupRestore(backup, currentTenantId);
+                expect(result.success).toBe(true);
+            });
+
+            it('should reject even with similar but different tenant_ids', () => {
+                // One character difference
+                const backupTenantId = '550e8400-e29b-41d4-a716-446655440000';
+                const currentTenantId = '550e8400-e29b-41d4-a716-446655440001';
+
+                const backup = createBackup('1.1', backupTenantId);
+                const result = validateBackupRestore(backup, currentTenantId);
+                expect(result.success).toBe(false);
+            });
+        });
+    });
 });

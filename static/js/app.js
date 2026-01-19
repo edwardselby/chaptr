@@ -2001,13 +2001,17 @@ window.app = function() {
 
         /**
          * Download backup as JSON
+         *
+         * Backup includes tenant_id for isolation - restores are only allowed
+         * for the same tenant to prevent cross-tenant data leakage.
          */
         async downloadBackup() {
             try {
-                // Gather all data
+                // Gather all data with tenant isolation
                 const backup = {
-                    version: '1.0',
+                    version: '1.1',
                     exported_at: new Date().toISOString(),
+                    tenant_id: this.user?.tenant_id || null,
                     accounts: await db.accounts.toArray(),
                     stories: await db.stories.toArray(),
                     events: await db.events.toArray(),
@@ -2073,6 +2077,15 @@ window.app = function() {
                 // Comprehensive backup validation
                 if (!backup.version || typeof backup.version !== 'string') {
                     throw new Error('Invalid backup: missing or invalid version');
+                }
+
+                // Tenant isolation check for v1.1+ backups
+                // Prevents restoring another tenant's data
+                if (backup.version !== '1.0' && backup.tenant_id) {
+                    const currentTenantId = this.user?.tenant_id;
+                    if (currentTenantId && backup.tenant_id !== currentTenantId) {
+                        throw new Error('Cannot restore: backup belongs to a different tenant');
+                    }
                 }
 
                 // Validate required array fields
