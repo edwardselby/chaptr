@@ -682,6 +682,21 @@ body::before {
     color: var(--text);
 }
 
+/* Inline highlighting for conflicting fields */
+.diff-highlight-yours {
+    background: rgba(74, 246, 38, 0.15);
+    border-left: 3px solid var(--green-bright);
+    padding-left: 8px;
+    margin-left: -8px;
+}
+
+.diff-highlight-server {
+    background: rgba(255, 193, 7, 0.15);
+    border-left: 3px solid var(--amber);
+    padding-left: 8px;
+    margin-left: -8px;
+}
+
 .conflict-versions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1350,6 +1365,13 @@ body::before {
     border-top: 1px solid var(--border);
 }
 
+.account-card-projected {
+    border-top: none;
+    padding-top: 4px;
+    opacity: 0.7;
+    font-size: 0.9em;
+}
+
 .account-pending {
     margin-top: 8px;
     padding: 6px;
@@ -1370,23 +1392,25 @@ body::before {
 }
 
 .search-filter {
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 
 .search-filter input {
     width: 100%;
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
+    padding: 10px 12px;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
-    color: var(--green-bright);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+    color: var(--text-bright);
+    font-family: inherit;
+    font-size: 14px;
+    box-sizing: border-box;
     transition: border-color 0.15s;
 }
 
 .search-filter input:focus {
     border-color: var(--green-dim);
     outline: none;
+    box-shadow: 0 0 0 2px rgba(74, 246, 38, 0.1);
 }
 
 .search-filter input::placeholder {
@@ -1419,7 +1443,7 @@ body::before {
 
 .story-name {
     color: var(--text-bright);
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     margin: 0;
 }
@@ -1429,37 +1453,73 @@ body::before {
     border-color: var(--text-dim);
 }
 
+.story-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.story-currency {
+    font-weight: 600;
+}
+
 .story-dates {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-dim);
 }
 
-.story-card-meta {
+.story-card-balance {
     display: flex;
-    gap: 16px;
-    margin-bottom: 12px;
-    font-size: 11px;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
 }
 
-.story-meta-item {
-    display: flex;
-    gap: 4px;
+.story-card-balance + .story-card-balance {
+    border-top: none;
+    padding-top: 4px;
 }
 
-.meta-label {
-    color: var(--text-dim);
-}
-
-.meta-value {
+.info-value {
+    font-size: 16px;
+    font-weight: 500;
     color: var(--text-bright);
 }
 
-.story-card-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 12px;
+/* Collapsible Section */
+.collapsible-header {
+    cursor: pointer;
+    padding: 12px 0;
     border-top: 1px solid var(--border);
+    margin-top: 16px;
+}
+
+.collapsible-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: 0;
+}
+
+.collapsible-header:hover h2 {
+    color: var(--text-bright);
+}
+
+.archived-count {
+    font-weight: normal;
+    font-size: 12px;
+}
+
+.story-card-archived {
+    opacity: 0.7;
+}
+
+.story-card-archived:hover {
+    opacity: 1;
 }
 
 .btn-icon {
@@ -1597,7 +1657,7 @@ body::before {
     background: var(--bg-secondary);
     border: 2px solid var(--green-dim);
     width: 100%;
-    max-width: 500px;
+    max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 0 20px rgba(74, 246, 38, 0.3);
@@ -2070,6 +2130,21 @@ input[type="date"]::-webkit-datetime-edit-fields-wrapper {
 
 .btn-danger:hover {
     background: rgba(244, 67, 54, 0.1);
+}
+
+.btn-archive-action {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 12px 20px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-archive-action:hover {
+    background: rgba(255, 193, 7, 0.1);
 }
 
 /* Recurring Tag Styles */

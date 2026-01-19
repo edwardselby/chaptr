@@ -1007,27 +1007,88 @@ class StorageAdapter {
     }
 
     /**
+     * Compare client update against server version for auto-resolution
+     *
+     * Handles partial updates: if client sent { is_archived: false } and server
+     * has { is_archived: false, name: "X", ... }, only is_archived is compared.
+     * This allows auto-resolving conflicts where the client's intended change
+     * already matches the server state.
+     *
+     * @param {Object} clientVersion - Client's update (may be partial)
+     * @param {Object} serverVersion - Server's full version
+     * @returns {boolean} True if all client fields match server
+     */
+    areVersionsDataEqual(clientVersion, serverVersion) {
+        if (!clientVersion || !serverVersion) return false;
+
+        // Fields to exclude from comparison (timestamps and metadata)
+        const excludeFields = new Set([
+            'id', 'updated_at', 'created_at', 'version', 'tenant_id',
+            'balance_updated_at',  // Account-specific timestamp
+            'created_by', 'updated_by'  // Audit fields
+        ]);
+
+        // Compare only fields present in client version (handles partial updates)
+        // If client sent { is_archived: false } and server has { is_archived: false, name: "X", ... }
+        // we only need to check if is_archived matches
+        const clientKeys = Object.keys(clientVersion).filter(k => !excludeFields.has(k));
+
+        for (const key of clientKeys) {
+            const clientVal = clientVersion[key];
+            const serverVal = serverVersion[key];
+
+            // Handle null/undefined equivalence
+            const isNullish1 = clientVal === null || clientVal === undefined;
+            const isNullish2 = serverVal === null || serverVal === undefined;
+            if (isNullish1 && isNullish2) continue;
+            if (isNullish1 !== isNullish2) return false;
+
+            // Compare values (stringify for objects/arrays)
+            if (typeof clientVal === 'object' || typeof serverVal === 'object') {
+                if (JSON.stringify(clientVal) !== JSON.stringify(serverVal)) return false;
+            } else if (clientVal !== serverVal) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Process sync response from server
      *
      * @param {Object} syncData - Response from POST /api/sync
      * @returns {Promise<void>}
      */
     async processSyncResponse(syncData) {
-        // Store conflicts in conflicts table (with deduplication)
+        // Process conflicts with single-pass auto-resolution
+        // Auto-resolvable cases are handled upfront and never stored
         for (const conflict of syncData.conflicts) {
-            // Check if we already have an UNRESOLVED conflict for this entity
+            // Auto-resolve Case 1: Data identical (only timestamps differ)
+            if (this.areVersionsDataEqual(conflict.client_version, conflict.server_version)) {
+                console.log(`[CHAPTR] Auto-resolved: ${conflict.entity_type} ${conflict.entity_id} (data identical)`);
+                continue;
+            }
+
+            // Auto-resolve Case 2: Derived event overridden
+            // Server's version is authoritative for opening balances, recurring instances
+            if (conflict.conflict_type === 'derived_event_overridden' && conflict.entity_type === 'event') {
+                await this.handleDerivedEventConflict(conflict);
+                continue;
+            }
+
+            // Real conflict - check for duplicates
             const existingUnresolvedConflict = await db.conflicts
                 .where('[entity_id+conflict_type]')
                 .equals([conflict.entity_id, conflict.conflict_type])
                 .filter(c => c.resolved_at === null)
                 .first();
 
-            // Skip only if there's already an unresolved conflict for this exact entity+type
             if (existingUnresolvedConflict) {
                 continue;
             }
 
-            // Add new conflict (even if old resolved conflicts exist - those are historical)
+            // Store the conflict for user resolution
             await db.conflicts.add({
                 id: generateUUID(),
                 entity_type: conflict.entity_type,
@@ -1037,35 +1098,6 @@ class StorageAdapter {
                 server_version: conflict.server_version,
                 resolved_at: null
             });
-        }
-
-        // Handle derived event conflicts (silent resolution)
-        // When server overrides a client-generated derived event (opening balance, recurring instance),
-        // silently delete the client version and use server's authoritative version
-        for (const conflict of syncData.conflicts) {
-            if (conflict.conflict_type === 'derived_event_overridden' && conflict.entity_type === 'event') {
-                // Delete client's optimistic version
-                await db.events.delete(conflict.entity_id);
-
-                // Apply server's authoritative version immediately (with validation)
-                if (conflict.server_version) {
-                    // Validate required fields before putting
-                    const sv = conflict.server_version;
-                    if (sv.id && sv.account_id && sv.amount !== undefined && sv.date) {
-                        await db.events.put(conflict.server_version);
-                    } else {
-                        console.error(`[CHAPTR] Invalid server_version for conflict ${conflict.entity_id}: missing required fields`, sv);
-                    }
-                }
-
-                // Remove from queue (no longer needs to be synced)
-                await db.sync_queue.where({ entity_id: conflict.entity_id }).delete();
-
-                // Mark conflict as auto-resolved
-                await db.conflicts
-                    .where({ entity_id: conflict.entity_id, conflict_type: 'derived_event_overridden' })
-                    .modify({ resolved_at: new Date().toISOString() });
-            }
         }
 
         // Entity type to table name mapping
@@ -1141,6 +1173,35 @@ class StorageAdapter {
         if (syncData.full_sync_required) {
             await this.handleFullSyncRequired();
         }
+    }
+
+    /**
+     * Handle derived event conflicts silently
+     *
+     * Server's version is authoritative for opening balances and recurring instances.
+     * These conflicts are auto-resolved without user interaction.
+     *
+     * @param {Object} conflict - The conflict object from sync response
+     * @returns {Promise<void>}
+     */
+    async handleDerivedEventConflict(conflict) {
+        // Delete client's optimistic version
+        await db.events.delete(conflict.entity_id);
+
+        // Apply server's authoritative version (with validation)
+        if (conflict.server_version) {
+            const sv = conflict.server_version;
+            if (sv.id && sv.account_id && sv.amount !== undefined && sv.date) {
+                await db.events.put(conflict.server_version);
+            } else {
+                console.error(`[CHAPTR] Invalid server_version: missing required fields`, sv);
+            }
+        }
+
+        // Remove from sync queue
+        await db.sync_queue.where({ entity_id: conflict.entity_id }).delete();
+
+        console.log(`[CHAPTR] Auto-resolved: event ${conflict.entity_id} (derived event overridden)`);
     }
 
     /**

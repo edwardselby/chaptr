@@ -359,13 +359,27 @@
                     <div class="section-header">
                         <h2>Accounts</h2>
                     </div>
+
+                    <!-- Search Filter -->
+                    <div class="search-filter" x-show="accounts.length > 0">
+                        <input type="text"
+                            x-model="accountSearchFilter"
+                            placeholder="Search accounts..."
+                            class="form-input">
+                    </div>
+
                     <div class="accounts-list">
                         <template x-if="accounts.length === 0">
                             <div class="empty-state">
                                 <p>No accounts yet. Add your first account to get started.</p>
                             </div>
                         </template>
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                        <template x-if="getFilteredAccounts().length === 0 && accounts.length > 0">
+                            <div class="empty-state">
+                                <p>No accounts found matching your search.</p>
+                            </div>
+                        </template>
+                        <template x-for="account in getFilteredAccounts()" :key="account.id">
                             <div class="account-card" @click="viewAccountDetails(account.id)">
                                 <div class="account-card-header">
                                     <div class="account-name-row">
@@ -381,62 +395,12 @@
                                     <span class="balance-label">Current</span>
                                     <span class="balance-value" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></span>
                                 </div>
+                                <div class="account-card-balance account-card-projected">
+                                    <span class="balance-label">In 30 Days</span>
+                                    <span class="balance-value" :class="getAccountProjection30Days(account.id) >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(getAccountProjection30Days(account.id), account.currency)"></span>
+                                </div>
                                 <div class="account-pending" x-show="account.pending_reconciliation">
                                     <span class="pending-indicator">[!!] Pending reconciliation</span>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                </section>
-
-                <!-- Projection vs Reality -->
-                <section class="section">
-                    <div class="section-header">
-                        <h2>Projection vs Reality</h2>
-                    </div>
-                    <div class="drift-panel">
-                        <div class="drift-row">
-                            <span class="drift-label">Accounts Total</span>
-                            <span class="drift-value" x-text="formatCurrency(accountsTotal, settings.base_currency)"></span>
-                        </div>
-                        <div class="drift-row">
-                            <span class="drift-label">Projected NOW</span>
-                            <span class="drift-value" x-text="formatCurrency(projectionToday, settings.base_currency)"></span>
-                        </div>
-                        <div class="drift-row drift-highlight">
-                            <span class="drift-label">Drift</span>
-                            <span class="drift-value" :class="getDriftClass()" x-text="formatDrift()"></span>
-                        </div>
-                        <div class="drift-explanation">
-                            <p class="drift-note" x-show="Math.abs(accountsTotal - projectionToday) > 0">
-                                <template x-if="accountsTotal > projectionToday">
-                                    <span>💡 Accounts show more money than projection expected</span>
-                                </template>
-                                <template x-if="accountsTotal < projectionToday">
-                                    <span>💡 Accounts show less money than projection expected</span>
-                                </template>
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Per-Account Projections (Future Dates) -->
-                <section class="section" x-show="accounts.length > 0">
-                    <div class="section-header">
-                        <h2>Projected Balances</h2>
-                        <span class="section-subtitle">Next 30 days</span>
-                    </div>
-                    <div class="account-projections">
-                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
-                            <div class="projection-card">
-                                <div class="projection-card-header" x-text="account.name"></div>
-                                <div class="projection-dates">
-                                    <template x-for="(projection, index) in getAccountProjections(account.id)" :key="index">
-                                        <div class="projection-date-row">
-                                            <span class="projection-date" x-text="formatDate(projection.event_date)"></span>
-                                            <span class="projection-balance" :class="projection.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(projection.balance, account.currency)"></span>
-                                        </div>
-                                    </template>
                                 </div>
                             </div>
                         </template>
@@ -778,38 +742,56 @@
                             <div class="story-card" @click="viewStoryDetails(story.id)">
                                 <div class="story-card-header">
                                     <div class="story-name-row">
-                                        <h3 class="story-name" x-text="story.name"></h3>
+                                        <span class="story-name" x-text="story.name"></span>
                                         <span class="tag tag-archived" x-show="story.is_archived">[archived]</span>
                                     </div>
-                                    <span class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></span>
-                                </div>
-
-                                <div class="story-card-meta">
-                                    <div class="story-meta-item">
-                                        <span class="meta-label">Currency:</span>
-                                        <span class="meta-value" x-text="story.display_currency"></span>
-                                    </div>
-                                    <div class="story-meta-item">
-                                        <span class="meta-label">Funding:</span>
-                                        <span class="meta-value" x-text="story.funding_mode"></span>
-                                    </div>
-                                    <div class="story-meta-item" x-show="story.default_account_id">
-                                        <span class="meta-label">Account:</span>
-                                        <span class="meta-value" x-text="getAccountName(story.default_account_id)"></span>
+                                    <div class="story-meta">
+                                        <span class="story-currency" x-text="story.display_currency"></span>
+                                        <span class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></span>
                                     </div>
                                 </div>
+                                <div class="story-card-balance">
+                                    <span class="balance-label">Funding</span>
+                                    <span class="info-value" x-text="story.funding_mode"></span>
+                                </div>
+                                <div class="story-card-balance" x-show="story.default_account_id">
+                                    <span class="balance-label">Account</span>
+                                    <span class="info-value" x-text="getAccountName(story.default_account_id)"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
 
-                                <div class="story-card-actions" @click.stop>
-                                    <button class="btn-icon btn-archive"
-                                        @click="archiveStory(story.id)"
-                                        :title="story.is_archived ? 'Unarchive' : 'Archive'">
-                                        <span x-text="story.is_archived ? '📂' : '📦'"></span>
-                                    </button>
-                                    <button class="btn-icon btn-danger"
-                                        @click="deleteStory(story.id)"
-                                        title="Delete">
-                                        🗑
-                                    </button>
+                <!-- Archived Stories Section -->
+                <section class="section" x-show="stories.filter(s => s.is_archived).length > 0">
+                    <div class="collapsible-header" @click="showArchivedStories = !showArchivedStories">
+                        <h2>
+                            <span x-text="showArchivedStories ? '▼' : '▶'"></span>
+                            Archived
+                            <span class="archived-count" x-text="'(' + stories.filter(s => s.is_archived).length + ')'"></span>
+                        </h2>
+                    </div>
+                    <div class="stories-list-management" x-show="showArchivedStories" x-collapse>
+                        <template x-for="story in getArchivedStories()" :key="story.id">
+                            <div class="story-card story-card-archived" @click="viewStoryDetails(story.id)">
+                                <div class="story-card-header">
+                                    <div class="story-name-row">
+                                        <span class="story-name" x-text="story.name"></span>
+                                        <span class="tag tag-archived">[archived]</span>
+                                    </div>
+                                    <div class="story-meta">
+                                        <span class="story-currency" x-text="story.display_currency"></span>
+                                        <span class="story-dates" x-text="formatDateRange(story.start_date, story.end_date)"></span>
+                                    </div>
+                                </div>
+                                <div class="story-card-balance">
+                                    <span class="balance-label">Funding</span>
+                                    <span class="info-value" x-text="story.funding_mode"></span>
+                                </div>
+                                <div class="story-card-balance" x-show="story.default_account_id">
+                                    <span class="balance-label">Account</span>
+                                    <span class="info-value" x-text="getAccountName(story.default_account_id)"></span>
                                 </div>
                             </div>
                         </template>
@@ -1426,6 +1408,9 @@
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" @click="showStoryModal = false">Cancel</button>
                     <button type="submit" class="btn-primary">Save Story</button>
+                    <button type="button" class="btn-archive-action" x-show="storyForm.id"
+                        @click="archiveStoryFromModal()"
+                        x-text="storyForm.is_archived ? 'Unarchive' : 'Archive'"></button>
                     <button type="button" class="btn-danger" x-show="storyForm.id"
                         @click="deleteStoryFromModal()">Delete</button>
                 </div>
@@ -2306,9 +2291,9 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Description:</strong> <span x-text="currentConflict.client_version?.description"></span></p>
-                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount, currentConflict.client_version?.currency)"></span></p>
-                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.client_version?.event_date)"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('description')}"><strong>Description:</strong> <span x-text="currentConflict.client_version?.description"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('amount') || isConflictFieldDifferent('currency')}"><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount, currentConflict.client_version?.currency)"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('event_date')}"><strong>Date:</strong> <span x-text="formatDate(currentConflict.client_version?.event_date)"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
                                 </div>
                             </div>
@@ -2319,9 +2304,9 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
-                                    <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount, currentConflict.server_version?.currency)"></span></p>
-                                    <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('description')}"><strong>Description:</strong> <span x-text="currentConflict.server_version?.description"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('amount') || isConflictFieldDifferent('currency')}"><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.server_version?.amount, currentConflict.server_version?.currency)"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('event_date')}"><strong>Date:</strong> <span x-text="formatDate(currentConflict.server_version?.event_date)"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
                                 </div>
                             </div>
@@ -2341,9 +2326,9 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
-                                    <p><strong>Currency:</strong> <span x-text="currentConflict.client_version?.currency"></span></p>
-                                    <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.client_version?.current_balance, currentConflict.client_version?.currency)"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('name')}"><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('currency')}"><strong>Currency:</strong> <span x-text="currentConflict.client_version?.currency"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('current_balance')}"><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.client_version?.current_balance, currentConflict.client_version?.currency)"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
                                 </div>
                             </div>
@@ -2354,9 +2339,9 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
-                                    <p><strong>Currency:</strong> <span x-text="currentConflict.server_version?.currency"></span></p>
-                                    <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.server_version?.current_balance, currentConflict.server_version?.currency)"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('name')}"><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('currency')}"><strong>Currency:</strong> <span x-text="currentConflict.server_version?.currency"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('current_balance')}"><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.server_version?.current_balance, currentConflict.server_version?.currency)"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
                                 </div>
                             </div>
@@ -2376,10 +2361,11 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
-                                    <p><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.client_version?.start_date)"></span></p>
-                                    <p><strong>End Date:</strong> <span x-text="currentConflict.client_version?.end_date ? formatDate(currentConflict.client_version.end_date) : 'Ongoing'"></span></p>
-                                    <p><strong>Goal:</strong> <span x-text="currentConflict.client_version?.goal_type || 'None'"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('name')}"><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('is_archived')}"><strong>Archived:</strong> <span x-text="currentConflict.client_version?.is_archived ? 'Yes' : 'No'"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('start_date')}"><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.client_version?.start_date)"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('end_date')}"><strong>End Date:</strong> <span x-text="currentConflict.client_version?.end_date ? formatDate(currentConflict.client_version.end_date) : 'Ongoing'"></span></p>
+                                    <p :class="{'diff-highlight-yours': isConflictFieldDifferent('goal_type')}"><strong>Goal:</strong> <span x-text="currentConflict.client_version?.goal_type || 'None'"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.client_version?.updated_at)"></span></p>
                                 </div>
                             </div>
@@ -2390,10 +2376,11 @@
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
                                 </h3>
                                 <div class="version-details">
-                                    <p><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
-                                    <p><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.server_version?.start_date)"></span></p>
-                                    <p><strong>End Date:</strong> <span x-text="currentConflict.server_version?.end_date ? formatDate(currentConflict.server_version.end_date) : 'Ongoing'"></span></p>
-                                    <p><strong>Goal:</strong> <span x-text="currentConflict.server_version?.goal_type || 'None'"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('name')}"><strong>Name:</strong> <span x-text="currentConflict.server_version?.name"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('is_archived')}"><strong>Archived:</strong> <span x-text="currentConflict.server_version?.is_archived ? 'Yes' : 'No'"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('start_date')}"><strong>Start Date:</strong> <span x-text="formatDate(currentConflict.server_version?.start_date)"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('end_date')}"><strong>End Date:</strong> <span x-text="currentConflict.server_version?.end_date ? formatDate(currentConflict.server_version.end_date) : 'Ongoing'"></span></p>
+                                    <p :class="{'diff-highlight-server': isConflictFieldDifferent('goal_type')}"><strong>Goal:</strong> <span x-text="currentConflict.server_version?.goal_type || 'None'"></span></p>
                                     <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
                                 </div>
                             </div>

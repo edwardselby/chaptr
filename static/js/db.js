@@ -170,9 +170,83 @@ db.getDefaultAccount = async function() {
 };
 
 /**
+ * Determine the squashed result of two queue entries for the same entity.
+ *
+ * When multiple changes are made to the same entity before syncing, we need to
+ * combine them into a single queue entry to prevent timestamp conflicts on sync.
+ *
+ * Action combination matrix:
+ * | Existing | Incoming | Result | Rationale |
+ * |----------|----------|--------|-----------|
+ * | Create   | Update   | Create (merged data) | Entity still needs creation with latest data |
+ * | Create   | Delete   | null (remove both)   | Entity never existed on server |
+ * | Update   | Update   | Update (latest data) | Only final state matters |
+ * | Update   | Delete   | Delete               | Entity should be deleted |
+ * | Delete   | *        | Warning + incoming   | Shouldn't happen - entity gone locally |
+ *
+ * @param {Object} existing - The existing queue entry
+ * @param {Object} incoming - The new queue entry
+ * @returns {Object|null} - Squashed entry, or null if both should be removed
+ */
+function squashQueueEntries(existing, incoming) {
+    const existingAction = existing.action;
+    const incomingAction = incoming.action;
+
+    //: Create → Delete = null (entity never existed on server, remove both)
+    if (existingAction === 'create' && incomingAction === 'delete') {
+        return null;
+    }
+
+    //: Create → Update = Create (with latest data)
+    if (existingAction === 'create' && incomingAction === 'update') {
+        return {
+            action: 'create',
+            data: { ...existing.data, ...incoming.data }
+        };
+    }
+
+    //: Update → Update = Update (with latest data)
+    if (existingAction === 'update' && incomingAction === 'update') {
+        return {
+            action: 'update',
+            data: { ...existing.data, ...incoming.data }
+        };
+    }
+
+    //: Update → Delete = Delete
+    if (existingAction === 'update' && incomingAction === 'delete') {
+        return {
+            action: 'delete',
+            data: null
+        };
+    }
+
+    //: Delete → anything = shouldn't happen (entity is gone locally)
+    //: But if it does, keep the incoming action and log warning
+    if (existingAction === 'delete') {
+        console.warn(`[CHAPTR] Unexpected queue state: delete followed by ${incomingAction}`);
+        return {
+            action: incomingAction,
+            data: incoming.data
+        };
+    }
+
+    //: Default: use incoming (shouldn't reach here)
+    return {
+        action: incomingAction,
+        data: incoming.data
+    };
+}
+
+/**
  * Helper: Queue an entity change for sync
  *
  * Queue-as-state architecture: Queue represents "what server will look like soon"
+ *
+ * Squashing logic: When adding a new entry for an entity that already has a pending
+ * entry, replaces the existing entry with squashed data while preserving the original
+ * base_updated_at timestamp. This prevents timestamp conflicts when the same entity
+ * is modified multiple times before syncing (e.g., archive then unarchive).
  *
  * @param {string} entityType - Type of entity (account, story, event, etc.)
  * @param {string} entityId - UUID of the entity
@@ -185,19 +259,55 @@ db.getDefaultAccount = async function() {
  * @param {boolean} metadata._optimistic - Is this a frontend guess? (server may correct)
  */
 db.queueChange = async function(entityType, entityId, action, data, baseUpdatedAt = null, metadata = {}) {
-    await db.sync_queue.add({
-        entity_type: entityType,
-        entity_id: entityId,
-        action: action, // 'create', 'update', 'delete'
-        data: data,
-        base_updated_at: baseUpdatedAt, // For conflict detection (update/delete only)
-        queued_at: new Date().toISOString(),
+    //: Check for existing pending entry for this entity
+    const existingEntry = await db.sync_queue
+        .where('entity_id')
+        .equals(entityId)
+        .first();
 
-        // Queue-as-state enhancements (v3)
-        dependencies: metadata.dependencies || [],
-        _derived_from: metadata._derived_from || null,
-        _optimistic: metadata._optimistic || false
-    });
+    if (existingEntry) {
+        //: Squash: Determine final action and preserve original base_updated_at
+        const squashedEntry = squashQueueEntries(existingEntry, {
+            entity_type: entityType,
+            entity_id: entityId,
+            action: action,
+            data: data,
+            base_updated_at: baseUpdatedAt,
+            ...metadata
+        });
+
+        if (squashedEntry === null) {
+            //: Create → Delete = remove both (entity never existed on server)
+            await db.sync_queue.delete(existingEntry.id);
+            return;
+        }
+
+        //: Replace existing entry with squashed entry
+        await db.sync_queue.update(existingEntry.id, {
+            action: squashedEntry.action,
+            data: squashedEntry.data,
+            //: Keep original base_updated_at (server's actual state)
+            base_updated_at: existingEntry.base_updated_at,
+            queued_at: new Date().toISOString(),
+            //: Update metadata - new values override existing if provided
+            dependencies: metadata.dependencies || existingEntry.dependencies,
+            _derived_from: metadata._derived_from || existingEntry._derived_from,
+            _optimistic: metadata._optimistic ?? existingEntry._optimistic
+        });
+    } else {
+        //: No existing entry - add new one
+        await db.sync_queue.add({
+            entity_type: entityType,
+            entity_id: entityId,
+            action: action,
+            data: data,
+            base_updated_at: baseUpdatedAt,
+            queued_at: new Date().toISOString(),
+            dependencies: metadata.dependencies || [],
+            _derived_from: metadata._derived_from || null,
+            _optimistic: metadata._optimistic ?? false
+        });
+    }
 };
 
 /**

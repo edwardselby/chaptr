@@ -170,6 +170,7 @@ class StoryBase(BaseModel):
     goal_type: GoalType = Field(default=GoalType.NONE, description="Optional goal for this story")
     goal_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4, description="Target amount if goal set")
     display_currency: str = Field(..., min_length=3, max_length=3, description="Currency for this story's view")
+    is_archived: bool = Field(default=False, description="Archived stories are hidden but retained for history")
     tenant_id: Optional[UUID] = Field(default=None, description="Tenant identifier (admin's user_id) for multi-tenancy isolation")
 
     @field_validator('display_currency')
@@ -233,6 +234,7 @@ class StoryUpdate(BaseModel):
     goal_type: Optional[GoalType] = Field(default=None)
     goal_amount: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4)
     display_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    is_archived: Optional[bool] = Field(default=None)
 
     @field_validator('display_currency')
     @classmethod

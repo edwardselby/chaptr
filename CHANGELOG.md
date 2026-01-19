@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-01-19
+
+### Added
+- Account projection tests: 19 tests covering calculation, date filtering, string handling, edge cases (account_projection.test.js)
+- Collapsible archived stories section: Shows archived stories sorted by date, collapsed by default
+- Archive confirmation dialog: Archiving stories now requires confirmation
+- Search bar for accounts screen: Filter accounts by name with same styling as stories search
+- Auto-resolve for timestamp-only conflicts: Conflicts where only timestamps differ are automatically resolved at sync time
+- Inline conflict highlighting: Differing fields highlighted in conflict modals (green for yours, amber for server)
+- Sync queue squashing: Multiple changes to same entity before sync are squashed into single entry, preserving original base_updated_at to prevent timestamp conflicts (db.js:172-311)
+- squashQueueEntries() helper: Action combination matrix handling Create→Update, Create→Delete, Update→Update, Update→Delete with proper data merging
+- Queue squashing tests: 40 tests covering all action combinations, delete edge cases, data type handling, real-world scenarios (queue_squashing.test.js)
+- Auto-resolve tests: 56 tests for areVersionsDataEqual() and multi-client conflict scenarios where both users make identical changes (auto_resolve.test.js)
+
+### Changed
+- Accounts screen UX: Removed redundant "Projection vs Reality" panel (already shown on dashboard)
+- Accounts screen UX: Removed separate "Projected Balances" section, moved 30-day projection into account cards
+- Account cards now show "In 30 Days" projected balance below current balance with subtle styling
+- Stories screen UX: Redesigned story cards to match account card format (consistent styling)
+- Stories screen UX: Removed delete/archive buttons from story cards, moved archive to edit modal
+- Modal width increased from 500px to 800px on desktop (conflict modal remains 1100px)
+- Search bar styling: Unified to match form-input styling (padding, font-size, background)
+- Story search: Now filters both active and archived stories
+- Conflict modals: All entity types (events, accounts, stories) now show inline field highlighting for differences
+
+### Fixed
+- Account projection string concatenation bug: Balance stored as string caused incorrect values (e.g., "5000" + 0 = "50000")
+- Account projection field name: Changed `date` to `event_date` to match event model
+- Archived stories now accessible: Previously filtered out with no way to unarchive
+- False conflicts from timestamp-only changes: Auto-resolved when data fields are identical
+
 ## [0.8.0] - 2026-01-19
 
 ### Added

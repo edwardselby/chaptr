@@ -167,10 +167,12 @@ window.app = function() {
             currency: 'GBP'
         },
         accountsTotal: 0,
+        accountSearchFilter: '',
 
         // Story Management
         storySearchFilter: '',
         filteredStories: [],
+        showArchivedStories: false,
 
         // Projection State
         currentView: 'all',
@@ -1293,6 +1295,38 @@ window.app = function() {
         },
 
         /**
+         * Archive/unarchive story from modal
+         */
+        async archiveStoryFromModal() {
+            const storyId = this.storyForm.id;
+            const storyName = this.storyForm.name;
+            const isArchived = this.storyForm.is_archived;
+            const action = isArchived ? 'Unarchive' : 'Archive';
+            const confirmMessage = isArchived
+                ? `Unarchive "${storyName}"?\n\nIt will be visible in the active stories list.`
+                : `Archive "${storyName}"?\n\nIt will be moved to the archived section.`;
+
+            this.showConfirm(
+                `${action} Story`,
+                confirmMessage,
+                async () => {
+                    try {
+                        await this.updateStory(storyId, { is_archived: !isArchived });
+                        await this.loadData();
+                        this.filterStories();
+                        this.showStoryModal = false;
+                        this.showNotification(`Story ${action.toLowerCase()}d`, 'success');
+                    } catch (error) {
+                        console.error(`Error ${action.toLowerCase()}ing story:`, error);
+                        this.showNotification(`${action} failed`, 'error');
+                    }
+                },
+                action,
+                'warning'
+            );
+        },
+
+        /**
          * Navigate to stories management screen
          */
         openStoriesManage() {
@@ -1317,6 +1351,18 @@ window.app = function() {
                     s.name.toLowerCase().includes(query)
                 );
             }
+        },
+
+        /**
+         * Get archived stories sorted by updated_at (most recently archived first)
+         * Also filters by search query if present
+         * @returns {Array} Archived stories sorted by date
+         */
+        getArchivedStories() {
+            const query = this.storySearchFilter.toLowerCase();
+            return this.stories
+                .filter(s => s.is_archived && (!query || s.name.toLowerCase().includes(query)))
+                .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         },
 
         /**
@@ -1374,29 +1420,45 @@ window.app = function() {
         },
 
         /**
-         * Get projected balances for an account at 3 future dates
-         * Uses filtered projection to show account-specific balances
-         * @param {string} accountId - Account UUID
-         * @returns {Array} Array of {date, balance} objects
+         * Get filtered accounts (non-archived) based on search query
+         * @returns {Array} Filtered accounts
          */
-        getAccountProjections(accountId) {
+        getFilteredAccounts() {
+            const query = this.accountSearchFilter.toLowerCase();
+            return this.accounts.filter(a =>
+                !a.is_archived &&
+                (!query || a.name.toLowerCase().includes(query))
+            );
+        },
+
+        /**
+         * Get projected balance for an account in 30 days
+         * @param {string} accountId - Account UUID
+         * @returns {number} Projected balance at 30 days
+         */
+        getAccountProjection30Days(accountId) {
             const account = this.accounts.find(a => a.id === accountId);
-            if (!account) return [];
+            if (!account) return 0;
 
-            // Calculate 3 dates: 1 week, 2 weeks, 1 month from today
+            // Calculate date 30 days from today
             const today = new Date();
-            const dates = [
-                new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000),   // +1 week
-                new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000),  // +2 weeks
-                new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)   // +1 month
-            ];
+            const targetDate = toLocalISODate(new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000));
 
-            // For now, return mock data
-            // TODO PR2: Implement real per-account projection calculation
-            return dates.map(date => ({
-                date: toLocalISODate(date),
-                balance: account.current_balance // Mock: just use current balance
-            }));
+            // Get events for this account in the next 30 days
+            const accountEvents = this.events.filter(e =>
+                e.account_id === accountId &&
+                !e.is_hypothetical &&
+                e.event_date >= toLocalISODate(today) &&
+                e.event_date <= targetDate
+            );
+
+            // Sum up events to get projected change
+            const totalChange = accountEvents.reduce((sum, event) => {
+                return sum + parseFloat(event.amount || 0);
+            }, 0);
+
+            // Parse balance as float to avoid string concatenation
+            return parseFloat(account.current_balance || 0) + totalChange;
         },
 
         // ===== STORIES =====
@@ -3454,6 +3516,31 @@ window.app = function() {
             const versionTime = new Date(version.updated_at).getTime();
             const otherTime = new Date(otherVersion.updated_at).getTime();
             return versionTime > otherTime;
+        },
+
+        /**
+         * Check if a specific field differs between conflict versions
+         * Used for inline highlighting in conflict modals
+         * @param {string} fieldKey - The field name to compare
+         * @returns {boolean} True if values differ
+         */
+        isConflictFieldDifferent(fieldKey) {
+            if (!this.currentConflict) return false;
+            const server = this.currentConflict.server_version;
+            const client = this.currentConflict.client_version;
+            if (!server || !client) return false;
+
+            const serverVal = server[fieldKey];
+            const clientVal = client[fieldKey];
+
+            // Handle null/undefined equivalence
+            const isNullish1 = serverVal === null || serverVal === undefined;
+            const isNullish2 = clientVal === null || clientVal === undefined;
+            if (isNullish1 && isNullish2) return false;
+            if (isNullish1 !== isNullish2) return true;
+
+            // Compare values
+            return serverVal !== clientVal;
         },
 
         /**
