@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Service worker cache strategy tests: 21 tests verifying precache/runtime cache separation and external resource handling (sw_cache_strategy.test.js)
 - Multi-tenancy architecture with three-tier role hierarchy: super_admin (system-level), admin (tenant anchor), user (tenant member)
 - Tenant change database clearing: IndexedDB automatically clears when different tenant logs in, preventing data leakage between tenants
 - Tenant ID tracking helpers in db.js: getTenantId() and setTenantId() for detecting tenant changes
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration script for converting existing single-tenant data to multi-tenancy (scripts/migrate_to_multitenancy.py)
 
 ### Changed
+- Conflict resolution modal: Version panels are now clickable instead of footer buttons, with hover effects and "Click to select" prompt
+- Conflict resolution modal: Wider on desktop (1100px), panels stack vertically on mobile (<768px)
+- Service worker runtime cache: Renamed to 'external-resources-v1', now only caches external CDN resources (not /static/ files)
 - All repositories (accounts, events, stories, recurring_rules, settings, users) now filter queries by tenant_id
 - JWT tokens now include tenant_id claim for automatic tenant scoping
 - User model extended with tenant_id and role fields
@@ -32,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Service worker tests updated to test actual waiting worker detection instead of /sw-version fetch
 
 ### Fixed
+- Stale CSS/JS after deployments: Service worker runtime cache was serving old /static/ files; now only precache handles app shell with MD5 revision hashes
+- Removed hardcoded ?v=2 query string from CSS link that bypassed precache versioning
 - Service worker test alignment: Tests now match actual checkForServiceWorkerUpdate() implementation which checks for registration?.waiting instead of fetching /sw-version
 - Super_admin users can now see user management section: Frontend loadData() now checks for both 'admin' and 'super_admin' roles when loading users
 - Tenant data leakage on login: Different tenant logging in on same device now clears IndexedDB to prevent seeing previous tenant's data

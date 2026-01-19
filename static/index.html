@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/css/style.css?v=2">
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body x-data="app()">
 
@@ -2300,7 +2300,7 @@
                         <p class="conflict-message">Both you and another device edited this event. Choose which version to keep:</p>
 
                         <div class="conflict-versions">
-                            <div class="version version-mine">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
                                 <h3>
                                     <span>Your Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2313,7 +2313,7 @@
                                 </div>
                             </div>
 
-                            <div class="version version-theirs">
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
                                 <h3>
                                     <span>Server Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2335,7 +2335,7 @@
                         <p class="conflict-message">Both you and another device edited this account. Choose which version to keep:</p>
 
                         <div class="conflict-versions">
-                            <div class="version version-mine">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
                                 <h3>
                                     <span>Your Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2348,7 +2348,7 @@
                                 </div>
                             </div>
 
-                            <div class="version version-theirs">
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
                                 <h3>
                                     <span>Server Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2370,7 +2370,7 @@
                         <p class="conflict-message">Both you and another device edited this story. Choose which version to keep:</p>
 
                         <div class="conflict-versions">
-                            <div class="version version-mine">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
                                 <h3>
                                     <span>Your Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.client_version, currentConflict.server_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2384,7 +2384,7 @@
                                 </div>
                             </div>
 
-                            <div class="version version-theirs">
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
                                 <h3>
                                     <span>Server Version</span>
                                     <span class="version-badge" :class="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? 'newer' : 'older'" x-text="isNewerVersion(currentConflict.server_version, currentConflict.client_version) ? '[NEWER]' : '[OLDER]'"></span>
@@ -2407,12 +2407,12 @@
                         <p class="conflict-message" x-text="`You tried to delete this ${currentConflict.entity_type}, but it was modified on another device:`"></p>
 
                         <div class="conflict-versions">
-                            <div class="version version-mine">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
                                 <h3>Your Action</h3>
                                 <p style="color: var(--amber);" x-text="`Delete this ${currentConflict.entity_type}`"></p>
                             </div>
 
-                            <div class="version version-theirs">
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
                                 <h3>Server Version</h3>
                                 <!-- Show different fields based on entity type -->
                                 <template x-if="currentConflict.entity_type === 'event'">
@@ -2441,18 +2441,6 @@
                         </div>
                     </div>
                 </template>
-            </div>
-
-            <div class="modal-footer">
-                <!-- Task 113: Keep Mine / Keep Theirs buttons -->
-                <button @click="resolveConflict('keep_mine')" class="btn btn-primary">
-                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Mine</span>
-                    <span x-show="currentConflict?.conflict_type === 'delete_edit'">Keep Deleted</span>
-                </button>
-                <button @click="resolveConflict('keep_theirs')" class="btn btn-secondary">
-                    <span x-show="currentConflict?.conflict_type === 'edit_edit'">Keep Theirs</span>
-                    <span x-show="currentConflict?.conflict_type === 'delete_edit'">Restore Event</span>
-                </button>
             </div>
         </div>
     </div>

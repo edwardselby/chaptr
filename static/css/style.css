@@ -665,7 +665,7 @@ body::before {
 
 /* Conflict Modal Styling */
 .modal-conflict {
-    max-width: 900px;
+    max-width: 1100px;
 }
 
 .conflict-count {
@@ -689,11 +689,64 @@ body::before {
     margin-bottom: 1.5em;
 }
 
+/* Responsive: Stack panels on mobile */
+@media (max-width: 768px) {
+    .conflict-versions {
+        grid-template-columns: 1fr;
+    }
+}
+
 .version {
     padding: 1.5em;
-    border: 1px solid var(--green-dim);
+    border: 2px solid var(--green-dim);
     background: rgba(74, 246, 38, 0.02);
     border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* Clickable panel hover states */
+.version:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.version-mine:hover {
+    border-color: var(--green-bright);
+    background: rgba(74, 246, 38, 0.12);
+    box-shadow: 0 4px 16px rgba(74, 246, 38, 0.25);
+}
+
+.version-theirs:hover {
+    border-color: var(--amber);
+    background: rgba(255, 193, 7, 0.12);
+    box-shadow: 0 4px 16px rgba(255, 193, 7, 0.25);
+}
+
+/* Click prompt text */
+.version::after {
+    content: 'Click to select';
+    display: block;
+    text-align: center;
+    margin-top: 1em;
+    padding-top: 1em;
+    border-top: 1px dashed var(--border);
+    font-size: 0.85em;
+    color: var(--text-dim);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.version:hover::after {
+    opacity: 1;
+}
+
+.version-mine:hover::after {
+    color: var(--green);
+}
+
+.version-theirs:hover::after {
+    color: var(--amber);
 }
 
 .version h3 {
@@ -753,20 +806,6 @@ body::before {
 .version-details strong {
     color: var(--text-dim);
     font-weight: 600;
-}
-
-/* Conflict Modal Footer */
-.modal-conflict .modal-footer {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-    padding: 20px 24px;
-    border-top: 1px solid var(--border);
-}
-
-.modal-conflict .modal-footer .btn {
-    flex: 1;
-    max-width: 200px;
 }
 
 /* TODAY Divider */

@@ -374,27 +374,40 @@ workbox.precaching.precacheAndRoute([
 {precache_list}
 ]);
 
-// ==================== STATIC ASSETS: CACHE-FIRST ====================
+// ==================== EXTERNAL RESOURCES: CACHE-FIRST ====================
 
 /**
- * Cache-First strategy for static assets
+ * Cache-First strategy for EXTERNAL resources only (CDN, fonts)
  *
- * Priority: Cache → Network
- * - Faster loads on repeat visits
- * - 7-day cache expiration
- * - Max 60 entries to prevent unbounded growth
+ * IMPORTANT: Do NOT cache /static/* files here - they're handled by precache
+ * above with proper revision hashing. Caching them here would serve stale
+ * versions even after the precache updates.
+ *
+ * This route only caches:
+ * - Google Fonts (fonts.googleapis.com, fonts.gstatic.com)
+ * - CDN libraries (jsdelivr, cdnjs, unpkg)
+ * - External images
  */
 registerRoute(
-    ({{ request }}) => ['style', 'script', 'image', 'font'].includes(request.destination),
+    ({{ request, url }}) => {{
+        // Skip local /static/ files - handled by precache
+        if (url.pathname.startsWith('/static/')) {{
+            return false;
+        }}
+        // Cache external fonts, scripts, and images
+        const isExternalResource = ['style', 'script', 'image', 'font'].includes(request.destination);
+        const isExternalOrigin = url.origin !== self.location.origin;
+        return isExternalResource && isExternalOrigin;
+    }},
     new CacheFirst({{
-        cacheName: 'static-assets-v1',
+        cacheName: 'external-resources-v1',
         plugins: [
             new CacheableResponsePlugin({{
                 statuses: [0, 200] // Cache successful responses
             }}),
             new ExpirationPlugin({{
                 maxEntries: 60,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days for external CDN resources
             }})
         ]
     }})
@@ -481,7 +494,7 @@ self.addEventListener('message', (event) => {{
 self.addEventListener('activate', (event) => {{
     console.log('[SW] Service worker activating...');
 
-    const cacheWhitelist = ['static-assets-v1', 'api-cache-v1'];
+    const cacheWhitelist = ['external-resources-v1', 'api-cache-v1'];
 
     event.waitUntil(
         caches.keys().then((cacheNames) => {{
