@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-01-20
+
 ### Added
+- Account types: Support for checking, savings, and credit_card accounts with type-specific behavior (api/models.py, api/repositories/accounts.py)
+- Credit limit field: Required for credit_card accounts, enables over-limit warnings (api/models.py)
+- Account type badges: Visual indicators [checking], [savings], [credit] with color coding (index.html, style.css)
+- Account type warnings: Credit cards warn on over-limit instead of negative balance (core/projection.py)
+- Balance sign toggle: [+]/[-] buttons for account balance input matching event form pattern (index.html, app.js)
+- Smart sign defaults: Credit cards default to negative, checking/savings default to positive on account type change
+- Balance modal sign toggle: Same [+]/[-] pattern for balance reconciliation with account-type-aware defaults
+- Dexie schema v5: Added account_type index with migration setting existing accounts to 'checking' (db.js)
+- Account type integration tests: 10 tests for type validation, credit_limit rules, type changes (test_accounts.py)
+- Balance toggle unit tests: 54 tests for sign logic, smart defaults, drift calculations (account_balance_toggle.test.js)
+- Credit card warning unit tests: 4 tests for over-limit detection (test_projection.py)
 - Auto-sync feature: Configurable periodic sync with intervals Off, 1m, 5m, 1h, 1d (app.js, index.html, db.js)
 - Countdown timer in sync button: Shows time until next auto-sync, persists across page refreshes via localStorage
 - Pending sync indicator: Amber "pending sync (X)" badge when sync queued while tab was hidden
@@ -24,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Currency display unit tests: 15 tests for availableCurrencies and displayRates logic (currency_display.test.js)
 
 ### Changed
+- Account balance input UX: Users now enter positive numbers and select sign via toggle, reducing input errors
+- Balance reconciliation UX: Same sign toggle pattern with smart defaults based on selected account type
+- Account form label: Dynamically shows "Current Balance (Amount Owed)" for credit cards
+- getBalanceClass helper: Account balance coloring now considers credit card limits (green if within limit)
 - Sync interval settings visible to all users, not just admins (per-device preference)
 - Auto-sync default changed from 5 minutes to Off (db.js:117)
 - Balance modal starts empty instead of 0, allowing immediate typing

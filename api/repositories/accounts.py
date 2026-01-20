@@ -11,9 +11,9 @@ from decimal import Decimal
 from datetime import date
 
 from api.repositories.base import BaseRepository
-from api.models import Account, AccountCreate, AccountUpdate, EventCreate
+from api.models import Account, AccountCreate, AccountUpdate, EventCreate, AccountType
 from api.utils.db import generate_id, utc_now, to_str
-from api.utils.errors import ResourceConflictError
+from api.utils.errors import ResourceConflictError, ValidationError
 
 
 class AccountRepository(BaseRepository[Account]):
@@ -200,6 +200,33 @@ class AccountRepository(BaseRepository[Account]):
                     f"Cannot set account as default. Another account ('{existing_default['name']}') is already the default. "
                     f"Please unset the existing default account first."
                 )
+
+        # Validate account_type and credit_limit relationship for partial updates
+        # When updating, we need to merge with existing account to validate the relationship
+        if 'account_type' in update_dict or 'credit_limit' in update_dict:
+            current_account = await self.get(account_id)
+
+            # Determine final account_type and credit_limit after merge
+            new_type = update_dict.get('account_type', current_account.account_type)
+            # Handle string values from MongoDB (enum stored as string)
+            if isinstance(new_type, str):
+                new_type = AccountType(new_type)
+            new_limit = update_dict.get('credit_limit', current_account.credit_limit)
+
+            # Validate credit_limit rules based on final account_type
+            if new_type == AccountType.CREDIT_CARD:
+                if new_limit is None:
+                    raise ValidationError('credit_limit is required for credit_card accounts')
+                if new_limit <= 0:
+                    raise ValidationError('credit_limit must be positive')
+            else:
+                # Non-credit-card accounts cannot have credit_limit
+                if new_limit is not None:
+                    # Auto-clear credit_limit when changing from credit_card to other type
+                    if 'account_type' in update_dict:
+                        update_dict['credit_limit'] = None
+                    else:
+                        raise ValidationError('credit_limit is only valid for credit_card accounts')
 
         # If balance updated, set pending_reconciliation and update timestamp
         if 'current_balance' in update_dict:

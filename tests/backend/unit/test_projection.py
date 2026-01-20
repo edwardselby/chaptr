@@ -1405,6 +1405,160 @@ async def test_account_negative_warning():
 
 
 @pytest.mark.asyncio
+async def test_credit_card_warning_within_limit():
+    """
+    Test credit card balance within limit produces no warning.
+
+    Setup:
+    - Account: Amex (credit_card with £1000 limit)
+    - Projection: -£500 balance (within limit)
+    - Expected: no warnings
+    """
+    from core.projection import detect_account_negative_warnings
+
+    account_id = "22222222-2222-2222-2222-222222222222"
+    account_name = "Amex"
+
+    projection_result = [
+        {
+            "event_date": date(2024, 12, 20),
+            "description": "purchase",
+            "amount": Decimal("-500.00"),
+            "running_balance": Decimal("-500.00")  # Within £1000 limit
+        }
+    ]
+
+    warnings = detect_account_negative_warnings(
+        account_id=account_id,
+        account_name=account_name,
+        projection_result=projection_result,
+        account_type="credit_card",
+        credit_limit=Decimal("1000.00")
+    )
+
+    # Should have 0 warnings (within credit limit)
+    assert len(warnings) == 0, f"Expected 0 warnings, got {len(warnings)}"
+
+
+@pytest.mark.asyncio
+async def test_credit_card_warning_over_limit():
+    """
+    Test credit card balance exceeding limit produces warning.
+
+    Setup:
+    - Account: Amex (credit_card with £1000 limit)
+    - Projection: -£1100 balance (over limit)
+    - Expected: 1 warning for credit_limit_exceeded
+    """
+    from core.projection import detect_account_negative_warnings
+
+    account_id = "22222222-2222-2222-2222-222222222222"
+    account_name = "Amex"
+
+    projection_result = [
+        {
+            "event_date": date(2024, 12, 20),
+            "description": "large purchase",
+            "amount": Decimal("-1100.00"),
+            "running_balance": Decimal("-1100.00")  # Over £1000 limit
+        }
+    ]
+
+    warnings = detect_account_negative_warnings(
+        account_id=account_id,
+        account_name=account_name,
+        projection_result=projection_result,
+        account_type="credit_card",
+        credit_limit=Decimal("1000.00")
+    )
+
+    # Should have 1 warning
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+
+    warning = warnings[0]
+    assert warning["type"] == "credit_limit_exceeded"
+    assert warning["severity"] == "critical"
+    assert warning["date"] == date(2024, 12, 20)
+    assert warning["amount"] == Decimal("-1100.00")
+    assert warning["threshold"] == Decimal("-1000.00")
+    assert warning["account_name"] == "Amex"
+    assert "Amex" in warning["message"]
+    assert "credit limit" in warning["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_credit_card_warning_exactly_at_limit():
+    """
+    Test credit card balance exactly at limit produces no warning.
+
+    Setup:
+    - Account: Visa (credit_card with £500 limit)
+    - Projection: -£500 balance (exactly at limit)
+    - Expected: no warnings (not exceeding)
+    """
+    from core.projection import detect_account_negative_warnings
+
+    account_id = "33333333-3333-3333-3333-333333333333"
+    account_name = "Visa"
+
+    projection_result = [
+        {
+            "event_date": date(2024, 12, 20),
+            "description": "purchase",
+            "amount": Decimal("-500.00"),
+            "running_balance": Decimal("-500.00")  # Exactly at £500 limit
+        }
+    ]
+
+    warnings = detect_account_negative_warnings(
+        account_id=account_id,
+        account_name=account_name,
+        projection_result=projection_result,
+        account_type="credit_card",
+        credit_limit=Decimal("500.00")
+    )
+
+    # Should have 0 warnings (exactly at limit, not over)
+    assert len(warnings) == 0, f"Expected 0 warnings, got {len(warnings)}"
+
+
+@pytest.mark.asyncio
+async def test_savings_account_negative_warning():
+    """
+    Test savings account negative balance produces warning (same as checking).
+
+    Setup:
+    - Account: Savings (savings type)
+    - Projection: -£100 balance
+    - Expected: 1 warning (negative balance)
+    """
+    from core.projection import detect_account_negative_warnings
+
+    account_id = "44444444-4444-4444-4444-444444444444"
+    account_name = "Savings"
+
+    projection_result = [
+        {
+            "event_date": date(2024, 12, 20),
+            "description": "withdrawal",
+            "amount": Decimal("-100.00"),
+            "running_balance": Decimal("-100.00")  # Negative
+        }
+    ]
+
+    warnings = detect_account_negative_warnings(
+        account_id=account_id,
+        account_name=account_name,
+        projection_result=projection_result,
+        account_type="savings"  # Savings type
+    )
+
+    # Should have 1 warning (savings behaves like checking)
+    assert len(warnings) == 1, f"Expected 1 warning, got {len(warnings)}"
+    assert warnings[0]["type"] == "account_negative"
+
+
+@pytest.mark.asyncio
 async def test_story_spend_up_to_exceeded():
     """
     Test story exceeds spend_up_to goal.

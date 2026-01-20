@@ -198,12 +198,15 @@
                                 <div class="account-item-left">
                                     <div class="account-name">
                                         <span x-text="account.name"></span>
-                                        <span class="tag" x-show="account.is_default">[default]</span>
+                                        <span class="tag tag-checking" x-show="account.account_type === 'checking'">[checking]</span>
+                                        <span class="tag tag-savings" x-show="account.account_type === 'savings'">[savings]</span>
+                                        <span class="tag tag-credit" x-show="account.account_type === 'credit_card'">[credit]</span>
+                                        <span class="tag tag-default" x-show="account.is_default">[default]</span>
                                     </div>
                                     <div class="account-updated" x-text="'Updated ' + formatRelativeTime(account.balance_updated_at)"></div>
                                 </div>
                                 <div class="account-item-right">
-                                    <div class="account-balance" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></div>
+                                    <div class="account-balance" :class="getBalanceClass(account)" x-text="formatCurrency(account.current_balance, account.currency)"></div>
                                 </div>
                             </div>
                         </template>
@@ -393,6 +396,9 @@
                                 <div class="account-card-header">
                                     <div class="account-name-row">
                                         <span class="account-name" x-text="account.name"></span>
+                                        <span class="tag tag-checking" x-show="account.account_type === 'checking'">[checking]</span>
+                                        <span class="tag tag-savings" x-show="account.account_type === 'savings'">[savings]</span>
+                                        <span class="tag tag-credit" x-show="account.account_type === 'credit_card'">[credit]</span>
                                         <span class="tag tag-default" x-show="account.is_default">[default]</span>
                                     </div>
                                     <div class="account-meta">
@@ -402,7 +408,7 @@
                                 </div>
                                 <div class="account-card-balance">
                                     <span class="balance-label">Current</span>
-                                    <span class="balance-value" :class="account.current_balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(account.current_balance, account.currency)"></span>
+                                    <span class="balance-value" :class="getBalanceClass(account)" x-text="formatCurrency(account.current_balance, account.currency)"></span>
                                 </div>
                                 <div class="account-card-balance account-card-projected">
                                     <span class="balance-label">In 30 Days</span>
@@ -872,29 +878,75 @@
                     <span class="form-hint">Select the currency for this account</span>
                 </div>
                 <div class="form-group">
-                    <label for="account-balance">Current Balance</label>
+                    <label for="account-type">Account Type</label>
+                    <select
+                        id="account-type"
+                        x-model="accountForm.account_type"
+                        @change="accountForm.balanceIsNegative = (accountForm.account_type === 'credit_card')"
+                        required
+                        class="form-input select-input">
+                        <option value="checking">Checking</option>
+                        <option value="savings">Savings</option>
+                        <option value="credit_card">Credit Card</option>
+                    </select>
+                    <span class="form-hint">Type determines balance interpretation and warnings</span>
+                </div>
+                <div class="form-group" x-show="accountForm.account_type === 'credit_card'" x-cloak>
+                    <label for="credit-limit">Credit Limit</label>
+                    <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.credit_limit }">
+                        <span class="validation-arrow-left" x-show="accountFormErrors.credit_limit" x-cloak>&gt;</span>
+                        <input
+                            id="credit-limit"
+                            type="number"
+                            x-model.number="accountForm.credit_limit"
+                            step="0.01"
+                            min="0.01"
+                            placeholder="1000.00"
+                            :required="accountForm.account_type === 'credit_card'"
+                            class="form-input"
+                            :class="{ 'validation-error': accountFormErrors.credit_limit }"
+                            @invalid.prevent="accountFormErrors.credit_limit = true"
+                            @input="accountFormErrors.credit_limit = false">
+                        <span class="validation-arrow-right" x-show="accountFormErrors.credit_limit" x-cloak>&lt;</span>
+                    </div>
+                    <span class="form-hint">
+                        <span x-show="accountFormErrors.credit_limit" style="color: var(--red)">⚠️ Credit limit is required for credit cards</span>
+                        <span x-show="!accountFormErrors.credit_limit">Your credit card's spending limit</span>
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label for="account-balance" x-text="accountForm.account_type === 'credit_card' ? 'Current Balance (Amount Owed)' : 'Current Balance'"></label>
 
                     <div class="field-with-arrows" :class="{ 'has-arrows': accountFormErrors.current_balance }">
                         <span class="validation-arrow-left" x-show="accountFormErrors.current_balance" x-cloak>&gt;</span>
 
-                        <input
-                            id="account-balance"
-                            type="number"
-                            x-model.number="accountForm.current_balance"
-                            step="0.01"
-                            placeholder="0.00"
-                            required
-                            class="form-input"
-                            :class="{ 'validation-error': accountFormErrors.current_balance }"
-                            @invalid.prevent="accountFormErrors.current_balance = true"
-                            @input="accountFormErrors.current_balance = false">
+                        <div class="amount-input-wrapper" :class="{ 'validation-error': accountFormErrors.current_balance }">
+                            <input
+                                id="account-balance"
+                                type="number"
+                                x-model.number="accountForm.current_balance"
+                                @input="accountForm.current_balance = Math.abs(accountForm.current_balance || 0); accountFormErrors.current_balance = false"
+                                @invalid.prevent="accountFormErrors.current_balance = true"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                required
+                                class="form-input amount-input"
+                                :style="{ color: accountForm.balanceIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
+                            <div class="amount-toggle-buttons">
+                                <button type="button" class="btn-amount-toggle" :class="{ active: accountForm.balanceIsNegative }" @click="accountForm.balanceIsNegative = true" title="Negative (owed/overdraft)">−</button>
+                                <button type="button" class="btn-amount-toggle" :class="{ active: !accountForm.balanceIsNegative }" @click="accountForm.balanceIsNegative = false" title="Positive (available)">+</button>
+                            </div>
+                        </div>
 
                         <span class="validation-arrow-right" x-show="accountFormErrors.current_balance" x-cloak>&lt;</span>
                     </div>
 
                     <span class="form-hint">
                         <span x-show="accountFormErrors.current_balance" style="color: var(--red)">⚠️ Current balance is required</span>
-                        <span x-show="!accountFormErrors.current_balance">Current balance (can be negative)</span>
+                        <span x-show="!accountFormErrors.current_balance && accountForm.balanceIsNegative && accountForm.account_type === 'credit_card'" style="color: var(--red)">Amount you owe on this card</span>
+                        <span x-show="!accountFormErrors.current_balance && accountForm.balanceIsNegative && accountForm.account_type !== 'credit_card'" style="color: var(--red)">Overdraft/negative balance</span>
+                        <span x-show="!accountFormErrors.current_balance && !accountForm.balanceIsNegative" style="color: var(--green-bright)">Available balance</span>
                     </span>
                 </div>
                 <div class="form-group">
@@ -1466,6 +1518,9 @@
                                 selectOption(value) {
                                     balanceForm.account_id = value;
                                     balanceFormErrors.account_id = false;
+                                    // Set default sign based on account type (credit cards default to negative)
+                                    const selectedAccount = accounts.find(a => a.id === value);
+                                    balanceForm.balanceIsNegative = selectedAccount?.account_type === 'credit_card';
                                     calculateBalanceDrift();
                                     balanceAccountDropdownOpen = false;
                                 }
@@ -1517,23 +1572,31 @@
                     <div class="field-with-arrows" :class="{ 'has-arrows': balanceFormErrors.actual_balance }">
                         <span class="validation-arrow-left" x-show="balanceFormErrors.actual_balance" x-cloak>&gt;</span>
 
-                        <input id="balance-actual"
-                            type="number"
-                            step="0.01"
-                            x-model="balanceForm.actual_balance"
-                            @input="balanceFormErrors.actual_balance = false; calculateBalanceDrift()"
-                            @invalid.prevent="balanceFormErrors.actual_balance = true"
-                            :placeholder="balanceForm.projected_balance"
-                            required
-                            class="form-input"
-                            :class="{ 'validation-error': balanceFormErrors.actual_balance }">
+                        <div class="amount-input-wrapper" :class="{ 'validation-error': balanceFormErrors.actual_balance }">
+                            <input id="balance-actual"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                x-model.number="balanceForm.actual_balance"
+                                @input="balanceForm.actual_balance = Math.abs(balanceForm.actual_balance || 0); balanceFormErrors.actual_balance = false; calculateBalanceDrift()"
+                                @invalid.prevent="balanceFormErrors.actual_balance = true"
+                                :placeholder="Math.abs(balanceForm.projected_balance)"
+                                required
+                                class="form-input amount-input"
+                                :style="{ color: balanceForm.balanceIsNegative ? 'var(--red)' : 'var(--green-bright)' }">
+                            <div class="amount-toggle-buttons">
+                                <button type="button" class="btn-amount-toggle" :class="{ active: balanceForm.balanceIsNegative }" @click="balanceForm.balanceIsNegative = true; calculateBalanceDrift()" title="Negative (owed/overdraft)">−</button>
+                                <button type="button" class="btn-amount-toggle" :class="{ active: !balanceForm.balanceIsNegative }" @click="balanceForm.balanceIsNegative = false; calculateBalanceDrift()" title="Positive (available)">+</button>
+                            </div>
+                        </div>
 
                         <span class="validation-arrow-right" x-show="balanceFormErrors.actual_balance" x-cloak>&lt;</span>
                     </div>
 
                     <span class="form-hint">
                         <span x-show="balanceFormErrors.actual_balance" style="color: var(--red)">⚠️ Actual balance is required</span>
-                        <span x-show="!balanceFormErrors.actual_balance">Enter the actual balance from your bank</span>
+                        <span x-show="!balanceFormErrors.actual_balance && balanceForm.balanceIsNegative" style="color: var(--red)">Negative balance (owed/overdraft)</span>
+                        <span x-show="!balanceFormErrors.actual_balance && !balanceForm.balanceIsNegative" style="color: var(--green-bright)">Positive balance (available funds)</span>
                     </span>
                 </div>
 

@@ -66,6 +66,18 @@ class EntityType(str, Enum):
     RECURRING_RULE = "recurring_rule"
 
 
+class AccountType(str, Enum):
+    """Account type for balance interpretation and warning logic.
+
+    - checking: Standard account, negative balance triggers warning
+    - savings: Same behavior as checking
+    - credit_card: Inverted logic, warning when exceeding credit limit
+    """
+    CHECKING = "checking"
+    SAVINGS = "savings"
+    CREDIT_CARD = "credit_card"
+
+
 class ChangeAction(str, Enum):
     """Change actions tracked in change_log."""
     CREATE = "create"
@@ -91,6 +103,16 @@ class AccountBase(BaseModel):
     is_default: bool = Field(default=False, description="Is this the global default spending account?")
     is_archived: bool = Field(default=False, description="Archived accounts are hidden but retained for history")
     pending_reconciliation: bool = Field(default=False, description="Balance updated but reconciliation not yet run?")
+    account_type: AccountType = Field(
+        default=AccountType.CHECKING,
+        description="Account type: checking, savings, or credit_card"
+    )
+    credit_limit: Optional[Decimal] = Field(
+        default=None,
+        max_digits=19,
+        decimal_places=4,
+        description="Credit limit (required for credit_card type, forbidden for others)"
+    )
     tenant_id: Optional[UUID] = Field(default=None, description="Tenant identifier (admin's user_id) for multi-tenancy isolation")
 
     @field_validator('currency')
@@ -100,6 +122,19 @@ class AccountBase(BaseModel):
         if not v.isupper() or len(v) != 3:
             raise ValueError('Currency code must be 3 uppercase letters (e.g., GBP, CAD, USD)')
         return v
+
+    @model_validator(mode='after')
+    def validate_credit_limit(self):
+        """Validate credit_limit is required for credit_card, forbidden for others."""
+        if self.account_type == AccountType.CREDIT_CARD:
+            if self.credit_limit is None:
+                raise ValueError('credit_limit is required for credit_card accounts')
+            if self.credit_limit <= 0:
+                raise ValueError('credit_limit must be positive')
+        else:
+            if self.credit_limit is not None:
+                raise ValueError('credit_limit is only valid for credit_card accounts')
+        return self
 
 
 class AccountCreate(AccountBase):
@@ -114,6 +149,11 @@ class AccountCreate(AccountBase):
 class AccountUpdate(BaseModel):
     """
     Model for updating an account (all fields optional for partial updates).
+
+    Note: When changing account_type to credit_card, credit_limit must also be provided.
+    When changing from credit_card to another type, credit_limit will be cleared.
+    Full validation of account_type/credit_limit relationship happens at repository level
+    after merging with existing account data.
     """
     name: Optional[str] = Field(default=None, min_length=1)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
@@ -122,6 +162,8 @@ class AccountUpdate(BaseModel):
     is_default: Optional[bool] = Field(default=None)
     is_archived: Optional[bool] = Field(default=None)
     pending_reconciliation: Optional[bool] = Field(default=None)
+    account_type: Optional[AccountType] = Field(default=None, description="Account type: checking, savings, or credit_card")
+    credit_limit: Optional[Decimal] = Field(default=None, max_digits=19, decimal_places=4, description="Credit limit for credit_card accounts")
 
     @field_validator('currency')
     @classmethod
@@ -129,6 +171,14 @@ class AccountUpdate(BaseModel):
         """Validate currency code is 3 uppercase letters if provided."""
         if v and (not v.isupper() or len(v) != 3):
             raise ValueError('Currency code must be 3 uppercase letters')
+        return v
+
+    @field_validator('credit_limit')
+    @classmethod
+    def validate_credit_limit_positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        """Validate credit_limit is positive if provided."""
+        if v is not None and v <= 0:
+            raise ValueError('credit_limit must be positive')
         return v
 
 

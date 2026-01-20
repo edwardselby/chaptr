@@ -848,20 +848,37 @@ def detect_global_negative_warnings(projection_result: List[Dict]) -> List[Dict]
 def detect_account_negative_warnings(
     account_id: str,
     account_name: str,
-    projection_result: List[Dict]
+    projection_result: List[Dict],
+    account_type: str = "checking",
+    credit_limit: Optional[Decimal] = None
 ) -> List[Dict]:
     """
-    Scan account projection for negative running_balance.
+    Scan account projection for balance warnings based on account type.
 
-    Task 10: Detect when per-account balance goes negative.
+    Task 10: Detect when per-account balance triggers a warning.
+
+    Warning logic varies by account type:
+    - checking/savings: Warn when balance < 0 (negative)
+    - credit_card: Warn when balance < -credit_limit (over limit)
+
+    Credit card balance convention:
+    - Negative balance = amount owed (normal usage)
+    - Balance more negative than -credit_limit = over limit
 
     Args:
         account_id: Account UUID string
         account_name: Account name for display
         projection_result: List of events with running_balance
+        account_type: Account type ('checking', 'savings', 'credit_card')
+        credit_limit: Credit limit for credit_card accounts (required if credit_card)
 
     Returns:
-        List of warning dicts for account negative balances
+        List of warning dicts for balance warnings
+
+    Example:
+        >>> # Credit card with -£500 balance, £1000 limit: OK (within limit)
+        >>> # Credit card with -£1100 balance, £1000 limit: WARNING (over limit)
+        >>> detect_account_negative_warnings("id", "Amex", events, "credit_card", Decimal("1000"))
 
     See spec: Warning System (lines 620-643)
     """
@@ -871,19 +888,38 @@ def detect_account_negative_warnings(
 
     for event in projection_result:
         balance = event.get("running_balance", Decimal("0"))
-        if balance < 0:
-            warnings.append({
-                "type": "account_negative",
-                "severity": "critical",
-                "date": event.get("event_date"),
-                "amount": balance,
-                "threshold": Decimal("0"),
-                "account_id": UUID(account_id),
-                "account_name": account_name,
-                "story_id": None,
-                "story_name": None,
-                "message": f"{account_name} will go negative: {balance} on {event['event_date']}"
-            })
+
+        if account_type == "credit_card":
+            # Credit card: warn when balance exceeds credit limit (more negative than -limit)
+            threshold = -credit_limit if credit_limit else Decimal("0")
+            if balance < threshold:
+                warnings.append({
+                    "type": "credit_limit_exceeded",
+                    "severity": "critical",
+                    "date": event.get("event_date"),
+                    "amount": balance,
+                    "threshold": threshold,
+                    "account_id": UUID(account_id),
+                    "account_name": account_name,
+                    "story_id": None,
+                    "story_name": None,
+                    "message": f"{account_name} will exceed credit limit: {balance} (limit: {credit_limit}) on {event['event_date']}"
+                })
+        else:
+            # Checking/savings: warn when balance goes negative
+            if balance < 0:
+                warnings.append({
+                    "type": "account_negative",
+                    "severity": "critical",
+                    "date": event.get("event_date"),
+                    "amount": balance,
+                    "threshold": Decimal("0"),
+                    "account_id": UUID(account_id),
+                    "account_name": account_name,
+                    "story_id": None,
+                    "story_name": None,
+                    "message": f"{account_name} will go negative: {balance} on {event['event_date']}"
+                })
 
     return warnings
 

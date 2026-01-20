@@ -14,6 +14,7 @@
     --red-dim: #992222;
     --red-glow: rgba(255, 68, 68, 0.15);
     --amber: #ffaa00;
+    --cyan: #00bcd4;
     --blue: #6495ED;
     --blue-glow: rgba(100, 149, 237, 0.15);
     --text-bright: #ffffff;
@@ -1366,6 +1367,22 @@ body::before {
 .tag-default {
     color: var(--green-bright);
     border-color: var(--green-dim);
+}
+
+/* Account type badges */
+.tag-checking {
+    color: var(--green-bright);
+    border: 1px solid var(--green-dim);
+}
+
+.tag-savings {
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+}
+
+.tag-credit {
+    color: var(--amber);
+    border: 1px solid var(--amber);
 }
 
 .account-meta {

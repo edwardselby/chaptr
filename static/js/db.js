@@ -98,6 +98,42 @@ db.version(4).stores({
 });
 
 /**
+ * Version 5: Account types support
+ *
+ * Added fields:
+ * - account_type: 'checking', 'savings', or 'credit_card'
+ * - credit_limit: number (for credit_card accounts only)
+ *
+ * Migration: Sets existing accounts to 'checking' (safe default)
+ */
+db.version(5).stores({
+    // Accounts: Added account_type index for filtering by type
+    accounts: 'id, currency, is_default, is_archived, account_type',
+    stories: 'id, start_date, end_date, is_archived',
+    events: 'id, event_date, story_id, account_id, is_baseline, is_hypothetical, is_opening_balance, is_auto_adjustment, recurring_rule_id',
+    recurring_rules: 'id, story_id, frequency, next_occurrence',
+    users: 'id, username, role',
+    settings: 'id',
+
+    // Sync protocol (unchanged)
+    conflicts: 'id, entity_type, [entity_id+conflict_type], resolved_at',
+    sync_queue: '++id, entity_type, entity_id, queued_at, action, _derived_from',
+    sync_meta: 'id'
+}).upgrade(async trans => {
+    console.log('[CHAPTR] Upgrading to schema v5 - adding account_type field');
+
+    // Migrate existing accounts to have account_type = 'checking'
+    await trans.accounts.toCollection().modify(account => {
+        if (account.account_type === undefined) {
+            account.account_type = 'checking';
+        }
+        // credit_limit stays undefined for non-credit-card accounts
+    });
+
+    console.log('[CHAPTR] Schema v5 upgrade complete');
+});
+
+/**
  * Initialize default settings if not present
  */
 db.on('ready', async () => {

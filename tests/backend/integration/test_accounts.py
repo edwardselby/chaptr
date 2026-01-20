@@ -427,3 +427,205 @@ class TestAccountDelete:
         data = response.json()
         assert len(data) == 1
         assert data[0]["id"] == str(sample_account.id)
+
+
+# ============================================================================
+# Account Types - Create, Update, Validation
+# ============================================================================
+
+class TestAccountTypes:
+    """Tests for account type feature (checking, savings, credit_card)."""
+
+    @pytest.mark.asyncio
+    async def test_create_checking_account_default_type(self, async_client, auth_headers):
+        """Creating account without type defaults to checking."""
+        payload = {
+            "name": "Default Type Account",
+            "currency": "GBP",
+            "current_balance": 1000.00,
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["account_type"] == "checking"
+        assert data["credit_limit"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_checking_account_explicit(self, async_client, auth_headers):
+        """Creating checking account explicitly works."""
+        payload = {
+            "name": "Explicit Checking Account",
+            "currency": "GBP",
+            "current_balance": 1000.00,
+            "account_type": "checking",
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["account_type"] == "checking"
+        assert data["credit_limit"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_savings_account(self, async_client, auth_headers):
+        """Creating savings account works."""
+        payload = {
+            "name": "Savings Account",
+            "currency": "GBP",
+            "current_balance": 5000.00,
+            "account_type": "savings",
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["account_type"] == "savings"
+        assert data["credit_limit"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_credit_card_with_limit(self, async_client, sample_account, auth_headers):
+        """Creating credit card with limit works."""
+        payload = {
+            "name": "Amex",
+            "currency": "GBP",
+            "current_balance": -500.00,
+            "account_type": "credit_card",
+            "credit_limit": 5000.00,
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["account_type"] == "credit_card"
+        assert data["credit_limit"] == "5000.0"
+
+    @pytest.mark.asyncio
+    async def test_create_credit_card_without_limit_fails(self, async_client, sample_account, auth_headers):
+        """Creating credit card without limit returns 422."""
+        payload = {
+            "name": "Invalid Credit Card",
+            "currency": "GBP",
+            "current_balance": -500.00,
+            "account_type": "credit_card",
+            # Missing credit_limit
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "credit_limit" in str(data["detail"]).lower()
+
+    @pytest.mark.asyncio
+    async def test_create_checking_with_credit_limit_fails(self, async_client, auth_headers):
+        """Creating checking account with credit_limit returns 422."""
+        payload = {
+            "name": "Invalid Checking",
+            "currency": "GBP",
+            "current_balance": 1000.00,
+            "account_type": "checking",
+            "credit_limit": 5000.00,  # Not allowed for checking
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "credit_limit" in str(data["detail"]).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_account_type_to_credit_card_with_limit(
+        self, async_client, sample_account, auth_headers
+    ):
+        """Updating account type to credit_card with limit works."""
+        payload = {
+            "account_type": "credit_card",
+            "credit_limit": 3000.00
+        }
+
+        response = await async_client.put(
+            f"/api/accounts/{sample_account.id}",
+            json=payload,
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["account_type"] == "credit_card"
+        assert data["credit_limit"] == "3000.0"
+
+    @pytest.mark.asyncio
+    async def test_update_account_type_to_credit_card_without_limit_fails(
+        self, async_client, sample_account, auth_headers
+    ):
+        """Updating to credit_card without limit returns 422."""
+        payload = {"account_type": "credit_card"}
+
+        response = await async_client.put(
+            f"/api/accounts/{sample_account.id}",
+            json=payload,
+            headers=auth_headers
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "credit_limit" in str(data["detail"]).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_credit_card_type_clears_limit(
+        self, async_client, sample_account, auth_headers
+    ):
+        """Updating credit card to checking clears credit_limit."""
+        # First make it a credit card
+        payload1 = {
+            "account_type": "credit_card",
+            "credit_limit": 3000.00
+        }
+        response1 = await async_client.put(
+            f"/api/accounts/{sample_account.id}",
+            json=payload1,
+            headers=auth_headers
+        )
+        assert response1.status_code == 200
+
+        # Now change back to checking
+        payload2 = {"account_type": "checking"}
+        response2 = await async_client.put(
+            f"/api/accounts/{sample_account.id}",
+            json=payload2,
+            headers=auth_headers
+        )
+
+        assert response2.status_code == 200
+        data = response2.json()
+        assert data["account_type"] == "checking"
+        assert data["credit_limit"] is None
+
+    @pytest.mark.asyncio
+    async def test_credit_limit_must_be_positive(self, async_client, sample_account, auth_headers):
+        """Credit limit must be positive value."""
+        payload = {
+            "name": "Zero Limit Card",
+            "currency": "GBP",
+            "current_balance": 0,
+            "account_type": "credit_card",
+            "credit_limit": 0,  # Invalid: must be positive
+            "balance_updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = await async_client.post("/api/accounts", json=payload, headers=auth_headers)
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "positive" in str(data["detail"]).lower() or "credit_limit" in str(data["detail"]).lower()

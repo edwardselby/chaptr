@@ -133,7 +133,8 @@ window.app = function() {
         accountFormErrors: {
             name: false,
             currency: false,
-            current_balance: false
+            current_balance: false,
+            credit_limit: false
         },
         storyFormErrors: {
             name: false,
@@ -169,6 +170,7 @@ window.app = function() {
             account_id: '',
             projected_balance: 0,
             actual_balance: 0,
+            balanceIsNegative: false,
             drift: null,
             currency: 'GBP'
         },
@@ -989,7 +991,10 @@ window.app = function() {
                 name: '',
                 currency: this.settings.base_currency || 'GBP',
                 current_balance: 0,
-                is_default: false
+                balanceIsNegative: false, // Default positive for checking/savings
+                is_default: false,
+                account_type: 'checking',
+                credit_limit: null
             };
             this.showAccountModal = true;
         },
@@ -1002,7 +1007,12 @@ window.app = function() {
             ValidationHelpers.resetFormErrors(this.accountFormErrors);
             const account = this.accounts.find(a => a.id === accountId);
             if (account) {
-                this.accountForm = { ...account };
+                const balance = parseFloat(account.current_balance || 0);
+                this.accountForm = {
+                    ...account,
+                    current_balance: Math.abs(balance), // Store as absolute value
+                    balanceIsNegative: balance < 0 // Track sign separately
+                };
                 this.showAccountModal = true;
             }
         },
@@ -1072,11 +1082,20 @@ window.app = function() {
          * Create new account (via storage adapter)
          */
         async createAccount() {
+            // Apply sign based on balanceIsNegative flag
+            const signedBalance = this.accountForm.balanceIsNegative
+                ? -Math.abs(parseFloat(this.accountForm.current_balance || 0))
+                : Math.abs(parseFloat(this.accountForm.current_balance || 0));
+
             const accountData = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: String(parseFloat(this.accountForm.current_balance || 0)),
-                is_default: this.accountForm.is_default || false
+                current_balance: String(signedBalance),
+                is_default: this.accountForm.is_default || false,
+                account_type: this.accountForm.account_type || 'checking',
+                credit_limit: this.accountForm.account_type === 'credit_card'
+                    ? String(parseFloat(this.accountForm.credit_limit || 0))
+                    : null
             };
 
             // Use storage adapter (handles all 3 modes)
@@ -1118,17 +1137,25 @@ window.app = function() {
          */
         async updateAccount() {
             const accountId = this.accountForm.id;
-            const newBalance = parseFloat(this.accountForm.current_balance || 0);
+
+            // Apply sign based on balanceIsNegative flag
+            const signedBalance = this.accountForm.balanceIsNegative
+                ? -Math.abs(parseFloat(this.accountForm.current_balance || 0))
+                : Math.abs(parseFloat(this.accountForm.current_balance || 0));
 
             // Check if balance changed to trigger reconciliation
             const currentAccount = this.accounts.find(a => a.id === accountId);
-            const balanceChanged = currentAccount && parseFloat(currentAccount.current_balance) !== newBalance;
+            const balanceChanged = currentAccount && parseFloat(currentAccount.current_balance) !== signedBalance;
 
             const updates = {
                 name: this.accountForm.name,
                 currency: this.accountForm.currency.toUpperCase(),
-                current_balance: String(newBalance),
-                is_default: this.accountForm.is_default || false
+                current_balance: String(signedBalance),
+                is_default: this.accountForm.is_default || false,
+                account_type: this.accountForm.account_type || 'checking',
+                credit_limit: this.accountForm.account_type === 'credit_card'
+                    ? String(parseFloat(this.accountForm.credit_limit || 0))
+                    : null
             };
 
             // If balance changed, set flag to trigger server-side adjustment
@@ -2830,11 +2857,16 @@ window.app = function() {
 
             // Pre-select first account if only one exists
             const activeAccounts = this.accounts.filter(a => !a.is_archived);
+            const preselectedAccount = activeAccounts.length === 1 ? activeAccounts[0] : null;
+
+            // Set default sign based on account type (credit cards default to negative)
+            const defaultIsNegative = preselectedAccount?.account_type === 'credit_card';
 
             this.balanceForm = {
-                account_id: activeAccounts.length === 1 ? activeAccounts[0].id : '',
+                account_id: preselectedAccount?.id || '',
                 projected_balance: 0,
                 actual_balance: '',  // Empty so user can type immediately without deleting
+                balanceIsNegative: defaultIsNegative,
                 drift: null,
                 currency: this.settings.base_currency || 'GBP'
             };
@@ -2869,7 +2901,11 @@ window.app = function() {
 
             // Calculate drift if actual balance entered
             if (this.balanceForm.actual_balance !== null && this.balanceForm.actual_balance !== '') {
-                this.balanceForm.drift = parseFloat(this.balanceForm.actual_balance) - projectedBalance;
+                // Apply sign based on balanceIsNegative toggle
+                const signedActualBalance = this.balanceForm.balanceIsNegative
+                    ? -Math.abs(parseFloat(this.balanceForm.actual_balance))
+                    : Math.abs(parseFloat(this.balanceForm.actual_balance));
+                this.balanceForm.drift = signedActualBalance - projectedBalance;
             } else {
                 this.balanceForm.drift = null;
             }
@@ -3023,8 +3059,13 @@ window.app = function() {
 
                 // Update account balance and set pending_reconciliation flag
                 // Server will see this flag during reconciliation phase and create authoritative adjustment
+                // Apply sign based on balanceIsNegative toggle
+                const signedActualBalance = this.balanceForm.balanceIsNegative
+                    ? -Math.abs(parseFloat(this.balanceForm.actual_balance))
+                    : Math.abs(parseFloat(this.balanceForm.actual_balance));
+
                 const updates = {
-                    current_balance: parseFloat(this.balanceForm.actual_balance),
+                    current_balance: signedActualBalance,
                     balance_updated_at: now,
                     updated_at: now,
                     pending_reconciliation: true  // Trigger server-side adjustment creation
@@ -3834,6 +3875,28 @@ window.app = function() {
          */
         formatRelativeTime(date) {
             return formatRelativeTime(date);
+        },
+
+        /**
+         * Get CSS class for account balance (positive/negative)
+         *
+         * For credit cards, negative balance is normal (money owed),
+         * so we only show 'negative' if over the credit limit.
+         *
+         * @param {Object} account - Account object with current_balance, account_type, credit_limit
+         * @returns {string} 'positive' or 'negative'
+         */
+        getBalanceClass(account) {
+            const balance = parseFloat(account.current_balance || 0);
+
+            if (account.account_type === 'credit_card') {
+                // Credit card: negative only if exceeding credit limit
+                const limit = parseFloat(account.credit_limit || 0);
+                return balance < -limit ? 'negative' : 'positive';
+            }
+
+            // Checking/savings: standard positive/negative logic
+            return balance >= 0 ? 'positive' : 'negative';
         },
 
         /**
