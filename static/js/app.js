@@ -26,6 +26,40 @@ import { calculateProjection } from './projection.js';
 import { createOpeningBalanceEventData, generateRecurringInstances } from './event-helpers.js';
 import { applyDerivedChange, applyDerivedChangesBatch } from './queue-helpers.js';
 import { ValidationHelpers } from './validation-helpers.js';
+import {
+    normalizeAutoSyncInterval as _normalizeAutoSyncInterval,
+    formatSyncInterval as _formatSyncInterval,
+    formatCountdown as _formatCountdown,
+    formatSyncResult as _formatSyncResult,
+    getBalanceClass as _getBalanceClass,
+    applyBalanceSign,
+    getDefaultSignForAccountType,
+    parseBalanceForForm
+} from './modules/formatting.js';
+import {
+    calculateAccountBalanceAtDate,
+    calculateDrift
+} from './modules/balance-utils.js';
+import {
+    AutoSyncManager,
+    getStoredNextSyncTime,
+    setStoredNextSyncTime
+} from './modules/auto-sync.js';
+import {
+    formatConflictDateTime,
+    isNewerVersion as _isNewerVersion,
+    isFieldDifferent,
+    serializeForConflictResolution
+} from './modules/conflict-utils.js';
+import {
+    resolveAccountId as _resolveAccountId,
+    createEvent as _createEvent,
+    updateEvent as _updateEvent,
+    deleteEvent as _deleteEvent,
+    createStory as _createStory,
+    updateStory as _updateStory,
+    performStoryDeletion as _performStoryDeletion
+} from './modules/entity-operations.js';
 
 /**
  * Main Alpine.js app component
@@ -71,10 +105,9 @@ window.app = function() {
         MIN_SPINNER_DURATION_MS: 1000, // Minimum 1 second for spinner visibility
 
         // Auto-Sync State
-        autoSyncTimerId: null,         // Timer ID for auto-sync
-        autoSyncPending: false,        // Sync pending while tab was hidden
+        autoSyncManager: null,         // AutoSyncManager instance
+        autoSyncPending: false,        // Sync pending while tab was hidden (bound to manager)
         autoSyncCountdown: '',         // Countdown display string (e.g., "4:32")
-        countdownTimerId: null,        // Timer ID for countdown display updates
 
         // Notification State
         currentNotification: null,      // { message: string, type: string }
@@ -240,6 +273,17 @@ window.app = function() {
 
             // Load data from storage adapter
             await this.loadData();
+
+            // Initialize AutoSyncManager with callbacks
+            this.autoSyncManager = new AutoSyncManager({
+                onCountdownUpdate: (countdown) => { this.autoSyncCountdown = countdown; },
+                onSync: () => this.triggerManualSync(),
+                onLog: (msg) => console.log(msg),
+                getQueueCount: () => db.sync_queue.count(),
+                isOnline: () => navigator.onLine,
+                isSyncing: () => this.isSyncing,
+                isHidden: () => document.hidden
+            });
 
             // Start auto-sync timer based on settings
             this.startAutoSyncTimer();
@@ -1083,9 +1127,10 @@ window.app = function() {
          */
         async createAccount() {
             // Apply sign based on balanceIsNegative flag
-            const signedBalance = this.accountForm.balanceIsNegative
-                ? -Math.abs(parseFloat(this.accountForm.current_balance || 0))
-                : Math.abs(parseFloat(this.accountForm.current_balance || 0));
+            const signedBalance = applyBalanceSign(
+                this.accountForm.current_balance,
+                this.accountForm.balanceIsNegative
+            );
 
             const accountData = {
                 name: this.accountForm.name,
@@ -1139,9 +1184,10 @@ window.app = function() {
             const accountId = this.accountForm.id;
 
             // Apply sign based on balanceIsNegative flag
-            const signedBalance = this.accountForm.balanceIsNegative
-                ? -Math.abs(parseFloat(this.accountForm.current_balance || 0))
-                : Math.abs(parseFloat(this.accountForm.current_balance || 0));
+            const signedBalance = applyBalanceSign(
+                this.accountForm.current_balance,
+                this.accountForm.balanceIsNegative
+            );
 
             // Check if balance changed to trigger reconciliation
             const currentAccount = this.accounts.find(a => a.id === accountId);
@@ -1548,65 +1594,29 @@ window.app = function() {
 
         /**
          * Create new story (CRUD implementation)
+         * Delegates to entity-operations module.
          * @param {object} storyData - Story form data
          */
         async createStory(storyData) {
-            const localId = generateUUID();
-            const now = new Date().toISOString();
-
-            const story = {
-                id: localId,
-                name: storyData.name,
-                start_date: storyData.start_date,
-                end_date: storyData.end_date,
-                display_currency: storyData.display_currency || this.settings.base_currency,
-                funding_mode: storyData.funding_mode || 'projected',
-                funding_amount: String(parseFloat(storyData.funding_amount || 0)),
-                goal_type: storyData.goal_type || null,
-                goal_amount: String(parseFloat(storyData.goal_amount || 0)),
-                default_account_id: storyData.default_account_id || null,
-                is_archived: false,
-                created_at: now,
-                updated_at: now
-            };
-
-            // 1. Optimistic Dexie write
-            await db.stories.add(story);
-
-            // 2. Queue for sync
-            await db.queueChange('story', localId, 'create', story);
-
-            // 3. Reload data
+            const result = await _createStory(db, storyData, this.settings, generateUUID);
+            if (!result.success) {
+                this.showNotification(result.error || 'Failed to create story', 'error');
+                return;
+            }
             await this.loadData();
         },
 
         /**
          * Update existing story (CRUD implementation)
+         * Delegates to entity-operations module.
          * @param {string} storyId - Story UUID
          * @param {object} updates - Story updates
          */
         async updateStory(storyId, updates) {
-            // 0. Get current entity for conflict detection (capture base_updated_at)
-            const currentStory = await db.stories.get(storyId);
-            if (!currentStory) {
-                throw new Error(`Story ${storyId} not found`);
+            const result = await _updateStory(db, storyId, updates);
+            if (!result.success) {
+                throw new Error(result.error);
             }
-            const baseUpdatedAt = currentStory.updated_at;
-
-            const now = new Date().toISOString();
-
-            const storyUpdates = {
-                ...updates,
-                updated_at: now
-            };
-
-            // 1. Optimistic Dexie update
-            await db.stories.update(storyId, storyUpdates);
-
-            // 2. Queue for sync (include base_updated_at for conflict detection)
-            await db.queueChange('story', storyId, 'update', storyUpdates, baseUpdatedAt);
-
-            // 3. Reload data
             await this.loadData();
         },
 
@@ -1643,27 +1653,17 @@ window.app = function() {
             );
         },
 
+        /**
+         * Perform story deletion (actual deletion logic).
+         * Delegates to entity-operations module.
+         * @param {string} storyId - Story UUID
+         * @param {object} story - Story object (unused, kept for API compatibility)
+         */
         async performStoryDeletion(storyId, story) {
-
-            // 0. Get current entity for conflict detection (capture base_updated_at)
-            const currentStory = await db.stories.get(storyId);
-            if (!currentStory) {
-                throw new Error(`Story ${storyId} not found`);
+            const result = await _performStoryDeletion(db, storyId);
+            if (!result.success) {
+                throw new Error(result.error);
             }
-            const baseUpdatedAt = currentStory.updated_at;
-
-            const now = new Date().toISOString();
-
-            // 1. Mark as archived in Dexie
-            await db.stories.update(storyId, {
-                is_archived: true,
-                updated_at: now
-            });
-
-            // 2. Queue for sync (send null data per spec - delete should not send entity data)
-            await db.queueChange('story', storyId, 'delete', null, baseUpdatedAt);
-
-            // 3. Reload data
             await this.loadData();
         },
 
@@ -1671,146 +1671,56 @@ window.app = function() {
 
         /**
          * Resolve account ID using hierarchy (spec: Account Resolution at Creation)
-         * 1. User-selected account
-         * 2. Story default account
-         * 3. Global default account
+         * Delegates to entity-operations module.
          * @param {string|null} selectedAccountId - User-selected account ID
          * @param {string|null} storyId - Story ID for this event
          * @returns {string|null} Resolved account ID
          */
         resolveAccountId(selectedAccountId, storyId) {
-            // 1. User-selected account
-            if (selectedAccountId) {
-                return selectedAccountId;
-            }
-
-            // 2. Story default account
-            if (storyId) {
-                const story = this.stories.find(s => s.id === storyId);
-                if (story && story.default_account_id) {
-                    return story.default_account_id;
-                }
-            }
-
-            // 3. Global default account
-            const defaultAccount = this.accounts.find(a => a.is_default && !a.is_archived);
-            return defaultAccount ? defaultAccount.id : null;
+            return _resolveAccountId(selectedAccountId, storyId, this.accounts, this.stories);
         },
 
         /**
          * Create new event (CRUD implementation)
+         * Delegates to entity-operations module.
          * @param {object} eventData - Event form data
          */
         async createEvent(eventData) {
-            const localId = generateUUID();
-            const now = new Date().toISOString();
-
-            // Resolve account using hierarchy
-            const accountId = this.resolveAccountId(
-                eventData.account_id,
-                eventData.story_id
+            const result = await _createEvent(
+                db, eventData, this.accounts, this.stories, this.settings, generateUUID
             );
-
-            if (!accountId) {
-                this.showNotification('Account required', 'error');
+            if (!result.success) {
+                this.showNotification(result.error, 'error');
                 return;
             }
-
-            // Get account for currency
-            const account = this.accounts.find(a => a.id === accountId);
-            const currency = account ? account.currency : this.settings.base_currency;
-
-            // Lookup rate_to_base from settings.rates
-            const rate_to_base = this.settings.rates && this.settings.rates[currency]
-                ? this.settings.rates[currency]
-                : 1.0;
-
-            const event = {
-                id: localId,
-                description: eventData.description,
-                amount: String(parseFloat(eventData.amount)),
-                event_date: eventData.event_date,
-                account_id: accountId,
-                currency: currency,
-                rate_to_base: rate_to_base,
-                story_id: eventData.story_id || null,
-                is_baseline: eventData.is_baseline || false,
-                is_hypothetical: eventData.is_hypothetical || false,
-                created_at: now,
-                updated_at: now
-            };
-
-            // 1. Optimistic Dexie write
-            await db.events.add(event);
-
-            // 2. Queue for sync
-            await db.queueChange('event', localId, 'create', event);
-
-            // 3. Reload data
             await this.loadData();
         },
 
         /**
          * Update existing event (CRUD implementation)
+         * Delegates to entity-operations module.
          * @param {string} eventId - Event UUID
          * @param {object} updates - Event updates
          */
         async updateEvent(eventId, updates) {
-            // 0. Get current entity for conflict detection (capture base_updated_at)
-            const currentEvent = await db.events.get(eventId);
-            if (!currentEvent) {
-                throw new Error(`Event ${eventId} not found`);
+            const result = await _updateEvent(db, eventId, updates, this.accounts);
+            if (!result.success) {
+                throw new Error(result.error);
             }
-            const baseUpdatedAt = currentEvent.updated_at;
-
-            const now = new Date().toISOString();
-
-            const eventUpdates = {
-                ...updates,
-                updated_at: now
-            };
-
-            // If account changed, update currency and rate
-            if (updates.account_id) {
-                const account = this.accounts.find(a => a.id === updates.account_id);
-                if (account) {
-                    eventUpdates.currency = account.currency;
-                    eventUpdates.rate_to_base = account.rate_to_base;
-                }
-            }
-
-            // 1. Optimistic Dexie update
-            await db.events.update(eventId, eventUpdates);
-
-            // 2. Queue for sync (include base_updated_at for conflict detection)
-            await db.queueChange('event', eventId, 'update', eventUpdates, baseUpdatedAt);
-
-            // 3. Reload data
             await this.loadData();
         },
 
         /**
          * Delete event (CRUD implementation)
+         * Delegates to entity-operations module.
          * @param {string} eventId - Event UUID
          */
         async deleteEvent(eventId) {
-            const event = this.events.find(e => e.id === eventId);
-            if (!event) return;
-
-            // 0. Get current entity for conflict detection (capture base_updated_at BEFORE delete)
-            const currentEvent = await db.events.get(eventId);
-            if (!currentEvent) {
-                throw new Error(`Event ${eventId} not found`);
+            const result = await _deleteEvent(db, eventId, this.events);
+            if (!result.success) {
+                // Silently return if event not found (same as original behavior)
+                return;
             }
-            const baseUpdatedAt = currentEvent.updated_at;
-
-            // 1. Mark as deleted in Dexie (or actually delete)
-            await db.events.delete(eventId);
-
-            // 2. Queue for sync (send null data per spec - delete should not send entity data)
-            await db.queueChange('event', eventId, 'delete', null, baseUpdatedAt);
-
-            // 3. Reload data
             await this.loadData();
         },
 
@@ -2276,287 +2186,76 @@ window.app = function() {
         },
 
         /**
-         * Normalize auto_sync_interval to seconds
-         *
-         * Handles migration from milliseconds (old format) to seconds (new format).
-         * Values > 86400 are assumed to be milliseconds and are converted.
-         *
-         * @param {number} value - Raw interval value from settings
-         * @returns {number} - Interval in seconds (0 = off)
+         * Normalize auto_sync_interval to seconds.
+         * @see modules/formatting.js for implementation
          */
         normalizeAutoSyncInterval(value) {
-            if (!value || value <= 0) return 0;
-            // If value > 86400 (1 day in seconds), assume it's milliseconds
-            if (value > 86400) {
-                return Math.round(value / 1000);
-            }
-            return value;
+            return _normalizeAutoSyncInterval(value);
         },
 
         /**
-         * Format sync interval for display
-         *
-         * @param {number} seconds - Interval in seconds
-         * @returns {string} - Formatted interval (e.g., "1m", "5m", "1h", "1d")
+         * Format sync interval for display.
+         * @see modules/formatting.js for implementation
          */
         formatSyncInterval(seconds) {
-            if (seconds === 60) return '1m';
-            if (seconds === 300) return '5m';
-            if (seconds === 3600) return '1h';
-            if (seconds === 86400) return '1d';
-            if (seconds >= 86400) return `${Math.round(seconds / 86400)}d`;
-            if (seconds >= 3600) return `${Math.round(seconds / 3600)}h`;
-            if (seconds >= 60) return `${Math.round(seconds / 60)}m`;
-            return `${seconds}s`;
+            return _formatSyncInterval(seconds);
         },
 
         /**
-         * Format countdown for display (mm:ss or ss)
-         *
-         * @param {number} seconds - Remaining seconds
-         * @returns {string} - Formatted countdown (e.g., "4:32" or "45")
+         * Format countdown for display (mm:ss or ss).
+         * @see modules/formatting.js for implementation
          */
         formatCountdown(seconds) {
-            if (seconds <= 0) return '';
-            if (seconds < 60) return `${seconds}`;
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
+            return _formatCountdown(seconds);
         },
 
         /**
-         * Format sync result for notification display
-         *
-         * Returns entity-aware message when single type, generic "changes" for mixed types.
-         * Examples: "Synced 3 events", "Synced 1 account", "Synced 5 changes"
-         *
-         * @param {Object} result - Sync result with applied count and appliedByType breakdown
-         * @param {number} result.applied - Total number of applied changes
-         * @param {Object} result.appliedByType - Breakdown by entity type (e.g., { event: 3, account: 1 })
-         * @returns {string} - Formatted message for notification
+         * Format sync result for notification display.
+         * @see modules/formatting.js for implementation
          */
         formatSyncResult(result) {
-            if (!result.applied || result.applied === 0) {
-                return 'Already in sync';
-            }
-
-            const typeLabels = {
-                event: { singular: 'event', plural: 'events' },
-                account: { singular: 'account', plural: 'accounts' },
-                story: { singular: 'story', plural: 'stories' },
-                recurring_rule: { singular: 'rule', plural: 'rules' },
-                settings: { singular: 'settings', plural: 'settings' }
-            };
-
-            const types = Object.keys(result.appliedByType || {});
-
-            // Single entity type: show specific label
-            if (types.length === 1) {
-                const type = types[0];
-                const count = result.appliedByType[type];
-                const labels = typeLabels[type] || { singular: type, plural: type + 's' };
-                const label = count === 1 ? labels.singular : labels.plural;
-                return `Synced ${count} ${label}`;
-            }
-
-            // Multiple types: use generic "changes"
-            return `Synced ${result.applied} changes`;
+            return _formatSyncResult(result);
         },
 
         /**
-         * Get stored next sync timestamp from localStorage
-         * @returns {number|null} - Timestamp in ms or null
-         */
-        getStoredNextSyncTime() {
-            try {
-                const stored = localStorage.getItem('chaptr_next_auto_sync');
-                return stored ? parseInt(stored, 10) : null;
-            } catch (e) {
-                return null;
-            }
-        },
-
-        /**
-         * Store next sync timestamp in localStorage
-         * @param {number} timestamp - Timestamp in ms
-         */
-        setStoredNextSyncTime(timestamp) {
-            try {
-                if (timestamp) {
-                    localStorage.setItem('chaptr_next_auto_sync', timestamp.toString());
-                } else {
-                    localStorage.removeItem('chaptr_next_auto_sync');
-                }
-            } catch (e) {
-                // localStorage not available
-            }
-        },
-
-        /**
-         * Start auto-sync timer
+         * Start auto-sync timer.
+         * Delegates to AutoSyncManager.
          *
-         * Sets up periodic sync based on settings.auto_sync_interval.
-         * If tab is hidden when timer fires, queues sync for when tab becomes visible.
-         * Persists next sync time to localStorage for countdown continuity across refreshes.
-         *
-         * @param {boolean} forceReset - If true, ignores stored time and starts fresh (use when interval changes)
+         * @param {boolean} forceReset - If true, ignores stored time and starts fresh
          */
         startAutoSyncTimer(forceReset = false) {
-            this.stopAutoSyncTimer(); // Clear any existing timer
-
-            const intervalSeconds = this.normalizeAutoSyncInterval(this.settings.auto_sync_interval);
-            if (!intervalSeconds || intervalSeconds <= 0) {
-                console.log('[CHAPTR] Auto-sync disabled');
-                this.autoSyncCountdown = '';
-                this.setStoredNextSyncTime(null);
-                return;
-            }
-
-            const intervalMs = intervalSeconds * 1000;
-            const now = Date.now();
-            let nextSyncTime;
-
-            if (forceReset) {
-                // User changed interval - start fresh
-                nextSyncTime = now + intervalMs;
-                this.setStoredNextSyncTime(nextSyncTime);
-                console.log(`[CHAPTR] Auto-sync interval changed to ${intervalSeconds}s`);
-            } else {
-                // Check if we have a stored next sync time that's still valid
-                nextSyncTime = this.getStoredNextSyncTime();
-
-                if (!nextSyncTime || nextSyncTime <= now) {
-                    // Set new next sync time
-                    nextSyncTime = now + intervalMs;
-                    this.setStoredNextSyncTime(nextSyncTime);
-                }
-            }
-
-            // Calculate initial delay (time until stored next sync)
-            const initialDelay = Math.max(0, nextSyncTime - now);
-
-            console.log(`[CHAPTR] Starting auto-sync timer: ${intervalSeconds}s (first in ${Math.round(initialDelay / 1000)}s)`);
-
-            // Start countdown display
-            this.startCountdownDisplay();
-
-            // Use setTimeout for first sync to honor stored time, then setInterval
-            const scheduleNextSync = async () => {
-                // Update next sync time for future
-                const newNextSyncTime = Date.now() + intervalMs;
-                this.setStoredNextSyncTime(newNextSyncTime);
-
-                // Skip if offline or already syncing
-                if (!navigator.onLine || this.isSyncing) {
-                    console.log('[CHAPTR] Auto-sync skipped (offline/syncing)');
-                    return;
-                }
-
-                // Check if there's anything to sync
-                const queueCount = await db.sync_queue.count();
-                if (queueCount === 0) {
-                    console.log('[CHAPTR] Auto-sync: nothing to sync');
-                    return;
-                }
-
-                // If tab is hidden, queue sync for when user returns
-                if (document.hidden) {
-                    this.autoSyncPending = true;
-                    console.log(`[CHAPTR] Auto-sync queued (${queueCount} pending, tab hidden)`);
-                    return;
-                }
-
-                console.log(`[CHAPTR] Auto-sync triggered (${queueCount} pending)`);
-                await this.triggerManualSync();
-            };
-
-            // First sync after initial delay
-            this.autoSyncTimerId = setTimeout(async () => {
-                await scheduleNextSync();
-
-                // Then set up regular interval
-                this.autoSyncTimerId = setInterval(scheduleNextSync, intervalMs);
-            }, initialDelay);
-        },
-
-        /**
-         * Start countdown display update interval
-         */
-        startCountdownDisplay() {
-            this.stopCountdownDisplay();
-
-            // Update countdown every second
-            this.countdownTimerId = setInterval(() => {
-                const nextSyncTime = this.getStoredNextSyncTime();
-                if (!nextSyncTime) {
-                    this.autoSyncCountdown = '';
-                    return;
-                }
-
-                const remainingMs = nextSyncTime - Date.now();
-                if (remainingMs <= 0) {
-                    this.autoSyncCountdown = '';
-                    return;
-                }
-
-                this.autoSyncCountdown = this.formatCountdown(Math.ceil(remainingMs / 1000));
-            }, 1000);
-
-            // Initial update
-            const nextSyncTime = this.getStoredNextSyncTime();
-            if (nextSyncTime) {
-                const remainingMs = nextSyncTime - Date.now();
-                this.autoSyncCountdown = remainingMs > 0 ? this.formatCountdown(Math.ceil(remainingMs / 1000)) : '';
+            if (this.autoSyncManager) {
+                this.autoSyncManager.start(this.settings.auto_sync_interval, forceReset);
             }
         },
 
         /**
-         * Stop countdown display update interval
-         */
-        stopCountdownDisplay() {
-            if (this.countdownTimerId) {
-                clearInterval(this.countdownTimerId);
-                this.countdownTimerId = null;
-            }
-            this.autoSyncCountdown = '';
-        },
-
-        /**
-         * Stop auto-sync timer
+         * Stop auto-sync timer.
+         * Delegates to AutoSyncManager.
          */
         stopAutoSyncTimer() {
-            if (this.autoSyncTimerId) {
-                clearInterval(this.autoSyncTimerId);
-                clearTimeout(this.autoSyncTimerId); // Could be either
-                this.autoSyncTimerId = null;
-                console.log('[CHAPTR] Auto-sync timer stopped');
+            if (this.autoSyncManager) {
+                this.autoSyncManager.stop();
             }
-            this.stopCountdownDisplay();
         },
 
         /**
-         * Handle visibility change for auto-sync
-         *
-         * When tab becomes visible and sync was pending, triggers sync immediately.
+         * Handle visibility change for auto-sync.
+         * Delegates to AutoSyncManager.
          */
         async handleAutoSyncVisibilityChange() {
-            if (!document.hidden && this.autoSyncPending) {
-                console.log('[CHAPTR] Tab visible - triggering pending auto-sync');
-                this.autoSyncPending = false;
-                await this.triggerManualSync();
+            if (this.autoSyncManager) {
+                await this.autoSyncManager.handleVisibilityChange();
             }
         },
 
         /**
-         * Reset auto-sync timer after manual sync
-         *
-         * Called after a successful sync to reset the countdown.
+         * Reset auto-sync timer after manual sync.
+         * Delegates to AutoSyncManager.
          */
         resetAutoSyncTimer() {
-            const intervalSeconds = this.normalizeAutoSyncInterval(this.settings.auto_sync_interval);
-            if (intervalSeconds > 0) {
-                const nextSyncTime = Date.now() + (intervalSeconds * 1000);
-                this.setStoredNextSyncTime(nextSyncTime);
+            if (this.autoSyncManager) {
+                this.autoSyncManager.resetAfterSync(this.settings.auto_sync_interval);
             }
         },
 
@@ -2902,10 +2601,11 @@ window.app = function() {
             // Calculate drift if actual balance entered
             if (this.balanceForm.actual_balance !== null && this.balanceForm.actual_balance !== '') {
                 // Apply sign based on balanceIsNegative toggle
-                const signedActualBalance = this.balanceForm.balanceIsNegative
-                    ? -Math.abs(parseFloat(this.balanceForm.actual_balance))
-                    : Math.abs(parseFloat(this.balanceForm.actual_balance));
-                this.balanceForm.drift = signedActualBalance - projectedBalance;
+                const signedActualBalance = applyBalanceSign(
+                    this.balanceForm.actual_balance,
+                    this.balanceForm.balanceIsNegative
+                );
+                this.balanceForm.drift = calculateDrift(projectedBalance, signedActualBalance);
             } else {
                 this.balanceForm.drift = null;
             }
@@ -2919,43 +2619,7 @@ window.app = function() {
          */
         calculateAccountBalance(accountId, date) {
             const account = this.accounts.find(a => a.id === accountId);
-            if (!account) return 0;
-
-            // If balance has been manually updated, start from that snapshot
-            // and only include events AFTER the update
-            if (account.balance_updated_at) {
-                const balanceDate = account.balance_updated_at.split('T')[0]; // YYYY-MM-DD
-
-                let balance = parseFloat(account.current_balance || 0);
-
-                // Add events that occurred AFTER the last balance update
-                const accountEvents = this.events.filter(e =>
-                    e.account_id === accountId &&
-                    e.event_date > balanceDate &&
-                    e.event_date <= date &&
-                    !e.is_opening_balance // Never include opening balance when starting from manual update
-                );
-
-                for (const event of accountEvents) {
-                    balance += event.amount;
-                }
-
-                return balance;
-            }
-
-            // No manual update yet - calculate from opening balance event
-            let balance = 0;
-
-            const accountEvents = this.events.filter(e =>
-                e.account_id === accountId &&
-                e.event_date <= date
-            );
-
-            for (const event of accountEvents) {
-                balance += event.amount;
-            }
-
-            return balance;
+            return calculateAccountBalanceAtDate(account, this.events, date);
         },
 
         /**
@@ -3060,9 +2724,10 @@ window.app = function() {
                 // Update account balance and set pending_reconciliation flag
                 // Server will see this flag during reconciliation phase and create authoritative adjustment
                 // Apply sign based on balanceIsNegative toggle
-                const signedActualBalance = this.balanceForm.balanceIsNegative
-                    ? -Math.abs(parseFloat(this.balanceForm.actual_balance))
-                    : Math.abs(parseFloat(this.balanceForm.actual_balance));
+                const signedActualBalance = applyBalanceSign(
+                    this.balanceForm.actual_balance,
+                    this.balanceForm.balanceIsNegative
+                );
 
                 const updates = {
                     current_balance: signedActualBalance,
@@ -3813,61 +3478,32 @@ window.app = function() {
         },
 
         /**
-         * Format datetime for conflict display
-         * @param {string} dateTimeStr - ISO datetime string
-         * @returns {string} Formatted datetime (e.g., "Jan 15, 14:30")
+         * Format datetime for conflict display.
+         * @see modules/conflict-utils.js for implementation
          */
         formatDateTime(dateTimeStr) {
-            if (!dateTimeStr) return '';
-            const date = new Date(dateTimeStr);
-            if (isNaN(date.getTime())) return '';
-
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = months[date.getMonth()];
-            const day = date.getDate();
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-
-            return `${month} ${day}, ${hours}:${minutes}`;
+            return formatConflictDateTime(dateTimeStr);
         },
 
         /**
-         * Determine if version is newer based on updated_at timestamp
-         * @param {object} version - Version object with updated_at field
-         * @param {object} otherVersion - Other version to compare against
-         * @returns {boolean} True if this version is newer
+         * Determine if version is newer based on updated_at timestamp.
+         * @see modules/conflict-utils.js for implementation
          */
         isNewerVersion(version, otherVersion) {
-            if (!version?.updated_at || !otherVersion?.updated_at) return false;
-            const versionTime = new Date(version.updated_at).getTime();
-            const otherTime = new Date(otherVersion.updated_at).getTime();
-            return versionTime > otherTime;
+            return _isNewerVersion(version, otherVersion);
         },
 
         /**
-         * Check if a specific field differs between conflict versions
-         * Used for inline highlighting in conflict modals
-         * @param {string} fieldKey - The field name to compare
-         * @returns {boolean} True if values differ
+         * Check if a specific field differs between conflict versions.
+         * @see modules/conflict-utils.js for implementation
          */
         isConflictFieldDifferent(fieldKey) {
             if (!this.currentConflict) return false;
-            const server = this.currentConflict.server_version;
-            const client = this.currentConflict.client_version;
-            if (!server || !client) return false;
-
-            const serverVal = server[fieldKey];
-            const clientVal = client[fieldKey];
-
-            // Handle null/undefined equivalence
-            const isNullish1 = serverVal === null || serverVal === undefined;
-            const isNullish2 = clientVal === null || clientVal === undefined;
-            if (isNullish1 && isNullish2) return false;
-            if (isNullish1 !== isNullish2) return true;
-
-            // Compare values
-            return serverVal !== clientVal;
+            return isFieldDifferent(
+                this.currentConflict.server_version,
+                this.currentConflict.client_version,
+                fieldKey
+            );
         },
 
         /**
@@ -3878,25 +3514,11 @@ window.app = function() {
         },
 
         /**
-         * Get CSS class for account balance (positive/negative)
-         *
-         * For credit cards, negative balance is normal (money owed),
-         * so we only show 'negative' if over the credit limit.
-         *
-         * @param {Object} account - Account object with current_balance, account_type, credit_limit
-         * @returns {string} 'positive' or 'negative'
+         * Get CSS class for account balance (positive/negative).
+         * @see modules/formatting.js for implementation
          */
         getBalanceClass(account) {
-            const balance = parseFloat(account.current_balance || 0);
-
-            if (account.account_type === 'credit_card') {
-                // Credit card: negative only if exceeding credit limit
-                const limit = parseFloat(account.credit_limit || 0);
-                return balance < -limit ? 'negative' : 'positive';
-            }
-
-            // Checking/savings: standard positive/negative logic
-            return balance >= 0 ? 'positive' : 'negative';
+            return _getBalanceClass(account);
         },
 
         /**
@@ -3982,42 +3604,14 @@ window.app = function() {
                         ? selectedVersion.updated_at  // Keep server's timestamp
                         : new Date().toISOString();   // Fresh timestamp for client version
 
-                    // Ensure object has 'id' field (Dexie primary key)
-                    // Backend conflicts use MongoDB _id, need to convert
-                    // Also serialize MongoDB types (Decimal128, ObjectId) to plain JS values
-                    const entityData = {
-                        ...selectedVersion,
-                        id: selectedVersion.id || conflict.entity_id,  // Use entity_id as fallback
-                        updated_at: resolvedTimestamp
-                    };
-
-                    // Entity-specific field serialization
-                    if (conflict.entity_type === 'event') {
-                        // Convert MongoDB Decimal128 to number for events
-                        entityData.amount = parseFloat(selectedVersion.amount);
-                        entityData.rate_to_base = parseFloat(selectedVersion.rate_to_base || 1.0);
-                        // Ensure IDs are strings (convert MongoDB ObjectId if needed)
-                        entityData.account_id = selectedVersion.account_id ? String(selectedVersion.account_id) : null;
-                        entityData.story_id = selectedVersion.story_id ? String(selectedVersion.story_id) : null;
-                        entityData.recurring_rule_id = selectedVersion.recurring_rule_id ? String(selectedVersion.recurring_rule_id) : null;
-                    } else if (conflict.entity_type === 'account') {
-                        // Convert MongoDB Decimal128 to number for accounts
-                        entityData.current_balance = parseFloat(selectedVersion.current_balance);
-                        entityData.rate_to_base = parseFloat(selectedVersion.rate_to_base || 1.0);
-                    } else if (conflict.entity_type === 'story') {
-                        // Stories may have funding_amount and goal_amount as Decimal128
-                        if (selectedVersion.funding_amount) {
-                            entityData.funding_amount = parseFloat(selectedVersion.funding_amount);
-                        }
-                        if (selectedVersion.goal_amount) {
-                            entityData.goal_amount = parseFloat(selectedVersion.goal_amount);
-                        }
-                        // Ensure IDs are strings
-                        entityData.default_account_id = selectedVersion.default_account_id ? String(selectedVersion.default_account_id) : null;
-                    }
-
-                    // Remove MongoDB _id field if present (not needed in Dexie)
-                    delete entityData._id;
+                    // Serialize MongoDB types (Decimal128, ObjectId) to plain JS values
+                    // and ensure proper id/timestamp fields for Dexie storage
+                    const entityData = serializeForConflictResolution(
+                        conflict.entity_type,
+                        selectedVersion,
+                        conflict.entity_id,
+                        resolvedTimestamp
+                    );
 
                     // Update entity in appropriate Dexie table
                     if (conflict.entity_type === 'event') {

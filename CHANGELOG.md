@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Refactored app.js into focused modules for better testability and organization (4,559 → 4,153 lines, ~9% reduction)
+- New modules: formatting.js, balance-utils.js, auto-sync.js, conflict-utils.js, entity-operations.js
+- Entity CRUD operations extracted with dependency injection pattern enabling isolated unit testing
+- AutoSyncManager class replaces inline timer logic with callback-based integration
+- Tests now import real module functions instead of duplicating logic in mocks
+
+### Added
+- entity-operations.js: Pure CRUD functions for events/stories with mocked db testing (286 lines)
+- balance-utils.js: Balance calculation and drift detection helpers (199 lines)
+- conflict-utils.js: MongoDB type serialization and conflict field comparison (213 lines)
+- auto-sync.js: Timer lifecycle management with localStorage persistence (323 lines)
+- formatting.js: Formatting utilities for sync intervals, countdowns, balance display (169 lines)
+- 28 new entity operations unit tests covering CRUD with mock databases
+- 46 balance-utils tests, 75 conflict-utils tests (existing from previous sessions)
+
 ## [0.10.0] - 2026-01-20
 
 ### Added

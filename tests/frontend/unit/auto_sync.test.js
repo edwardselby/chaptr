@@ -9,10 +9,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+    normalizeAutoSyncInterval,
+    formatSyncInterval,
+    formatCountdown
+} from '../../../static/js/modules/formatting.js';
+import {
+    AutoSyncManager,
+    getStoredNextSyncTime,
+    setStoredNextSyncTime
+} from '../../../static/js/modules/auto-sync.js';
 
 /**
  * Mock Alpine component with auto-sync functionality
  * Simulates the relevant parts of the app.js Alpine component
+ *
+ * NOTE: This mock delegates formatting functions to the real implementations
+ * from formatting.js. Only state management and timer behavior is mocked.
  */
 class MockAutoSyncComponent {
     constructor() {
@@ -25,44 +38,6 @@ class MockAutoSyncComponent {
         this.logs = [];
         this.mockTabHidden = false;  // Simulates document.hidden
         this.mockNow = null;         // Mock current time for testing
-    }
-
-    /**
-     * Normalize auto_sync_interval to seconds
-     * Handles migration from milliseconds (old format) to seconds (new format)
-     */
-    normalizeAutoSyncInterval(value) {
-        if (!value || value <= 0) return 0;
-        // If value > 86400 (1 day in seconds), assume it's milliseconds
-        if (value > 86400) {
-            return Math.round(value / 1000);
-        }
-        return value;
-    }
-
-    /**
-     * Format sync interval for display
-     */
-    formatSyncInterval(seconds) {
-        if (seconds === 60) return '1m';
-        if (seconds === 300) return '5m';
-        if (seconds === 3600) return '1h';
-        if (seconds === 86400) return '1d';
-        if (seconds >= 86400) return `${Math.round(seconds / 86400)}d`;
-        if (seconds >= 3600) return `${Math.round(seconds / 3600)}h`;
-        if (seconds >= 60) return `${Math.round(seconds / 60)}m`;
-        return `${seconds}s`;
-    }
-
-    /**
-     * Format countdown for display (mm:ss or ss)
-     */
-    formatCountdown(seconds) {
-        if (seconds <= 0) return '';
-        if (seconds < 60) return `${seconds}`;
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
     /**
@@ -85,7 +60,7 @@ class MockAutoSyncComponent {
     startAutoSyncTimer(forceReset = false) {
         this.stopAutoSyncTimer();
 
-        const intervalSeconds = this.normalizeAutoSyncInterval(this.settings.auto_sync_interval);
+        const intervalSeconds = normalizeAutoSyncInterval(this.settings.auto_sync_interval);
         if (!intervalSeconds || intervalSeconds <= 0) {
             this.logs.push('[CHAPTR] Auto-sync disabled');
             this.autoSyncCountdown = '';
@@ -183,108 +158,98 @@ class MockAutoSyncComponent {
     mockOffline = false;
 }
 
+// ============================================================================
+// Pure Function Tests - Testing Real Implementations
+// ============================================================================
+
 describe('Auto-Sync: normalizeAutoSyncInterval', () => {
-    let component;
-
-    beforeEach(() => {
-        component = new MockAutoSyncComponent();
-    });
-
     it('should return 0 for null/undefined/0 values', () => {
-        expect(component.normalizeAutoSyncInterval(null)).toBe(0);
-        expect(component.normalizeAutoSyncInterval(undefined)).toBe(0);
-        expect(component.normalizeAutoSyncInterval(0)).toBe(0);
-        expect(component.normalizeAutoSyncInterval(-1)).toBe(0);
+        expect(normalizeAutoSyncInterval(null)).toBe(0);
+        expect(normalizeAutoSyncInterval(undefined)).toBe(0);
+        expect(normalizeAutoSyncInterval(0)).toBe(0);
+        expect(normalizeAutoSyncInterval(-1)).toBe(0);
     });
 
     it('should pass through values <= 86400 (seconds)', () => {
-        expect(component.normalizeAutoSyncInterval(300)).toBe(300);      // 5 minutes
-        expect(component.normalizeAutoSyncInterval(3600)).toBe(3600);    // 1 hour
-        expect(component.normalizeAutoSyncInterval(86400)).toBe(86400);  // 1 day
+        expect(normalizeAutoSyncInterval(300)).toBe(300);      // 5 minutes
+        expect(normalizeAutoSyncInterval(3600)).toBe(3600);    // 1 hour
+        expect(normalizeAutoSyncInterval(86400)).toBe(86400);  // 1 day
     });
 
     it('should convert values > 86400 (milliseconds) to seconds', () => {
-        expect(component.normalizeAutoSyncInterval(300000)).toBe(300);      // 5 min in ms -> 5 min in s
-        expect(component.normalizeAutoSyncInterval(3600000)).toBe(3600);    // 1 hr in ms -> 1 hr in s
-        expect(component.normalizeAutoSyncInterval(86400000)).toBe(86400);  // 1 day in ms -> 1 day in s
+        expect(normalizeAutoSyncInterval(300000)).toBe(300);      // 5 min in ms -> 5 min in s
+        expect(normalizeAutoSyncInterval(3600000)).toBe(3600);    // 1 hr in ms -> 1 hr in s
+        expect(normalizeAutoSyncInterval(86400000)).toBe(86400);  // 1 day in ms -> 1 day in s
     });
 });
 
 describe('Auto-Sync: formatSyncInterval', () => {
-    let component;
-
-    beforeEach(() => {
-        component = new MockAutoSyncComponent();
-    });
-
     it('should format 60 seconds as "1m"', () => {
-        expect(component.formatSyncInterval(60)).toBe('1m');
+        expect(formatSyncInterval(60)).toBe('1m');
     });
 
     it('should format 300 seconds as "5m"', () => {
-        expect(component.formatSyncInterval(300)).toBe('5m');
+        expect(formatSyncInterval(300)).toBe('5m');
     });
 
     it('should format 3600 seconds as "1h"', () => {
-        expect(component.formatSyncInterval(3600)).toBe('1h');
+        expect(formatSyncInterval(3600)).toBe('1h');
     });
 
     it('should format 86400 seconds as "1d"', () => {
-        expect(component.formatSyncInterval(86400)).toBe('1d');
+        expect(formatSyncInterval(86400)).toBe('1d');
     });
 
     it('should format multi-day intervals', () => {
-        expect(component.formatSyncInterval(172800)).toBe('2d');  // 2 days
+        expect(formatSyncInterval(172800)).toBe('2d');  // 2 days
     });
 
     it('should format multi-hour intervals', () => {
-        expect(component.formatSyncInterval(7200)).toBe('2h');  // 2 hours
+        expect(formatSyncInterval(7200)).toBe('2h');  // 2 hours
     });
 
     it('should format multi-minute intervals', () => {
-        expect(component.formatSyncInterval(600)).toBe('10m');  // 10 minutes
+        expect(formatSyncInterval(600)).toBe('10m');  // 10 minutes
     });
 
     it('should format small intervals in seconds', () => {
-        expect(component.formatSyncInterval(30)).toBe('30s');
+        expect(formatSyncInterval(30)).toBe('30s');
     });
 });
 
 describe('Auto-Sync: formatCountdown', () => {
-    let component;
-
-    beforeEach(() => {
-        component = new MockAutoSyncComponent();
-    });
-
     it('should return empty string for 0 or negative values', () => {
-        expect(component.formatCountdown(0)).toBe('');
-        expect(component.formatCountdown(-5)).toBe('');
+        expect(formatCountdown(0)).toBe('');
+        expect(formatCountdown(-5)).toBe('');
     });
 
     it('should format seconds under 60 as just the number', () => {
-        expect(component.formatCountdown(45)).toBe('45');
-        expect(component.formatCountdown(5)).toBe('5');
-        expect(component.formatCountdown(59)).toBe('59');
+        expect(formatCountdown(45)).toBe('45');
+        expect(formatCountdown(5)).toBe('5');
+        expect(formatCountdown(59)).toBe('59');
     });
 
     it('should format 60+ seconds as mm:ss', () => {
-        expect(component.formatCountdown(60)).toBe('1:00');
-        expect(component.formatCountdown(90)).toBe('1:30');
-        expect(component.formatCountdown(125)).toBe('2:05');
+        expect(formatCountdown(60)).toBe('1:00');
+        expect(formatCountdown(90)).toBe('1:30');
+        expect(formatCountdown(125)).toBe('2:05');
     });
 
     it('should pad seconds with leading zero', () => {
-        expect(component.formatCountdown(61)).toBe('1:01');
-        expect(component.formatCountdown(305)).toBe('5:05');
+        expect(formatCountdown(61)).toBe('1:01');
+        expect(formatCountdown(305)).toBe('5:05');
     });
 
     it('should handle longer durations', () => {
-        expect(component.formatCountdown(300)).toBe('5:00');
-        expect(component.formatCountdown(3599)).toBe('59:59');
-        expect(component.formatCountdown(3600)).toBe('60:00');
+        expect(formatCountdown(300)).toBe('5:00');
+        expect(formatCountdown(3599)).toBe('59:59');
+        expect(formatCountdown(3600)).toBe('60:00');
     });
 });
+
+// ============================================================================
+// Timer Integration Tests - Using Mock Component with Real Functions
+// ============================================================================
 
 describe('Auto-Sync: Timer Lifecycle', () => {
     let component;
@@ -641,5 +606,196 @@ describe('Auto-Sync: Force Reset on Interval Change', () => {
         // Should create a new stored time since old one expired
         const expectedNextSync = component.mockNow + 300000;
         expect(component.getStoredNextSyncTime()).toBe(expectedNextSync);
+    });
+});
+
+
+// ============================================================================
+// AutoSyncManager Tests - Testing Real Implementation
+// ============================================================================
+
+describe('AutoSyncManager', () => {
+    let manager;
+    let callbacks;
+    let logs;
+    let countdownUpdates;
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        logs = [];
+        countdownUpdates = [];
+
+        // Clear localStorage
+        setStoredNextSyncTime(null);
+
+        callbacks = {
+            onCountdownUpdate: (countdown) => { countdownUpdates.push(countdown); },
+            onSync: vi.fn().mockResolvedValue(undefined),
+            onLog: (msg) => { logs.push(msg); },
+            getQueueCount: vi.fn().mockResolvedValue(5),
+            isOnline: vi.fn().mockReturnValue(true),
+            isSyncing: vi.fn().mockReturnValue(false),
+            isHidden: vi.fn().mockReturnValue(false)
+        };
+
+        manager = new AutoSyncManager(callbacks);
+    });
+
+    afterEach(() => {
+        manager.stop();
+        vi.useRealTimers();
+        setStoredNextSyncTime(null);
+    });
+
+    describe('start()', () => {
+        it('should disable when interval is 0', () => {
+            manager.start(0);
+
+            expect(logs).toContain('[CHAPTR] Auto-sync disabled');
+            expect(getStoredNextSyncTime()).toBeNull();
+        });
+
+        it('should start timer when interval > 0', () => {
+            manager.start(300); // 5 minutes
+
+            expect(logs.some(l => l.includes('Starting auto-sync timer: 300s'))).toBe(true);
+        });
+
+        it('should normalize millisecond values to seconds', () => {
+            manager.start(300000); // 300000ms = 300s
+
+            expect(logs.some(l => l.includes('Starting auto-sync timer: 300s'))).toBe(true);
+        });
+
+        it('should force reset countdown when forceReset is true', () => {
+            // Set a stored time
+            const storedTime = Date.now() + 100000;
+            setStoredNextSyncTime(storedTime);
+
+            manager.start(300, true); // Force reset
+
+            expect(logs.some(l => l.includes('interval changed to 300s'))).toBe(true);
+        });
+
+        it('should use stored time when forceReset is false', () => {
+            const storedTime = Date.now() + 100000; // 100 seconds from now
+            setStoredNextSyncTime(storedTime);
+
+            manager.start(300, false);
+
+            // Should show countdown based on stored time
+            expect(logs.some(l => l.includes('first in 100s'))).toBe(true);
+        });
+    });
+
+    describe('stop()', () => {
+        it('should clear timer and log message', () => {
+            manager.start(300);
+            logs = []; // Clear logs
+
+            manager.stop();
+
+            expect(logs).toContain('[CHAPTR] Auto-sync timer stopped');
+        });
+
+        it('should clear countdown display', () => {
+            manager.start(300);
+            countdownUpdates = [];
+
+            manager.stop();
+
+            expect(countdownUpdates).toContain('');
+        });
+    });
+
+    describe('handleVisibilityChange()', () => {
+        it('should trigger sync when tab becomes visible and sync was pending', async () => {
+            manager.start(300);
+            manager.syncPending = true;
+            callbacks.isHidden.mockReturnValue(false);
+
+            await manager.handleVisibilityChange();
+
+            expect(callbacks.onSync).toHaveBeenCalled();
+            expect(manager.syncPending).toBe(false);
+            expect(logs).toContain('[CHAPTR] Tab visible - triggering pending auto-sync');
+        });
+
+        it('should not trigger sync when nothing pending', async () => {
+            manager.start(300);
+            manager.syncPending = false;
+            callbacks.isHidden.mockReturnValue(false);
+
+            await manager.handleVisibilityChange();
+
+            expect(callbacks.onSync).not.toHaveBeenCalled();
+        });
+
+        it('should not trigger sync when tab is still hidden', async () => {
+            manager.start(300);
+            manager.syncPending = true;
+            callbacks.isHidden.mockReturnValue(true);
+
+            await manager.handleVisibilityChange();
+
+            expect(callbacks.onSync).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('resetAfterSync()', () => {
+        it('should update stored next sync time', () => {
+            const before = Date.now();
+            manager.resetAfterSync(300);
+            const after = Date.now();
+
+            const storedTime = getStoredNextSyncTime();
+            expect(storedTime).toBeGreaterThanOrEqual(before + 300000);
+            expect(storedTime).toBeLessThanOrEqual(after + 300000);
+        });
+
+        it('should not update when interval is 0', () => {
+            setStoredNextSyncTime(null);
+            manager.resetAfterSync(0);
+
+            expect(getStoredNextSyncTime()).toBeNull();
+        });
+    });
+
+    describe('isPending() and clearPending()', () => {
+        it('should track pending state', () => {
+            expect(manager.isPending()).toBe(false);
+
+            manager.syncPending = true;
+            expect(manager.isPending()).toBe(true);
+
+            manager.clearPending();
+            expect(manager.isPending()).toBe(false);
+        });
+    });
+});
+
+describe('getStoredNextSyncTime / setStoredNextSyncTime', () => {
+    afterEach(() => {
+        setStoredNextSyncTime(null);
+    });
+
+    it('should store and retrieve timestamp', () => {
+        const timestamp = 1234567890;
+        setStoredNextSyncTime(timestamp);
+
+        expect(getStoredNextSyncTime()).toBe(timestamp);
+    });
+
+    it('should return null when not set', () => {
+        setStoredNextSyncTime(null);
+
+        expect(getStoredNextSyncTime()).toBeNull();
+    });
+
+    it('should clear storage when set to null', () => {
+        setStoredNextSyncTime(1234567890);
+        setStoredNextSyncTime(null);
+
+        expect(getStoredNextSyncTime()).toBeNull();
     });
 });

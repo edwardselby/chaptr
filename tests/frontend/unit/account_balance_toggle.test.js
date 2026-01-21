@@ -9,66 +9,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-/**
- * Pure function: Get CSS class for account balance
- * Mirrors the getBalanceClass method in app.js
- *
- * @param {Object} account - Account with current_balance, account_type, credit_limit
- * @returns {string} 'positive' or 'negative'
- */
-function getBalanceClass(account) {
-    const balance = parseFloat(account.current_balance || 0);
-
-    if (account.account_type === 'credit_card') {
-        // Credit card: negative only if exceeding credit limit
-        const limit = parseFloat(account.credit_limit || 0);
-        return balance < -limit ? 'negative' : 'positive';
-    }
-
-    // Checking/savings: standard positive/negative logic
-    return balance >= 0 ? 'positive' : 'negative';
-}
-
-/**
- * Pure function: Apply sign to balance based on toggle state
- * Mirrors the logic in createAccount/updateAccount in app.js
- *
- * @param {number} absoluteBalance - Positive balance value from input
- * @param {boolean} isNegative - Whether the toggle is set to negative
- * @returns {number} Signed balance value
- */
-function applyBalanceSign(absoluteBalance, isNegative) {
-    return isNegative
-        ? -Math.abs(parseFloat(absoluteBalance || 0))
-        : Math.abs(parseFloat(absoluteBalance || 0));
-}
-
-/**
- * Pure function: Get default sign for account type
- * Mirrors the smart default logic in account type @change handler
- *
- * @param {string} accountType - 'checking', 'savings', or 'credit_card'
- * @returns {boolean} True if default should be negative
- */
-function getDefaultSignForAccountType(accountType) {
-    return accountType === 'credit_card';
-}
-
-/**
- * Pure function: Parse existing balance for form editing
- * Mirrors the logic in viewAccountDetails in app.js
- *
- * @param {number|string} balance - Current balance (may be negative)
- * @returns {Object} { absoluteValue, isNegative }
- */
-function parseBalanceForForm(balance) {
-    const numericBalance = parseFloat(balance || 0);
-    return {
-        absoluteValue: Math.abs(numericBalance),
-        isNegative: numericBalance < 0
-    };
-}
+import {
+    getBalanceClass,
+    applyBalanceSign,
+    getDefaultSignForAccountType,
+    parseBalanceForForm
+} from '../../../static/js/modules/formatting.js';
 
 
 // ============================================================================
