@@ -289,7 +289,8 @@ def get_precache_files() -> list[str]:
         list[str]: List of file paths (e.g., ["static/index.html", "static/js/app.js"])
     """
     static_dir = Path("static")
-    js_files = sorted([str(p) for p in static_dir.glob("js/*.js")])
+    # Use **/*.js to include all JS files including those in subdirectories (e.g., modules/)
+    js_files = sorted([str(p) for p in static_dir.glob("js/**/*.js")])
 
     return [
         "static/index.html",
@@ -438,6 +439,37 @@ registerRoute(
             }})
         ]
     }})
+);
+
+// ==================== NAVIGATION REQUESTS: OFFLINE FALLBACK ====================
+
+/**
+ * Handle navigation requests (page loads/refreshes)
+ *
+ * This ensures the app loads offline by serving the cached index.html
+ * for any navigation request. The SPA's client-side router handles routing.
+ *
+ * Strategy: Network-First with precache fallback
+ * - Try network first (for fresh content when online)
+ * - Fall back to precached index.html when offline
+ */
+registerRoute(
+    ({{ request }}) => request.mode === 'navigate',
+    async ({{ request }}) => {{
+        try {{
+            // Try network first
+            return await fetch(request);
+        }} catch (error) {{
+            // Network failed (offline) - serve cached index.html
+            console.log('[SW] Navigation request failed, serving cached index.html');
+            const cache = await caches.match(workbox.precaching.getCacheKeyForURL('/static/index.html'));
+            if (cache) {{
+                return cache;
+            }}
+            // Last resort: try to match the exact precache entry
+            return caches.match('/static/index.html');
+        }}
+    }}
 );
 
 // ==================== BACKGROUND SYNC ====================

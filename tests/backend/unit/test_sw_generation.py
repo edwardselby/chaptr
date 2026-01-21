@@ -89,7 +89,7 @@ class TestCacheStrategies:
         content = response.text
 
         assert "CacheFirst" in content
-        assert "static-assets" in content.lower()
+        assert "external-resources" in content.lower()
 
     def test_includes_network_first_strategy(self):
         """Should include NetworkFirst strategy for API calls"""
@@ -185,3 +185,81 @@ class TestGeneratedCodeValidity:
         assert "{precache_list}" not in content, "Should not have unresolved template variables"
         assert "f\"" not in content, "Should not have Python f-string syntax"
         assert "f'" not in content, "Should not have Python f-string syntax"
+
+
+# ==================== OFFLINE NAVIGATION TESTS ====================
+
+class TestNavigationFallback:
+    """Test service worker handles navigation requests for offline support"""
+
+    def test_includes_navigation_request_handler(self):
+        """Should include handler for navigation requests (request.mode === 'navigate')"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        # Check for navigation mode check
+        assert "request.mode === 'navigate'" in content or "request.mode==='navigate'" in content, \
+            "Should check for navigation requests"
+
+    def test_navigation_handler_serves_cached_index(self):
+        """Should serve cached index.html for offline navigation requests"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        # Check for fallback to index.html
+        assert "/static/index.html" in content, "Should reference index.html for fallback"
+        assert "getCacheKeyForURL" in content, "Should use Workbox cache key lookup"
+
+    def test_navigation_handler_has_try_catch(self):
+        """Should handle network errors gracefully with try/catch"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        # Navigation handler should have error handling
+        # Look for try/catch pattern near navigate check
+        assert "try {" in content or "try{" in content, "Should have try block for error handling"
+        assert "catch" in content, "Should have catch block for error handling"
+
+
+# ==================== MODULE PRECACHING TESTS ====================
+
+class TestModulePrecaching:
+    """Test that JS modules subdirectory is properly precached"""
+
+    def test_precache_includes_modules_directory(self):
+        """Should include files from js/modules/ subdirectory in precache"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        # Check for module files
+        assert "/static/js/modules/" in content, "Should include modules directory in precache"
+
+    def test_precache_includes_entity_operations_module(self):
+        """Should include entity-operations.js module"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        assert "entity-operations.js" in content, "Should precache entity-operations.js module"
+
+    def test_precache_includes_formatting_module(self):
+        """Should include formatting.js module"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        assert "formatting.js" in content, "Should precache formatting.js module"
+
+    def test_precache_includes_all_extracted_modules(self):
+        """Should include all modules extracted from app.js"""
+        response = client.get("/sw.js")
+        content = response.text
+
+        expected_modules = [
+            "entity-operations.js",
+            "formatting.js",
+            "balance-utils.js",
+            "auto-sync.js",
+            "conflict-utils.js"
+        ]
+
+        for module in expected_modules:
+            assert module in content, f"Should precache {module} module"

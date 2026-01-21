@@ -62,9 +62,10 @@ class TestServiceWorkerGeneration:
         assert hash_value == "00000000"
 
     def test_automatic_js_file_discovery(self):
-        """Test that glob pattern finds all JavaScript files."""
+        """Test that glob pattern finds all JavaScript files including subdirectories."""
         static_dir = Path("static")
-        js_files = sorted([str(p) for p in static_dir.glob("js/*.js")])
+        # Use recursive glob to match actual SW generation behavior
+        js_files = sorted([str(p) for p in static_dir.glob("js/**/*.js")])
 
         # Should find at least the core files
         expected_files = [
@@ -81,10 +82,28 @@ class TestServiceWorkerGeneration:
         for file in js_files:
             assert file.endswith('.js'), f"Non-JS file found: {file}"
 
+    def test_recursive_js_file_discovery_includes_modules(self):
+        """Test that recursive glob finds files in js/modules/ subdirectory."""
+        static_dir = Path("static")
+        js_files = sorted([str(p) for p in static_dir.glob("js/**/*.js")])
+
+        # Should find module files in subdirectory
+        expected_modules = [
+            "static/js/modules/entity-operations.js",
+            "static/js/modules/formatting.js",
+            "static/js/modules/balance-utils.js",
+            "static/js/modules/auto-sync.js",
+            "static/js/modules/conflict-utils.js"
+        ]
+
+        for expected in expected_modules:
+            assert expected in js_files, f"Expected {expected} to be discovered with recursive glob"
+
     def test_precache_files_includes_all_js(self):
         """Test that precache list includes all discovered JS files."""
         static_dir = Path("static")
-        js_files = sorted([str(p) for p in static_dir.glob("js/*.js")])
+        # Use recursive glob to match actual SW generation behavior
+        js_files = sorted([str(p) for p in static_dir.glob("js/**/*.js")])
 
         precache_files = [
             "static/index.html",
