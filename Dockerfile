@@ -36,7 +36,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     "bcrypt>=4.0.0,<5.0.0" \
     python-multipart>=0.0.6 \
     apscheduler>=3.10.4 \
-    python-dateutil>=2.8.2
+    python-dateutil>=2.8.2 \
+    httpx>=0.25.0
 
 # ============================================================================
 # Stage 2: Production stage
