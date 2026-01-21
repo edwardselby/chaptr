@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-01-21
+
 ### Changed
 - Refactored app.js into focused modules for better testability and organization (4,559 → 4,153 lines, ~9% reduction)
 - New modules: formatting.js, balance-utils.js, auto-sync.js, conflict-utils.js, entity-operations.js
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - auto-sync.js: Timer lifecycle management with localStorage persistence (323 lines)
 - formatting.js: Formatting utilities for sync intervals, countdowns, balance display (169 lines)
 - 28 new entity operations unit tests covering CRUD with mock databases
-- 46 balance-utils tests, 75 conflict-utils tests (existing from previous sessions)
+- 46 balance-utils tests, 75 conflict-utils tests
 
 ## [0.10.0] - 2026-01-20
 
