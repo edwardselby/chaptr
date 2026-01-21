@@ -1,0 +1,78 @@
+# CHAPTR Docker Ignore File
+# Excludes unnecessary files from Docker build context
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.env
+.env.local
+.env.*.local
+*.log
+
+# Node.js (frontend dev tools)
+node_modules/
+package-lock.json
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+
+# Scripts (not needed in container)
+scripts/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Claude/AI config
+CLAUDE.md
+.claude/

@@ -7,16 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-01-21
+
+### Added
+- Docker deployment: Dockerfile with multi-stage build, non-root user, health check
+- docker-compose.yml configured for origami.work server infrastructure (proxy-network, existing MongoDB)
+- .dockerignore for efficient build context
+- Navigation fallback tests: 3 tests for offline navigation request handling (test_sw_generation.py)
+- Module precaching tests: 4 tests for recursive JS file discovery (test_sw_generation.py)
+- Recursive file discovery test: Validates modules subdirectory is included in precache (test_service_worker.py)
+
 ### Fixed
 - PWA offline page refresh: App now loads after browser refresh while offline
   - Added navigation fallback handler in service worker to serve cached index.html for navigation requests
   - Fixed JS file discovery to include modules subdirectory (`js/**/*.js` instead of `js/*.js`)
 - test_includes_cache_first_strategy: Updated assertion from "static-assets" to "external-resources" to match actual cache name
 
-### Added
-- Navigation fallback tests: 3 tests for offline navigation request handling (test_sw_generation.py)
-- Module precaching tests: 4 tests for recursive JS file discovery (test_sw_generation.py)
-- Recursive file discovery test: Validates modules subdirectory is included in precache (test_service_worker.py)
+### Changed
+- .env.example reorganized with clear Docker deployment notes separating required variables from local dev settings
 
 ## [0.11.0] - 2026-01-21
 

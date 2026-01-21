@@ -1,0 +1,66 @@
+# CHAPTR - Docker Compose Configuration
+# Configured for origami.work home server infrastructure
+#
+# Usage:
+#   Deploy:       docker compose up -d --build
+#   Logs:         docker compose logs -f
+#   Stop:         docker compose down
+#   Rebuild:      docker compose up -d --build --force-recreate
+#
+# Prerequisites:
+#   - proxy-network must exist: docker network create proxy-network
+#   - MongoDB container running on proxy-network
+#   - .env file with SECRET_KEY and ADMIN_PASSWORD
+
+services:
+  # ==========================================================================
+  # CHAPTR Application
+  # ==========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chaptr
+    restart: unless-stopped
+    # NO port mapping - Nginx reverse proxy handles routing
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    environment:
+      # MongoDB Connection - Use existing MongoDB instance with auth
+      - MONGODB_URL=mongodb://admin:admin@mongodb:27017
+      - MONGODB_DB_NAME=chaptr
+
+      # Application Settings
+      - ENVIRONMENT=production
+      - DEBUG=false
+
+      # Security settings (SECRET_KEY and ADMIN_PASSWORD loaded from .env)
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+
+      # Multi-Currency
+      - BASE_CURRENCY=GBP
+
+      # CORS - Include production domain
+      - ALLOWED_ORIGINS=https://chaptr.origami.work,http://localhost:8000
+
+      # Change Log Pruning
+      - CHANGE_LOG_RETENTION_DAYS=31
+    networks:
+      - proxy-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  proxy-network:
+    name: proxy-network
+    external: true
