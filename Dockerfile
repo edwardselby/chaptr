@@ -57,6 +57,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY api/ ./api/
 COPY core/ ./core/
 COPY static/ ./static/
+COPY scripts/ ./scripts/
 
 # Set ownership to non-root user
 RUN chown -R chaptr:chaptr /app

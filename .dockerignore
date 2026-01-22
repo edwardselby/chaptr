@@ -65,9 +65,6 @@ Thumbs.db
 *.bak
 *.tmp
 
-# Scripts (not needed in container)
-scripts/
-
 # CI/CD
 .github/
 .gitlab-ci.yml
