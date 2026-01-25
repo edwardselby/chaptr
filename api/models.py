@@ -470,6 +470,7 @@ class RecurringRuleBase(BaseModel):
     day: int = Field(..., ge=1, le=31, description="Day of week (1-7) or month (1-31)")
     start_date: date = Field(..., description="First occurrence date")
     end_date: Optional[date] = Field(default=None, description="Last occurrence date (null=ongoing)")
+    excluded_dates: list[date] = Field(default_factory=list, description="Dates to skip when generating events (for single-instance deletions)")
     tenant_id: Optional[UUID] = Field(default=None, description="Tenant identifier (admin's user_id) for multi-tenancy isolation")
 
     @field_validator('currency')
@@ -521,6 +522,7 @@ class RecurringRuleUpdate(BaseModel):
     day: Optional[int] = Field(default=None, ge=1, le=31)
     start_date: Optional[date] = Field(default=None)
     end_date: Optional[date] = Field(default=None)
+    excluded_dates: Optional[list[date]] = Field(default=None, description="Dates to skip when generating events")
 
     @field_validator('currency')
     @classmethod

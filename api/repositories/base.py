@@ -74,13 +74,18 @@ class ChangeLogMixin:
         ...     tenant_id=UUID(current_user["tenant_id"])
         ... )
         """
+        # Strip MongoDB's _id field from data if present (prevents serialization errors)
+        clean_data = data
+        if data is not None and "_id" in data:
+            clean_data = {k: v for k, v in data.items() if k != "_id"}
+
         # Build entry, omitting None values per MongoDB best practice
         entry = {
             "id": str(generate_id()),
             "entity_type": entity_type,
             "entity_id": str(entity_id),
             "action": action,
-            "data": data,
+            "data": clean_data,
             "changed_at": utc_now().isoformat()
         }
 

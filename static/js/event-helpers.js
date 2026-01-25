@@ -130,23 +130,24 @@ function matchesRule(date, rule) {
  * Generate recurring event instances for a time window
  *
  * Pure function - returns array of event data objects.
+ * Window: 30 days back, forwardDays forward (default 365 for financial planning).
  *
  * @param {object} rule - Recurring rule object
- * @param {number} windowDays - Number of days forward/backward to generate (e.g., 30 for ±30 days)
+ * @param {number} forwardDays - Number of days forward to generate (default 365 for 12 months)
  * @param {object} settings - Settings object with base_currency and rates
  * @param {boolean} isBaseline - Whether instances should be baseline (from account lookup)
  * @returns {Array<object>} Array of event data objects
  */
-export function generateInstancesForWindow(rule, windowDays, settings, isBaseline = false) {
+export function generateInstancesForWindow(rule, forwardDays, settings, isBaseline = false) {
     const instances = [];
     const today = new Date();
 
-    // Calculate window boundaries
+    // Calculate window boundaries: 30 days back, forwardDays forward
     const windowStart = new Date(today);
-    windowStart.setDate(windowStart.getDate() - windowDays);
+    windowStart.setDate(windowStart.getDate() - 30);  // Always 30 days back
 
     const windowEnd = new Date(today);
-    windowEnd.setDate(windowEnd.getDate() + windowDays);
+    windowEnd.setDate(windowEnd.getDate() + forwardDays);  // Forward based on parameter
 
     // Check if rule overlaps with window
     const ruleStart = parseISODate(rule.start_date);
@@ -162,9 +163,19 @@ export function generateInstancesForWindow(rule, windowDays, settings, isBaselin
     // Generate dates based on frequency
     let current = new Date(genStart);
 
+    // Parse excluded dates for comparison (handle both string and Date formats)
+    const excludedDates = (rule.excluded_dates || []).map(d => {
+        if (typeof d === 'string') return d;
+        return toLocalISODate(d);
+    });
+
     while (current <= genEnd) {
         if (matchesRule(current, rule)) {
-            instances.push(createRecurringInstanceData(rule, current, settings, isBaseline));
+            // Skip excluded dates (single-instance deletions)
+            const currentStr = toLocalISODate(current);
+            if (!excludedDates.includes(currentStr)) {
+                instances.push(createRecurringInstanceData(rule, current, settings, isBaseline));
+            }
         }
 
         // Advance by 1 day
@@ -177,15 +188,15 @@ export function generateInstancesForWindow(rule, windowDays, settings, isBaselin
 /**
  * Generate all recurring instances for a rule at creation time
  *
- * Generates instances for ±30 days from today (configurable).
+ * Generates instances for 30 days back and forwardDays forward (default 365 for 12 months).
  * This is called when a recurring rule is created or updated.
  *
  * @param {object} rule - Recurring rule object
  * @param {object} settings - Settings object with base_currency and rates
  * @param {boolean} isBaseline - Whether instances should be baseline (from account lookup)
- * @param {number} windowDays - Number of days to generate (default 30)
+ * @param {number} forwardDays - Number of days forward to generate (default 365 for 12 months)
  * @returns {Array<object>} Array of event data objects
  */
-export function generateRecurringInstances(rule, settings, isBaseline = false, windowDays = 30) {
-    return generateInstancesForWindow(rule, windowDays, settings, isBaseline);
+export function generateRecurringInstances(rule, settings, isBaseline = false, forwardDays = 365) {
+    return generateInstancesForWindow(rule, forwardDays, settings, isBaseline);
 }

@@ -434,4 +434,106 @@ describe('generateInstancesForWindow', () => {
       expect(instance.is_baseline).toBe(false);
     });
   });
+
+  it('skips excluded_dates when generating instances', () => {
+    // Create a monthly rule starting today so we can exclude a specific date
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 15); // Last month
+
+    // Calculate the 15th of next month to exclude
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 15);
+    const excludedDateStr = nextMonth.toISOString().split('T')[0];
+
+    const ruleWithExclusion = {
+      id: 'rule-excluded',
+      description: 'Monthly with exclusion',
+      amount: -100,
+      currency: 'GBP',
+      account_id: 'acc-123',
+      frequency: 'monthly',
+      day: 15,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: null,
+      excluded_dates: [excludedDateStr] // Exclude the 15th of next month
+    };
+
+    // Use 60 days forward to ensure next month is in window
+    const instances = generateInstancesForWindow(ruleWithExclusion, 60, mockSettings, false);
+
+    // Verify the excluded date is NOT in the generated instances
+    const instanceDates = instances.map(i => i.event_date);
+    expect(instanceDates).not.toContain(excludedDateStr);
+  });
+
+  it('handles empty excluded_dates array', () => {
+    const ruleNoExclusions = {
+      id: 'rule-no-exclusions',
+      description: 'Monthly no exclusions',
+      amount: -100,
+      currency: 'GBP',
+      account_id: 'acc-123',
+      frequency: 'monthly',
+      day: 1,
+      start_date: '2025-01-01',
+      end_date: null,
+      excluded_dates: [] // Empty array
+    };
+
+    const instances = generateInstancesForWindow(ruleNoExclusions, 30, mockSettings, false);
+
+    // Should still generate instances normally
+    expect(instances.length).toBeGreaterThan(0);
+  });
+
+  it('handles undefined excluded_dates', () => {
+    const ruleUndefinedExclusions = {
+      id: 'rule-undefined-exclusions',
+      description: 'Monthly undefined exclusions',
+      amount: -100,
+      currency: 'GBP',
+      account_id: 'acc-123',
+      frequency: 'monthly',
+      day: 1,
+      start_date: '2025-01-01',
+      end_date: null
+      // excluded_dates not present
+    };
+
+    const instances = generateInstancesForWindow(ruleUndefinedExclusions, 30, mockSettings, false);
+
+    // Should still generate instances normally
+    expect(instances.length).toBeGreaterThan(0);
+  });
+
+  it('handles multiple excluded_dates', () => {
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), 0, 1); // Jan 1 of current year
+
+    // Exclude multiple months
+    const exclude1 = new Date(today.getFullYear(), today.getMonth(), 1);
+    const exclude2 = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+
+    const ruleMultipleExclusions = {
+      id: 'rule-multi-exclusions',
+      description: 'Monthly multi exclusions',
+      amount: -100,
+      currency: 'GBP',
+      account_id: 'acc-123',
+      frequency: 'monthly',
+      day: 1,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: null,
+      excluded_dates: [
+        exclude1.toISOString().split('T')[0],
+        exclude2.toISOString().split('T')[0]
+      ]
+    };
+
+    const instances = generateInstancesForWindow(ruleMultipleExclusions, 60, mockSettings, false);
+
+    // Neither excluded date should be in instances
+    const instanceDates = instances.map(i => i.event_date);
+    expect(instanceDates).not.toContain(exclude1.toISOString().split('T')[0]);
+    expect(instanceDates).not.toContain(exclude2.toISOString().split('T')[0]);
+  });
 });

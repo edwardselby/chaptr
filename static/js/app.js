@@ -126,6 +126,13 @@ window.app = function() {
         showConfirmModal: false,
         showInputModal: false,
         showPasswordModal: false,
+        showRecurringDeleteModal: false,
+        recurringDeleteData: {
+            eventId: null,
+            eventDate: null,
+            description: '',
+            recurringRuleId: null
+        },
         confirmModalData: {
             title: '',
             message: '',
@@ -1116,6 +1123,10 @@ window.app = function() {
 
                 this.showAccountModal = false;
 
+                // Refresh projection view (account balance affects projections)
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+
             } catch (error) {
                 console.error('Error saving account:', error);
                 this.showNotification('Save failed', 'error');
@@ -1254,6 +1265,10 @@ window.app = function() {
 
                 // Reload data
                 await this.loadData();
+
+                // Refresh projection view
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
 
                 this.showNotification('Account deleted', 'success');
 
@@ -1404,6 +1419,10 @@ window.app = function() {
 
                 this.showStoryModal = false;
 
+                // Refresh projection to reflect story changes (funding mode affects projection)
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+
             } catch (error) {
                 console.error('Error saving story:', error);
                 this.showNotification('Save failed', 'error');
@@ -1417,6 +1436,8 @@ window.app = function() {
             try {
                 await this.deleteStory(this.storyForm.id);
                 this.showStoryModal = false;
+                // Note: deleteStory shows a confirm dialog, so projection refresh
+                // happens inside the confirm callback in performStoryDeletion
             } catch (error) {
                 console.error('Error deleting story:', error);
                 this.showNotification('Delete failed', 'error');
@@ -1445,6 +1466,9 @@ window.app = function() {
                         this.filterStories();
                         this.showStoryModal = false;
                         this.showNotification(`Story ${action.toLowerCase()}d`, 'success');
+                        // Refresh projection view
+                        await this.updateDashboardProjection();
+                        await this.updateProjectionRows();
                     } catch (error) {
                         console.error(`Error ${action.toLowerCase()}ing story:`, error);
                         this.showNotification(`${action} failed`, 'error');
@@ -1515,6 +1539,9 @@ window.app = function() {
                         await this.updateStory(storyId, { is_archived: !story.is_archived });
                         await this.loadData();
                         this.filterStories(); // Refresh filtered list
+                        // Refresh projection view
+                        await this.updateDashboardProjection();
+                        await this.updateProjectionRows();
                     } catch (error) {
                         console.error(`Error ${action.toLowerCase()}ing story:`, error);
                         this.showNotification(`${action} failed`, 'error');
@@ -1647,6 +1674,9 @@ window.app = function() {
                     }
 
                     await this.performStoryDeletion(storyId, story);
+                    // Refresh projection view
+                    await this.updateDashboardProjection();
+                    await this.updateProjectionRows();
                 },
                 'Delete',
                 'danger'
@@ -2743,6 +2773,7 @@ window.app = function() {
                 // Reload to show adjustment event in projection
                 await this.loadData();
                 await this.updateDashboardProjection();
+                await this.updateProjectionRows();
 
                 this.showNotification('Balance updated', 'success');
 
@@ -2821,6 +2852,7 @@ window.app = function() {
                 story_id: '', // Empty = baseline
                 is_baseline: true,
                 is_hypothetical: false,
+                recurring_rule_id: null, // Not a recurring instance
 
                 // Recurring fields
                 is_recurring: false,
@@ -2874,6 +2906,7 @@ window.app = function() {
                 story_id: storyId,
                 is_baseline: false,
                 is_hypothetical: false,
+                recurring_rule_id: null, // Not a recurring instance
 
                 // Recurring fields
                 is_recurring: false,
@@ -2917,6 +2950,7 @@ window.app = function() {
                 is_baseline: event.is_baseline,
                 is_hypothetical: event.is_hypothetical,
                 updated_at: event.updated_at,
+                recurring_rule_id: event.recurring_rule_id || null, // Track if this is a recurring instance
 
                 // Recurring fields (always false for event editing)
                 is_recurring: false,
@@ -2974,6 +3008,7 @@ window.app = function() {
                 is_baseline: false,  // Not used for recurring
                 is_hypothetical: false,  // Not used for recurring
                 updated_at: rule.updated_at,
+                recurring_rule_id: null,  // Not an instance - we're editing the rule itself
 
                 // Set recurring mode
                 is_recurring: true,
@@ -3136,6 +3171,7 @@ window.app = function() {
 
                 // Refresh projection to show new/updated event
                 await this.updateDashboardProjection();
+                await this.updateProjectionRows();
 
             } catch (error) {
                 console.error('Error saving event:', error);
@@ -3145,23 +3181,41 @@ window.app = function() {
 
         /**
          * Delete event from modal with confirmation
+         * Shows 3-option dialog for recurring events
          */
         async deleteEventFromModal() {
-            this.showConfirm(
-                'Delete Event',
-                `Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`,
-                async () => {
-                    try {
-                        await this.deleteEvent(this.eventForm.id);
-                        this.showEventModal = false;
-                    } catch (error) {
-                        console.error('Error deleting event:', error);
-                        this.showNotification('Delete failed', 'error');
-                    }
-                },
-                'Delete',
-                'danger'
-            );
+            // Check if this is a recurring event
+            if (this.eventForm.recurring_rule_id) {
+                // Show 3-option recurring delete modal
+                this.recurringDeleteData = {
+                    eventId: this.eventForm.id,
+                    eventDate: this.eventForm.event_date,
+                    description: this.eventForm.description,
+                    recurringRuleId: this.eventForm.recurring_rule_id
+                };
+                this.showRecurringDeleteModal = true;
+            } else {
+                // Normal event - simple confirmation
+                this.showConfirm(
+                    'Delete Event',
+                    `Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`,
+                    async () => {
+                        try {
+                            await this.deleteEvent(this.eventForm.id);
+                            this.showEventModal = false;
+                            // Refresh events and projection to update UI
+                            await this.loadData();
+                            await this.updateDashboardProjection();
+                            await this.updateProjectionRows();
+                        } catch (error) {
+                            console.error('Error deleting event:', error);
+                            this.showNotification('Delete failed', 'error');
+                        }
+                    },
+                    'Delete',
+                    'danger'
+                );
+            }
         },
 
         /**
@@ -3204,7 +3258,7 @@ window.app = function() {
             const isBaseline = account ? (account.is_default || false) : false;
 
             // Generate instances
-            const instances = generateRecurringInstances(createdRule, this.settings, isBaseline, 30);
+            const instances = generateRecurringInstances(createdRule, this.settings, isBaseline);
 
             if (instances.length > 0) {
                 // Convert to change objects for batch application
@@ -3228,6 +3282,7 @@ window.app = function() {
             // Reload data to show new rule and generated events
             await this.loadData();
             await this.updateDashboardProjection();
+            await this.updateProjectionRows();
         },
 
         /**
@@ -3292,7 +3347,7 @@ window.app = function() {
             const account = await db.accounts.get(resolvedAccountId);
             const isBaseline = account ? (account.is_default || false) : false;
 
-            const instances = generateRecurringInstances(updatedRule, this.settings, isBaseline, 30);
+            const instances = generateRecurringInstances(updatedRule, this.settings, isBaseline);
 
             if (instances.length > 0) {
                 // Convert to change objects for batch application
@@ -3316,19 +3371,24 @@ window.app = function() {
             // Reload data to show updated rule and regenerated events
             await this.loadData();
             await this.updateDashboardProjection();
+            await this.updateProjectionRows();
         },
 
         /**
          * Delete recurring rule from modal with confirmation
          */
         async deleteRecurringRuleFromModal() {
-            if (!this.eventForm.id) return;
+            // Determine the rule ID:
+            // - If editing a rule directly, eventForm.id is the rule ID
+            // - If viewing an event instance and switching to recurring mode, use recurring_rule_id
+            const ruleId = this.eventForm.recurring_rule_id || this.eventForm.id;
+            if (!ruleId) return;
 
             try {
                 // Calculate how many future events will be deleted
                 const today = toLocalISODate(new Date());
                 const futureCount = await db.events.where('recurring_rule_id')
-                    .equals(this.eventForm.id)
+                    .equals(ruleId)
                     .and(e => e.event_date >= today)
                     .and(e => e.created_at === e.updated_at)  // Unedited only
                     .count();
@@ -3343,16 +3403,17 @@ window.app = function() {
                     async () => {
                         try {
                             // Use storage adapter (handles all 3 modes)
-                            await storage.deleteRecurringRule(this.eventForm.id);
+                            await storage.deleteRecurringRule(ruleId);
 
                             // Queue-as-state: Delete future unedited instances locally
                             // (preserves past instances and manually edited future instances)
-                            await this.deleteFutureRecurringEvents(this.eventForm.id);
+                            await this.deleteFutureRecurringEvents(ruleId);
 
                             this.showNotification('Recurring rule deleted', 'success');
                             this.showEventModal = false;
                             await this.loadData();
                             await this.updateDashboardProjection();
+                            await this.updateProjectionRows();
                         } catch (error) {
                             console.error('Error deleting recurring rule:', error);
                             this.showNotification('Delete failed', 'error');
@@ -3684,6 +3745,7 @@ window.app = function() {
                     // Reload data to reflect changes
                     await this.loadData();
                     await this.updateDashboardProjection();
+                    await this.updateProjectionRows();
 
                     // Trigger sync to send resolved changes
                     await this.manualSync();
@@ -3819,6 +3881,122 @@ window.app = function() {
                 confirmStyle: 'primary',
                 onConfirm: null
             };
+        },
+
+        /**
+         * Close recurring delete modal and reset state
+         */
+        closeRecurringDeleteModal() {
+            this.showRecurringDeleteModal = false;
+            this.recurringDeleteData = {
+                eventId: null,
+                eventDate: null,
+                description: '',
+                recurringRuleId: null
+            };
+        },
+
+        /**
+         * Delete only this occurrence of recurring event
+         * Adds date to excluded_dates on the rule
+         */
+        async deleteThisOccurrence() {
+            try {
+                const { eventId, eventDate, recurringRuleId } = this.recurringDeleteData;
+
+                // Delete the event instance
+                await this.deleteEvent(eventId);
+
+                // Add date to excluded_dates on the recurring rule
+                const rule = await db.recurring_rules.get(recurringRuleId);
+                if (rule) {
+                    const excludedDates = rule.excluded_dates || [];
+                    if (!excludedDates.includes(eventDate)) {
+                        excludedDates.push(eventDate);
+                    }
+
+                    // Update rule with new excluded_dates
+                    await storage.updateRecurringRule(recurringRuleId, { excluded_dates: excludedDates });
+                }
+
+                this.closeRecurringDeleteModal();
+                this.showEventModal = false;
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('Occurrence deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting occurrence:', error);
+                this.showNotification('Delete failed', 'error');
+            }
+        },
+
+        /**
+         * Delete this and all future occurrences
+         * Sets end_date on the rule to exclude future events
+         */
+        async deleteThisAndFuture() {
+            try {
+                const { eventId, eventDate, recurringRuleId } = this.recurringDeleteData;
+
+                // Delete this event
+                await this.deleteEvent(eventId);
+
+                // Get all events for this rule with date >= eventDate and delete them
+                const events = await db.events.where('recurring_rule_id').equals(recurringRuleId).toArray();
+                const futureEvents = events.filter(e => e.event_date >= eventDate);
+
+                for (const event of futureEvents) {
+                    if (event.id !== eventId) {
+                        await this.deleteEvent(event.id);
+                    }
+                }
+
+                // Update rule with end_date = day before this event
+                const endDate = new Date(eventDate);
+                endDate.setDate(endDate.getDate() - 1);
+                const endDateStr = endDate.toISOString().split('T')[0];
+
+                await storage.updateRecurringRule(recurringRuleId, { end_date: endDateStr });
+
+                this.closeRecurringDeleteModal();
+                this.showEventModal = false;
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('This and future occurrences deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting future occurrences:', error);
+                this.showNotification('Delete failed', 'error');
+            }
+        },
+
+        /**
+         * Delete entire recurring rule and all its events
+         */
+        async deleteEntireRule() {
+            try {
+                const { recurringRuleId } = this.recurringDeleteData;
+
+                // Delete all events for this rule
+                const events = await db.events.where('recurring_rule_id').equals(recurringRuleId).toArray();
+                for (const event of events) {
+                    await this.deleteEvent(event.id);
+                }
+
+                // Delete the rule itself
+                await storage.deleteRecurringRule(recurringRuleId);
+
+                this.closeRecurringDeleteModal();
+                this.showEventModal = false;
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('Recurring rule and all events deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting recurring rule:', error);
+                this.showNotification('Delete failed', 'error');
+            }
         },
 
         /**

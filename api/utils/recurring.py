@@ -1,7 +1,8 @@
 """
 Recurring event generation utilities for sync protocol.
 
-Generates event instances from recurring rules within a time window (±1 month).
+Generates event instances from recurring rules within a time window.
+Window: 30 days back, 365 days forward (12 months for financial planning).
 Generated events are materialized as real rows and included in sync operations.
 """
 
@@ -24,7 +25,7 @@ async def generate_recurring_events(
     tenant_id: Optional[UUID] = None
 ) -> list[Event]:
     """
-    Generate event instances from recurring rules within ±1 month window.
+    Generate event instances from recurring rules within the projection window.
 
     Materializes recurring rules as actual event rows within the generation window.
     Checks for existing instances to avoid duplicates. Preserves manually edited
@@ -44,7 +45,7 @@ async def generate_recurring_events(
     :rtype: list[Event]
 
     **Business Rules**:
-    - Window: ±1 month from today
+    - Window: 30 days back, 365 days forward (12 months for financial planning)
     - Duplicate check: Query by recurring_rule_id + event_date + tenant_id
     - Edited instances: Preserved (updated_at != created_at means user edited)
     - Change logging: All generated events logged for sync distribution with tenant_id
@@ -63,7 +64,7 @@ async def generate_recurring_events(
     """
     today = date.today()
     window_start = today - timedelta(days=30)
-    window_end = today + timedelta(days=30)
+    window_end = today + timedelta(days=365)  # 12 months forward for financial planning
 
     generated = []
 
@@ -142,6 +143,10 @@ async def generate_recurring_events(
         # Generate event instances for each date
         for dt in dates:
             event_date = dt.date()
+
+            # Skip excluded dates (single-instance deletions)
+            if rule.excluded_dates and event_date in rule.excluded_dates:
+                continue
 
             # Check if instance already exists (tenant-scoped)
             existing_query = {

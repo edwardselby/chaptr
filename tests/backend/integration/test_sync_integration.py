@@ -1490,3 +1490,142 @@ async def test_sync_applied_includes_updated_at_timestamps(
 
     # updated_at should be a valid timestamp
     assert applied["updated_at"] is not None
+
+
+# ============================================================================
+# Regression Test: BSON ObjectId Serialization
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_response_does_not_contain_mongodb_id_fields(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_story_with_user,
+    sample_event_with_user,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Regression test: Sync response must not contain MongoDB _id fields.
+
+    Bug scenario:
+    1. Change log stored raw MongoDB documents containing _id (ObjectId)
+    2. Sync endpoint returned server_changes with _id fields
+    3. Pydantic serialization failed: "Unable to serialize unknown type: bson.objectid.ObjectId"
+
+    Fix: log_change() strips _id from data before storing in change_log.
+
+    Validates:
+    - server_changes data does not contain _id field
+    - All entity types properly serialize without BSON ObjectId
+    - No serialization errors on sync response
+    """
+    # Create an event that will appear in server_changes
+    event_id = uuid4()
+    sync_create = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "event",
+            "entity_id": str(event_id),
+            "action": "create",
+            "data": {
+                "event_date": "2025-04-01",
+                "description": "Test event for _id check",
+                "amount": -75.00,
+                "currency": "GBP",
+                "account_id": str(sample_account_with_user.id),
+                "story_id": str(sample_story_with_user.id),
+                "is_baseline": False
+            },
+            "base_updated_at": None
+        }]
+    }
+
+    response_create = await async_client_real.post("/api/sync", json=sync_create, headers=auth_headers_real)
+    assert response_create.status_code == 200
+
+    # Client B syncs - should receive the event in server_changes
+    # This is the response that previously contained _id causing serialization error
+    sync_receive = {
+        "client_id": "client-b",
+        "last_sync_at": None,
+        "changes": []
+    }
+
+    response_receive = await async_client_real.post("/api/sync", json=sync_receive, headers=auth_headers_real)
+    assert response_receive.status_code == 200, f"Sync should succeed without serialization error: {response_receive.text}"
+
+    data = response_receive.json()
+
+    # CRITICAL: Verify no _id fields in server_changes
+    def check_no_mongodb_id(obj, path=""):
+        """Recursively check that no _id field exists in the object."""
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                current_path = f"{path}.{key}" if path else key
+                assert key != "_id", f"Found MongoDB _id field at {current_path}"
+                check_no_mongodb_id(value, current_path)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                check_no_mongodb_id(item, f"{path}[{i}]")
+
+    # Check all server_changes
+    for change in data.get("server_changes", []):
+        check_no_mongodb_id(change, f"server_changes[{change.get('entity_type', 'unknown')}]")
+
+    # Check all applied changes
+    for applied in data.get("applied", []):
+        check_no_mongodb_id(applied, f"applied[{applied.get('entity_type', 'unknown')}]")
+
+    # Check conflicts
+    for conflict in data.get("conflicts", []):
+        check_no_mongodb_id(conflict, f"conflicts[{conflict.get('entity_type', 'unknown')}]")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_full_sync_response_does_not_contain_mongodb_id_fields(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    sample_story_with_user,
+    sample_event_with_user,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Regression test: Full sync response must not contain MongoDB _id fields.
+
+    Similar to test above but for GET /api/sync/full endpoint.
+
+    Validates:
+    - All entities in full sync response have no _id field
+    - accounts, stories, events, recurring_rules, settings all serialize properly
+    """
+    response = await async_client_real.get("/api/sync/full", headers=auth_headers_real)
+    assert response.status_code == 200, f"Full sync should succeed without serialization error: {response.text}"
+
+    data = response.json()
+
+    def check_no_mongodb_id(obj, path=""):
+        """Recursively check that no _id field exists in the object."""
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                current_path = f"{path}.{key}" if path else key
+                assert key != "_id", f"Found MongoDB _id field at {current_path}"
+                check_no_mongodb_id(value, current_path)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                check_no_mongodb_id(item, f"{path}[{i}]")
+
+    # Check all entity collections
+    for entity_type in ["accounts", "stories", "events", "recurring_rules"]:
+        for entity in data.get(entity_type, []):
+            check_no_mongodb_id(entity, f"{entity_type}")
+
+    # Check settings (single object, not a list)
+    if data.get("settings"):
+        check_no_mongodb_id(data["settings"], "settings")

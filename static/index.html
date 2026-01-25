@@ -2091,9 +2091,8 @@
                     <button
                         type="button"
                         class="btn-danger"
-                        x-show="eventForm.id"
-                        @click="eventForm.is_recurring ? deleteRecurringRuleFromModal() : deleteEventFromModal()"
-                        x-text="eventForm.is_recurring ? 'Delete Rule' : 'Delete'"></button>
+                        x-show="eventForm.id && !eventForm.is_recurring"
+                        @click="deleteEventFromModal()">Delete</button>
                 </div>
             </form>
         </div>
@@ -2286,6 +2285,38 @@
         </div>
     </div>
 
+    <!-- Recurring Event Delete Modal -->
+    <div class="modal-overlay" x-show="showRecurringDeleteModal" @keydown.escape.window="closeRecurringDeleteModal()" x-cloak role="dialog" aria-modal="true">
+        <div class="modal modal-sm" @click.stop>
+            <div class="modal-header" style="border-bottom-color: var(--red);">
+                <h2>Delete Recurring Event</h2>
+                <button class="modal-close" @click="closeRecurringDeleteModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 16px;">
+                    <strong x-text="recurringDeleteData.description"></strong>
+                    <br>
+                    <span class="text-muted" x-text="recurringDeleteData.eventDate"></span>
+                </p>
+                <p style="margin-bottom: 16px;">This is a recurring event. How would you like to delete it?</p>
+            </div>
+            <div class="modal-actions" style="flex-direction: column; gap: 8px; padding: 20px; padding-top: 16px;">
+                <button type="button" class="btn-danger" @click="deleteThisOccurrence()">
+                    Delete this occurrence only
+                </button>
+                <button type="button" class="btn-danger" @click="deleteThisAndFuture()">
+                    Delete this and future occurrences
+                </button>
+                <button type="button" class="btn-danger" @click="deleteEntireRule()">
+                    Delete entire recurring rule
+                </button>
+                <button type="button" class="btn-secondary" style="margin-top: 8px;" @click="closeRecurringDeleteModal()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Input Modal -->
     <div class="modal-overlay" x-show="showInputModal" @keydown.escape.window="closeInputModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
@@ -2346,6 +2377,7 @@
             <div class="modal-header" style="border-bottom-color: var(--amber);">
                 <h2 style="color: var(--amber);">[!!] Sync Conflict</h2>
                 <span class="conflict-count" x-text="`Conflict ${currentConflictIndex + 1} of ${conflicts.length}`"></span>
+                <button class="modal-close" @click="closeConflictModal()" title="Dismiss (resolve later on next sync)">✕</button>
             </div>
 
             <div class="modal-body">
@@ -2494,6 +2526,62 @@
                                         <p><strong>Updated:</strong> <span x-text="formatDateTime(currentConflict.server_version?.updated_at)"></span></p>
                                     </div>
                                 </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Edit/Delete Conflict (server deleted, client edited) -->
+                <template x-if="currentConflict?.conflict_type === 'edit_delete'">
+                    <div>
+                        <p class="conflict-message" x-text="`You edited this ${currentConflict.entity_type}, but it was deleted on another device:`"></p>
+
+                        <div class="conflict-versions">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
+                                <h3>Your Version (Restore)</h3>
+                                <!-- Show different fields based on entity type -->
+                                <template x-if="currentConflict.entity_type === 'event'">
+                                    <div class="version-details">
+                                        <p><strong>Description:</strong> <span x-text="currentConflict.client_version?.description"></span></p>
+                                        <p><strong>Amount:</strong> <span x-text="formatCurrency(currentConflict.client_version?.amount, currentConflict.client_version?.currency)"></span></p>
+                                        <p><strong>Date:</strong> <span x-text="formatDate(currentConflict.client_version?.event_date)"></span></p>
+                                    </div>
+                                </template>
+                                <template x-if="currentConflict.entity_type === 'account'">
+                                    <div class="version-details">
+                                        <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                        <p><strong>Balance:</strong> <span x-text="formatCurrency(currentConflict.client_version?.current_balance, currentConflict.client_version?.currency)"></span></p>
+                                    </div>
+                                </template>
+                                <template x-if="currentConflict.entity_type === 'story'">
+                                    <div class="version-details">
+                                        <p><strong>Name:</strong> <span x-text="currentConflict.client_version?.name"></span></p>
+                                        <p><strong>Date Range:</strong> <span x-text="formatDateRange(currentConflict.client_version?.start_date, currentConflict.client_version?.end_date)"></span></p>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
+                                <h3>Server Action</h3>
+                                <p style="color: var(--amber);" x-text="`Delete this ${currentConflict.entity_type}`"></p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Fallback for unknown conflict types -->
+                <template x-if="!['edit_edit', 'delete_edit', 'edit_delete'].includes(currentConflict?.conflict_type)">
+                    <div>
+                        <p class="conflict-message">An unknown sync conflict occurred.</p>
+                        <p class="text-muted" x-text="`Type: ${currentConflict?.conflict_type || 'unknown'}, Entity: ${currentConflict?.entity_type || 'unknown'}`"></p>
+                        <div class="conflict-versions">
+                            <div class="version version-mine" @click="resolveConflict('keep_mine')">
+                                <h3>Keep Local Version</h3>
+                                <p class="text-muted">Use your local data</p>
+                            </div>
+                            <div class="version version-theirs" @click="resolveConflict('keep_theirs')">
+                                <h3>Keep Server Version</h3>
+                                <p class="text-muted">Use server data</p>
                             </div>
                         </div>
                     </div>

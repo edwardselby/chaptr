@@ -500,7 +500,10 @@ async def sync(
     from api.utils.recurring import generate_recurring_events
 
     user_id = UUID(current_user["id"])
-    await generate_recurring_events(db, user_id, request.client_id, tenant_id)
+    # CRITICAL: Pass client_id=None so generated events are treated as server-generated
+    # If we pass request.client_id, the events would be excluded from server_changes
+    # (the query filter excludes changes where changed_by_client == requesting client)
+    await generate_recurring_events(db, user_id, None, tenant_id)
 
     if not full_sync_required:
         # Query changes since last_sync_at (or all changes for first sync)

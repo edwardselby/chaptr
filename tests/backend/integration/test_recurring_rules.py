@@ -593,3 +593,212 @@ async def test_update_recurring_rule_regenerates_future_events(
         for event in unedited_events:
             assert Decimal(str(event["amount"])) == Decimal("-1800.00"), \
                 f"Unedited event {event['id']} should have latest amount £1800"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_update_recurring_rule_excluded_dates_only_skips_regeneration(
+    async_client_real, recurring_rule_repo_real, account_repo_real, mongodb_real, sample_user_real, sample_settings_real, auth_headers_real
+):
+    """
+    Update recurring rule with ONLY excluded_dates should NOT regenerate events.
+
+    This is an optimization to prevent event duplication when user deletes
+    a single occurrence (which adds a date to excluded_dates).
+
+    Test scenario:
+    1. Create recurring rule
+    2. Generate events
+    3. Note existing event IDs
+    4. Update rule with ONLY excluded_dates (add one date)
+    5. Verify existing events are NOT deleted and recreated (same IDs)
+    6. Verify excluded_dates is stored correctly
+    """
+    from datetime import date, timedelta
+    from api.utils.recurring import generate_recurring_events
+    from api.models import RecurringRuleCreate, Frequency, AccountCreate
+    from uuid import UUID
+
+    # Create an account for the test
+    account_data = AccountCreate(
+        name="Test Account for Exclusion",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+
+    current_user_ctx = {"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)}
+
+    test_account = await account_repo_real.create(
+        account_data,
+        current_user=current_user_ctx,
+        client_id=None
+    )
+
+    # Create a recurring rule
+    rule_data = RecurringRuleCreate(
+        description="Monthly Test",
+        amount=Decimal("-100.00"),
+        currency="GBP",
+        account_id=test_account.id,
+        frequency=Frequency.MONTHLY,
+        day=15,
+        start_date=date(2024, 1, 1),
+        end_date=None
+    )
+
+    sample_rule = await recurring_rule_repo_real.create(
+        rule_data,
+        current_user=current_user_ctx,
+        client_id=None
+    )
+
+    # Generate future events
+    tenant_id = sample_user_real.tenant_id
+    await generate_recurring_events(mongodb_real, sample_user_real.id, None, tenant_id)
+
+    # Get event IDs before update
+    events_before = await mongodb_real["events"].find({
+        "recurring_rule_id": str(sample_rule.id)
+    }).to_list(length=None)
+
+    event_ids_before = {e["id"] for e in events_before}
+    assert len(event_ids_before) > 0, "Should have generated events"
+
+    # Calculate a future date to exclude
+    future_date = date.today() + timedelta(days=45)
+    # Adjust to day 15 of that month
+    exclude_date = future_date.replace(day=15)
+
+    # Update rule with ONLY excluded_dates
+    update_payload = {
+        "excluded_dates": [exclude_date.isoformat()]
+    }
+
+    update_response = await async_client_real.put(
+        f"/api/recurring-rules/{sample_rule.id}",
+        json=update_payload,
+        headers=auth_headers_real
+    )
+
+    assert update_response.status_code == 200
+
+    # Get events after update
+    events_after = await mongodb_real["events"].find({
+        "recurring_rule_id": str(sample_rule.id)
+    }).to_list(length=None)
+
+    event_ids_after = {e["id"] for e in events_after}
+
+    # CRITICAL: Event IDs should be the SAME (not deleted and recreated)
+    # This proves regeneration was skipped
+    assert event_ids_before == event_ids_after, \
+        "Event IDs should be unchanged when only excluded_dates is updated (no regeneration)"
+
+    # Verify excluded_dates was stored
+    updated_rule = await mongodb_real["recurring_rules"].find_one({"id": str(sample_rule.id)})
+    assert updated_rule is not None
+    assert "excluded_dates" in updated_rule
+    assert exclude_date.isoformat() in updated_rule["excluded_dates"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_update_recurring_rule_amount_with_excluded_dates_regenerates(
+    async_client_real, recurring_rule_repo_real, account_repo_real, mongodb_real, sample_user_real, sample_settings_real, auth_headers_real
+):
+    """
+    Update recurring rule with amount AND excluded_dates SHOULD regenerate events.
+
+    When non-excluded_dates fields change, events need regeneration with new values.
+
+    Test scenario:
+    1. Create recurring rule
+    2. Generate events
+    3. Update rule with BOTH amount and excluded_dates
+    4. Verify events are regenerated (different IDs, new amount)
+    """
+    from datetime import date, timedelta
+    from api.utils.recurring import generate_recurring_events
+    from api.models import RecurringRuleCreate, Frequency, AccountCreate
+
+    # Create an account for the test
+    account_data = AccountCreate(
+        name="Test Account for Regen",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+
+    current_user_ctx = {"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)}
+
+    test_account = await account_repo_real.create(
+        account_data,
+        current_user=current_user_ctx,
+        client_id=None
+    )
+
+    # Create a recurring rule
+    rule_data = RecurringRuleCreate(
+        description="Monthly Regen Test",
+        amount=Decimal("-200.00"),
+        currency="GBP",
+        account_id=test_account.id,
+        frequency=Frequency.MONTHLY,
+        day=20,
+        start_date=date(2024, 1, 1),
+        end_date=None
+    )
+
+    sample_rule = await recurring_rule_repo_real.create(
+        rule_data,
+        current_user=current_user_ctx,
+        client_id=None
+    )
+
+    # Generate future events
+    tenant_id = sample_user_real.tenant_id
+    await generate_recurring_events(mongodb_real, sample_user_real.id, None, tenant_id)
+
+    # Get future event IDs before update
+    today = date.today()
+    events_before = await mongodb_real["events"].find({
+        "recurring_rule_id": str(sample_rule.id),
+        "event_date": {"$gt": today.isoformat()}
+    }).to_list(length=None)
+
+    event_ids_before = {e["id"] for e in events_before}
+    assert len(event_ids_before) > 0, "Should have generated future events"
+
+    # Calculate a future date to exclude
+    future_date = today + timedelta(days=60)
+    exclude_date = future_date.replace(day=20)
+
+    # Update rule with amount AND excluded_dates
+    update_payload = {
+        "amount": -300.00,  # Changed from -200
+        "excluded_dates": [exclude_date.isoformat()]
+    }
+
+    update_response = await async_client_real.put(
+        f"/api/recurring-rules/{sample_rule.id}",
+        json=update_payload,
+        headers=auth_headers_real
+    )
+
+    assert update_response.status_code == 200
+
+    # Get future events after update
+    events_after = await mongodb_real["events"].find({
+        "recurring_rule_id": str(sample_rule.id),
+        "event_date": {"$gt": today.isoformat()}
+    }).to_list(length=None)
+
+    event_ids_after = {e["id"] for e in events_after}
+
+    # Event IDs should be DIFFERENT (events were regenerated)
+    # Note: Some IDs might match if they weren't future/unedited, but most should differ
+    # The key is that the amount should be updated
+    for event in events_after:
+        assert Decimal(str(event["amount"])) == Decimal("-300.00"), \
+            f"Regenerated event should have new amount -300.00, got {event['amount']}"

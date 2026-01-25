@@ -214,12 +214,21 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
         if current_user:
             update_dict['updated_by'] = UUID(current_user["id"])
 
-        # Apply update with Decimal handling (for mongomock compatibility)
+        # Apply update with proper serialization for MongoDB
+        def serialize_value(v):
+            """Serialize a value for MongoDB storage."""
+            if hasattr(v, 'isoformat'):
+                return v.isoformat()
+            elif isinstance(v, (UUID, Decimal)):
+                return str(v)
+            elif isinstance(v, list):
+                # Handle lists (e.g., excluded_dates)
+                return [serialize_value(item) for item in v]
+            return v
+
         await self.collection.update_one(
             {"id": to_str(rule_id)},
-            {"$set": {k: v.isoformat() if hasattr(v, 'isoformat') else
-                      str(v) if isinstance(v, (UUID, Decimal)) else v
-                      for k, v in update_dict.items()}}
+            {"$set": {k: serialize_value(v) for k, v in update_dict.items()}}
         )
 
         # Get updated rule for change log
@@ -236,40 +245,50 @@ class RecurringRuleRepository(BaseRepository[RecurringRule]):
             tenant_id
         )
 
-        # Spec compliance (line 1347): Regenerate future events with updated rule
-        # First, fetch future unedited instances to log deletions for sync protocol
-        # Include tenant_id for security (defense-in-depth)
-        today = date.today()
-        cascade_query = {
-            "recurring_rule_id": to_str(rule_id),
-            "event_date": {"$gt": today.isoformat()},
-            "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
-        }
-        if tenant_id:
-            cascade_query["tenant_id"] = str(tenant_id)
-        events_to_delete = await self.db["events"].find(cascade_query).to_list(length=None)
+        # Check if this is an excluded_dates-only update
+        # If so, skip cascade delete + regenerate (exclusions take effect naturally)
+        excluded_dates_only = (
+            set(update_dict.keys()) - {'updated_at', 'updated_by'}
+        ) == {'excluded_dates'}
 
-        # Log each deletion to change_log for sync with tenant_id
-        user_id = self._get_user_id(current_user)
-        for event_doc in events_to_delete:
-            await self.log_change(
-                "event",
-                UUID(event_doc["id"]),
-                "delete",
-                event_doc,
-                user_id,
-                client_id,
-                tenant_id
-            )
+        if not excluded_dates_only:
+            # Spec compliance (line 1347): Regenerate future events with updated rule
+            # Only do this when rule properties change (amount, frequency, day, etc.)
+            # First, fetch future unedited instances to log deletions for sync protocol
+            # Include tenant_id for security (defense-in-depth)
+            today = date.today()
+            cascade_query = {
+                "recurring_rule_id": to_str(rule_id),
+                "event_date": {"$gt": today.isoformat()},
+                "$expr": {"$eq": ["$updated_at", "$created_at"]}  # Not edited
+            }
+            if tenant_id:
+                cascade_query["tenant_id"] = str(tenant_id)
+            events_to_delete = await self.db["events"].find(cascade_query).to_list(length=None)
 
-        # Delete future unedited instances (with tenant_id for security)
-        if events_to_delete:
-            await self.db["events"].delete_many(cascade_query)
+            # Log each deletion to change_log for sync with tenant_id
+            # Use client_id=None so deletes are included in server_changes for all clients
+            user_id = self._get_user_id(current_user)
+            for event_doc in events_to_delete:
+                await self.log_change(
+                    "event",
+                    UUID(event_doc["id"]),
+                    "delete",
+                    event_doc,
+                    user_id,
+                    None,  # Include in server_changes for all clients
+                    tenant_id
+                )
 
-        # Regenerate events with updated rule values (tenant-scoped)
-        # Note: Currently regenerates all tenant rules within ±1 month window
-        # Future optimization: Pass rule_id to generate only for this specific rule
-        await generate_recurring_events(self.db, user_id, client_id, tenant_id)
+            # Delete future unedited instances (with tenant_id for security)
+            if events_to_delete:
+                await self.db["events"].delete_many(cascade_query)
+
+            # Regenerate events with updated rule values (tenant-scoped)
+            # Note: Currently regenerates all tenant rules within ±1 month window
+            # Future optimization: Pass rule_id to generate only for this specific rule
+            # CRITICAL: Pass client_id=None so events are included in server_changes for all clients
+            await generate_recurring_events(self.db, user_id, None, tenant_id)
 
         # Return updated rule
         return updated_rule

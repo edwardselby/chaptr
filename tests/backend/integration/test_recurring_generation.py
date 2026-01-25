@@ -25,8 +25,8 @@ async def test_generate_monthly_recurring_events(mongodb_real, clean_database_re
     """
     Test generation of monthly recurring events within window.
 
-    **Scenario**: Monthly salary rule (day 25) with ±1 month window
-    **Expected**: Generates instances for months within window
+    **Scenario**: Monthly salary rule (day 25) with 12-month forward window
+    **Expected**: Generates ~13 instances (12 months forward + 1 back)
     """
     # Arrange: Create monthly recurring rule
     today = date.today()
@@ -57,9 +57,9 @@ async def test_generate_monthly_recurring_events(mongodb_real, clean_database_re
     # Act: Generate recurring events
     generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
 
-    # Assert: Should generate ~2-3 instances (±1 month window)
-    assert len(generated) >= 1, "Should generate at least 1 monthly instance"
-    assert len(generated) <= 4, "Should not generate more than 4 instances for ±1 month"
+    # Assert: Should generate ~13 instances (30 days back + 365 days forward = ~13 months)
+    assert len(generated) >= 10, "Should generate at least 10 monthly instances for 12-month window"
+    assert len(generated) <= 15, "Should not generate more than 15 monthly instances"
 
     # Verify all generated events have correct properties
     for event in generated:
@@ -91,8 +91,8 @@ async def test_generate_weekly_recurring_events(mongodb_real, clean_database_rea
     """
     Test generation of weekly recurring events.
 
-    **Scenario**: Weekly coffee expense (every Monday) with ±1 month window
-    **Expected**: Generates ~4-9 instances (4-9 Mondays in ±1 month)
+    **Scenario**: Weekly coffee expense (every Monday) with 12-month forward window
+    **Expected**: Generates ~52-57 instances (52 weeks/year + few extra from 30-day back window)
     """
     # Arrange: Create weekly recurring rule
     today = date.today()
@@ -123,9 +123,9 @@ async def test_generate_weekly_recurring_events(mongodb_real, clean_database_rea
     # Act: Generate recurring events
     generated = await generate_recurring_events(mongodb_real, user_id, "client-b", tenant_id)
 
-    # Assert: Should generate 4-9 weekly instances
-    assert len(generated) >= 4, "Should generate at least 4 weekly instances"
-    assert len(generated) <= 10, "Should not generate more than 10 weekly instances"
+    # Assert: Should generate ~52-57 weekly instances (30 days back + 365 days forward)
+    assert len(generated) >= 50, "Should generate at least 50 weekly instances for 12-month window"
+    assert len(generated) <= 60, "Should not generate more than 60 weekly instances"
 
     # Verify all events are on Mondays
     for event in generated:
@@ -140,15 +140,15 @@ async def test_generate_annual_recurring_events(mongodb_real, clean_database_rea
     """
     Test generation of annual recurring events.
 
-    **Scenario**: Annual insurance payment with ±1 month window
-    **Expected**: Generates 0-1 instances (only if anniversary within window)
+    **Scenario**: Annual insurance payment with 12-month forward window
+    **Expected**: Generates 1-2 instances (anniversary guaranteed within 12-month window)
     """
     # Arrange: Create annual recurring rule
     today = date.today()
     account_id = generate_id()
     user_id = uuid4()
 
-    # Create rule: Annual on day 15 of current month (likely within window)
+    # Create rule: Annual on day 15 of current month (will be within window)
     tenant_id = settings_with_rates_real.tenant_id
     rule = RecurringRule(
         id=generate_id(),
@@ -172,11 +172,11 @@ async def test_generate_annual_recurring_events(mongodb_real, clean_database_rea
     # Act: Generate recurring events
     generated = await generate_recurring_events(mongodb_real, user_id, None, tenant_id)
 
-    # Assert: Should generate 0-1 annual instances
-    assert len(generated) <= 1, "Should generate at most 1 annual instance in ±1 month"
+    # Assert: Should generate 1-2 annual instances (12-month window guarantees at least 1)
+    assert len(generated) >= 1, "Should generate at least 1 annual instance in 12-month window"
+    assert len(generated) <= 2, "Should generate at most 2 annual instances"
 
-    if len(generated) == 1:
-        event = generated[0]
+    for event in generated:
         assert event.event_date.day == 15
         assert event.event_date.month == rule.start_date.month
         assert event.recurring_rule_id == rule.id
@@ -466,3 +466,53 @@ async def test_generate_recurring_events_empty_rules(mongodb_real, clean_databas
     # Assert: Should return empty list
     assert generated == []
     assert len(generated) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_generate_recurring_events_skips_excluded_dates(mongodb_real, clean_database_real, settings_with_rates_real):
+    """
+    Test that generation skips dates in excluded_dates list.
+
+    **Scenario**: Rule with excluded_dates for single-instance deletion
+    **Expected**: Skips excluded dates, generates others
+    """
+    # Arrange: Create monthly recurring rule with excluded dates
+    today = date.today()
+    account_id = generate_id()
+    user_id = uuid4()
+
+    # Calculate dates that will be in the window
+    next_month = today.replace(day=15) + timedelta(days=30)
+    excluded_date = next_month.replace(day=15)  # Exclude the 15th of next month
+
+    tenant_id = settings_with_rates_real.tenant_id
+    rule = RecurringRule(
+        id=generate_id(),
+        description="Monthly with Exclusion",
+        amount=Decimal("-100"),
+        currency="GBP",
+        account_id=account_id,
+        frequency=Frequency.MONTHLY,
+        day=15,
+        start_date=today - timedelta(days=60),
+        end_date=None,
+        excluded_dates=[excluded_date],  # Exclude one specific date
+        created_at=utc_now(),
+        created_by=user_id,
+        updated_at=utc_now(),
+        updated_by=user_id,
+        tenant_id=tenant_id
+    )
+
+    await mongodb_real["recurring_rules"].insert_one(rule.model_dump(mode="json"))
+
+    # Act: Generate recurring events
+    generated = await generate_recurring_events(mongodb_real, user_id, "client-a", tenant_id)
+
+    # Assert: The excluded date should not be in generated events
+    generated_dates = [e.event_date for e in generated]
+    assert excluded_date not in generated_dates, f"Excluded date {excluded_date} should not be generated"
+
+    # Should still generate other months
+    assert len(generated) >= 10, "Should generate at least 10 monthly instances (excluding 1)"

@@ -983,7 +983,9 @@ class StorageAdapter {
 
         } catch (error) {
             console.error('[CHAPTR] Manual sync failed:', error);
-            window.showNotification('Sync failed', 'error');
+            if (typeof window.showNotification === 'function') {
+                window.showNotification('Sync failed', 'error');
+            }
             throw error;
         }
     }
@@ -1235,7 +1237,10 @@ class StorageAdapter {
     async handleFullSyncRequired() {
         console.warn('[CHAPTR] Full sync required - client is stale');
 
-        window.showNotification('Full sync in progress...', 'info', 5000);
+        // Safely call notification (may not be bound yet during early init)
+        if (typeof window.showNotification === 'function') {
+            window.showNotification('Full sync in progress...', 'info', 5000);
+        }
 
         // Clear Dexie and re-download
         await db.transaction('rw', [db.accounts, db.stories, db.events, db.recurring_rules, db.settings, db.sync_queue], async () => {
@@ -1250,7 +1255,9 @@ class StorageAdapter {
         // Re-fetch from server
         await this.fetchAndPopulateDexie();
 
-        window.showNotification('Full sync complete', 'success');
+        if (typeof window.showNotification === 'function') {
+            window.showNotification('Full sync complete', 'success');
+        }
     }
 
     /**

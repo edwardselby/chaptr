@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-01-25
+
+### Added
+- `excluded_dates` field on RecurringRule model: Enables soft-deletion of single recurring event instances without deleting the entire rule (api/models.py)
+- 3-option delete dialog for recurring events: "Delete this occurrence only", "Delete this and future occurrences", "Delete entire rule" (app.js, index.html)
+- Close button on conflict modal: Allows dismissing empty or resolved conflict modals (index.html)
+- Conflict modal templates: Added `edit_delete` and fallback templates for edge case conflicts (index.html)
+- BSON ObjectId regression tests: 2 tests ensuring sync responses never contain MongoDB `_id` fields (test_sync_integration.py)
+- excluded_dates-only update tests: 2 tests verifying optimization behavior (test_recurring_rules.py)
+- Frontend excluded_dates tests: 4 tests for event-helpers excluded_dates handling (event_helpers.test.js)
+
+### Fixed
+- Recurring events not syncing to client: Server-generated events were excluded from `server_changes` due to `client_id` filtering; now pass `client_id=None` for server-generated events (sync.py:503, recurring_rules.py:291)
+- Event duplication when deleting recurring instances: `excluded_dates`-only updates now skip cascade delete + regeneration cycle (recurring_rules.py:248-291)
+- BSON ObjectId serialization error: Strip MongoDB `_id` field from change_log data before storage (base.py:77-80)
+- Projection view not refreshing after CRUD operations: Added `updateProjectionRows()` calls to all data-modifying operations including event/story/account create/update/delete (app.js - 16 locations)
+- Conflict modal empty/stuck: Added close button and missing conflict templates for `edit_delete` scenario (index.html)
+- List serialization for MongoDB: `serialize_value()` now recursively handles lists (e.g., `excluded_dates`) (recurring_rules.py:218-227)
+- Recurring delete modal button spacing: Added proper padding to modal-actions for stacked button layout (index.html)
+
+### Changed
+- Recurring event generation window: Extended from ±30 days to 30 days back + 365 days forward for better financial planning coverage (recurring.py, event-helpers.js)
+- Delete button visibility: Only shows in Simple Event mode; recurring events accessed via 3-option dialog auto-detection (index.html, app.js)
+- Cascade delete logging: Uses `client_id=None` so deletions are included in `server_changes` for all clients (recurring_rules.py:279)
+
 ## [0.12.0] - 2026-01-21
 
 ### Added
