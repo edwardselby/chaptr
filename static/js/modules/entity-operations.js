@@ -79,8 +79,9 @@ export async function createEvent(db, eventData, accounts, stories, settings, ge
     const currency = account ? account.currency : settings.base_currency;
 
     // Lookup rate_to_base from settings.rates
+    // rates are stored as "1 base = X foreign", invert to get "1 foreign = X base"
     const rate_to_base = settings.rates && settings.rates[currency]
-        ? settings.rates[currency]
+        ? 1 / settings.rates[currency]
         : 1.0;
 
     const event = {

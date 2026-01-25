@@ -418,12 +418,37 @@ async function checkForServiceWorkerUpdate() {
         };
         registration.addEventListener('updatefound', onUpdateFound);
 
-        // Trigger update check
+        // Trigger update check and wait for completion
+        // registration.update() resolves immediately when check STARTS, not FINISHES
+        // We need to wait for either:
+        // 1. updatefound event (update available)
+        // 2. Timeout (no update, or slow network)
+        const updateCheckPromise = new Promise((resolve) => {
+            // Timeout after 3 seconds - if no update found by then, assume none available
+            const timeout = setTimeout(() => {
+                logger.info('[SW] Update check timeout - no update found');
+                resolve(false);
+            }, 3000);
+
+            // If updatefound fires, we'll have updateFoundPromise set
+            // Check periodically for it
+            const checkInterval = setInterval(() => {
+                if (updateFoundPromise || registration.waiting) {
+                    clearTimeout(timeout);
+                    clearInterval(checkInterval);
+                    resolve(true);
+                }
+            }, 100);
+        });
+
         try {
             await registration.update();
         } catch (updateError) {
             logger.warn('[SW] Update check failed:', updateError);
         }
+
+        // Wait for update check to complete (either found update or timeout)
+        const updateFound = await updateCheckPromise;
 
         // If update was found during the check, wait for it to install
         if (updateFoundPromise) {
@@ -436,8 +461,10 @@ async function checkForServiceWorkerUpdate() {
             return true;
         }
 
-        logger.info('[SW] No update available');
-        return false;
+        if (!updateFound) {
+            logger.info('[SW] No update available');
+        }
+        return updateFound;
 
     } catch (error) {
         logger.error('Service Worker registration failed:', error);

@@ -212,38 +212,50 @@ async def update_account(
 @router.delete("/accounts/{account_id}", status_code=204)
 async def delete_account(
     account_id: UUID,
+    hard: bool = Query(False, description="Hard delete with cascade (removes all events)"),
     current_user: dict = Depends(get_current_user),
     repo: AccountRepository = Depends(get_account_repo)
 ):
     """
-    Archive account (soft delete).
+    Archive (soft delete) or hard delete an account.
 
-    Accounts are never hard-deleted to preserve historical data.
-    Instead, they are archived (is_archived=true).
+    By default, accounts are archived (is_archived=true) to preserve historical data.
+    With ?hard=true, the account and ALL associated events are permanently deleted.
 
     Business Rules:
-    - Cannot archive the default account - set another as default first
-    - Archived accounts are hidden from active account lists
-    - Historical events are retained
+    - Cannot delete the default account - set another as default first
+    - Soft delete: Account archived, events retained
+    - Hard delete: Account and all events permanently removed
 
-    Multi-tenancy: Only archives account if it belongs to the current user's tenant.
+    Multi-tenancy: Only deletes account if it belongs to the current user's tenant.
 
     :param account_id: Account UUID
     :type account_id: UUID
+    :param hard: If true, permanently delete account and all events
+    :type hard: bool
     :param repo: Injected AccountRepository
     :type repo: AccountRepository
     :return: No content (204)
     :raises ResourceNotFoundError: If account not found (404)
-    :raises ResourceConflictError: If trying to archive default account (409)
+    :raises ResourceConflictError: If trying to delete default account (409)
 
     :Example:
 
     ```bash
+    # Soft delete (archive)
     curl -X DELETE http://localhost:8000/api/accounts/{account-id}
+
+    # Hard delete (permanent)
+    curl -X DELETE "http://localhost:8000/api/accounts/{account-id}?hard=true"
     ```
     """
-    # Verify account belongs to tenant before archive
+    # Verify account belongs to tenant before delete
     tenant_id = get_tenant_id(current_user)
     await repo.get_for_tenant(account_id, tenant_id)
-    await repo.archive(account_id, current_user=current_user, client_id=None)
+
+    if hard:
+        await repo.hard_delete(account_id, current_user=current_user, client_id=None)
+    else:
+        await repo.archive(account_id, current_user=current_user, client_id=None)
+
     return None

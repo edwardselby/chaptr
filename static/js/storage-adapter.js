@@ -251,17 +251,17 @@ class StorageAdapter {
     // ==================== CRUD Operations ====================
 
     /**
-     * Get all accounts
+     * Get all accounts (including archived)
      *
      * @returns {Promise<Array>} Array of account objects
      */
     async getAccounts() {
         switch (this.mode) {
             case 'full':
-                return await db.accounts.filter(a => !a.is_archived).toArray();
+                return await db.accounts.toArray();
             case 'sync-only':
             case 'basic':
-                return this.memoryStore.accounts.filter(a => !a.is_archived);
+                return this.memoryStore.accounts;
         }
     }
 
@@ -568,22 +568,23 @@ class StorageAdapter {
      * Delete account (soft delete - mark as archived)
      *
      * @param {string} accountId - Account UUID
+     * @param {boolean} hardDelete - If true, permanently delete account and all events
      * @returns {Promise<void>}
      */
-    async deleteAccount(accountId) {
+    async deleteAccount(accountId, hardDelete = false) {
         const now = new Date().toISOString();
 
         switch (this.mode) {
             case 'full':
-                return await this.deleteAccount_Full(accountId, now);
+                return await this.deleteAccount_Full(accountId, now, hardDelete);
             case 'sync-only':
-                return await this.deleteAccount_SyncOnly(accountId);
+                return await this.deleteAccount_SyncOnly(accountId, hardDelete);
             case 'basic':
-                return await this.deleteAccount_Basic(accountId);
+                return await this.deleteAccount_Basic(accountId, hardDelete);
         }
     }
 
-    async deleteAccount_Full(accountId, now) {
+    async deleteAccount_Full(accountId, now, hardDelete = false) {
         // 0. Get current entity for conflict detection (capture base_updated_at)
         const currentAccount = await db.accounts.get(accountId);
         if (!currentAccount) {
@@ -605,53 +606,120 @@ class StorageAdapter {
             await db.sync_queue.bulkDelete(queuedEventChanges.map(q => q.id));
         }
 
-        // 1. Soft delete in Dexie (mark as archived)
-        await db.accounts.update(accountId, {
-            is_archived: true,
-            updated_at: now
-        });
+        if (hardDelete) {
+            // Hard delete: Remove account and all events permanently
+            await db.events.where('account_id').equals(accountId).delete();
+            await db.accounts.delete(accountId);
+            // Queue delete action for sync
+            await db.queueChange('account', accountId, 'delete', null, baseUpdatedAt);
+        } else {
+            // Soft delete: Mark as archived (keep events)
+            await db.accounts.update(accountId, {
+                is_archived: true,
+                updated_at: now
+            });
+            // Queue update action for sync (archive is an update, not delete)
+            const updatedAccount = await db.accounts.get(accountId);
+            await db.queueChange('account', accountId, 'update', updatedAccount, baseUpdatedAt);
+        }
 
-        // 2. Queue for sync (send null data per spec - delete should not send entity data)
-        await db.queueChange('account', accountId, 'delete', null, baseUpdatedAt);
-
-        // 3. Queue limit check after write (see createAccount_Full for rationale)
+        // Queue limit check after write (see createAccount_Full for rationale)
         await this.checkQueueLimit();
     }
 
-    async deleteAccount_SyncOnly(accountId) {
+    async deleteAccount_SyncOnly(accountId, hardDelete = false) {
         try {
-            const response = await apiRequest(`/api/accounts/${accountId}`, {
+            const url = hardDelete
+                ? `/api/accounts/${accountId}?hard=true`
+                : `/api/accounts/${accountId}`;
+            const response = await apiRequest(url, {
                 method: 'DELETE'
             });
 
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || `API error: ${response.status}`);
             }
 
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
+            if (hardDelete) {
+                this.memoryStore.events = this.memoryStore.events.filter(e => e.account_id !== accountId);
+            }
         } catch (error) {
             window.showNotification(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
             throw error;
         }
     }
 
-    async deleteAccount_Basic(accountId) {
+    async deleteAccount_Basic(accountId, hardDelete = false) {
         try {
-            const response = await apiRequest(`/api/accounts/${accountId}`, {
+            const url = hardDelete
+                ? `/api/accounts/${accountId}?hard=true`
+                : `/api/accounts/${accountId}`;
+            const response = await apiRequest(url, {
                 method: 'DELETE'
             });
 
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || `API error: ${response.status}`);
             }
 
             // Remove from memory store
             this.memoryStore.accounts = this.memoryStore.accounts.filter(a => a.id !== accountId);
+            if (hardDelete) {
+                this.memoryStore.events = this.memoryStore.events.filter(e => e.account_id !== accountId);
+            }
         } catch (error) {
             window.showNotification(getModeAwareErrorMessage(this.mode, 'delete account'), 'error');
             throw error;
         }
+    }
+
+    /**
+     * Unarchive account (mode-aware)
+     * Restores an archived account to active status
+     */
+    async unarchiveAccount(accountId) {
+        switch (this.mode) {
+            case 'full':
+                return await this.unarchiveAccount_Full(accountId);
+            case 'sync-only':
+                return await this.unarchiveAccount_SyncOnly(accountId);
+            case 'basic':
+                return await this.unarchiveAccount_Basic(accountId);
+        }
+    }
+
+    async unarchiveAccount_Full(accountId) {
+        const now = new Date().toISOString();
+        const currentAccount = await db.accounts.get(accountId);
+        if (!currentAccount) throw new Error(`Account ${accountId} not found`);
+        const baseUpdatedAt = currentAccount.updated_at;
+
+        await db.accounts.update(accountId, { is_archived: false, updated_at: now });
+        const updatedAccount = await db.accounts.get(accountId);
+        await db.queueChange('account', accountId, 'update', updatedAccount, baseUpdatedAt);
+        await this.checkQueueLimit();
+    }
+
+    async unarchiveAccount_SyncOnly(accountId) {
+        const account = this.memoryStore.accounts.find(a => a.id === accountId);
+        if (account) {
+            account.is_archived = false;
+            account.updated_at = new Date().toISOString();
+        }
+        const response = await apiRequest(`/api/accounts/${accountId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_archived: false })
+        });
+        if (!response.ok) throw new Error('Failed to unarchive account');
+    }
+
+    async unarchiveAccount_Basic(accountId) {
+        return this.unarchiveAccount_SyncOnly(accountId);
     }
 
     // ==================== Recurring Rules ====================

@@ -161,8 +161,14 @@ async def generate_recurring_events(
                 continue
 
             # Calculate rate_to_base from settings
-            # If currency not in rates, default to 1.0
-            rate_to_base = settings.rates.get(rule.currency, Decimal("1.0"))
+            # rates are stored as "1 base = X foreign", invert to get "1 foreign = X base"
+            # If currency matches base or not in rates, default to 1.0
+            if rule.currency == settings.base_currency:
+                rate_to_base = Decimal("1.0")
+            else:
+                stored_rate = settings.rates.get(rule.currency, Decimal("1.0"))
+                # Round to 8 decimal places to match model constraints
+                rate_to_base = round(Decimal("1.0") / stored_rate, 8) if stored_rate else Decimal("1.0")
 
             # Look up account to determine baseline status (tenant-scoped)
             account_query = {"id": str(rule.account_id), **tenant_filter}

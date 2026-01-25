@@ -473,6 +473,7 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
         // Insert TODAY divider after today's events, before first future event
         if (!todayDividerInserted && row.event_date > today) {
             row.showTodayDivider = true;
+            row.todayDate = today;  // Actual today date (not event date)
             todayDividerInserted = true;
         }
 

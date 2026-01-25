@@ -22,7 +22,8 @@ export function calculateRateToBase(currency, settings) {
     }
 
     if (settings?.rates && settings.rates[currency]) {
-        return settings.rates[currency];
+        // rates are stored as "1 base = X foreign", invert to get "1 foreign = X base"
+        return 1 / settings.rates[currency];
     }
 
     // Fallback to 1.0 if rate not found

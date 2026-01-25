@@ -324,6 +324,72 @@ class AccountRepository(BaseRepository[Account]):
 
         return True
 
+    async def hard_delete(
+        self,
+        account_id: UUID,
+        current_user: Optional[dict] = None,
+        client_id: Optional[str] = None
+    ) -> bool:
+        """
+        Hard delete account and cascade delete all associated events.
+
+        Business Rules:
+        - Cannot delete the default account
+        - All events with this account_id are permanently removed
+        - Change logged for sync protocol
+
+        :param account_id: Account UUID to delete
+        :type account_id: UUID
+        :param current_user: Current user for audit trail
+        :type current_user: Optional[dict]
+        :param client_id: Client/device identifier for sync
+        :type client_id: Optional[str]
+        :return: True if deleted successfully
+        :rtype: bool
+        :raises ResourceNotFoundError: If account not found
+        :raises ResourceConflictError: If trying to delete default account
+
+        :Example:
+
+        >>> await repo.hard_delete(account_id)
+        True
+        """
+        # Get account to verify existence and check if default
+        account = await self.get(account_id)
+
+        if account.is_default:
+            raise ResourceConflictError(
+                "Cannot delete default account. "
+                "Set another account as default first."
+            )
+
+        tenant_id = self._get_tenant_id(current_user)
+
+        # Log change BEFORE deletion (capture snapshot for sync)
+        await self.log_change(
+            "account",
+            account_id,
+            "delete",
+            account.model_dump(mode="json"),
+            self._get_user_id(current_user),
+            client_id,
+            tenant_id
+        )
+
+        # CASCADE: Delete all events for this account
+        cascade_query = {'account_id': to_str(account_id)}
+        if tenant_id:
+            cascade_query['tenant_id'] = str(tenant_id)
+        await self.db['events'].delete_many(cascade_query)
+
+        # Delete the account itself
+        delete_query = {'id': to_str(account_id)}
+        if tenant_id:
+            delete_query['tenant_id'] = str(tenant_id)
+        await self.collection.delete_one(delete_query)
+
+        return True
+
     async def list_active(self, tenant_id: Optional[UUID] = None) -> list[Account]:
         """
         List all non-archived accounts for a tenant.
@@ -430,11 +496,14 @@ class AccountRepository(BaseRepository[Account]):
 
         # Calculate rate_to_base for this currency
         # If account currency matches base currency, rate = 1.0
-        # Otherwise, look up rate from settings
+        # Otherwise, look up rate from settings and INVERT it
+        # (rates are stored as "1 base = X foreign", we need "1 foreign = X base")
         if account.currency == settings.base_currency:
             rate_to_base = Decimal('1.0')
         else:
-            rate_to_base = settings.rates.get(account.currency, Decimal('1.0'))
+            stored_rate = settings.rates.get(account.currency, Decimal('1.0'))
+            # Round to 8 decimal places to match model constraints
+            rate_to_base = round(Decimal('1.0') / stored_rate, 8) if stored_rate else Decimal('1.0')
 
         # Create opening balance event
         event_data = EventCreate(

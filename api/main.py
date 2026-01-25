@@ -599,7 +599,10 @@ self.addEventListener('fetch', (event) => {{
         media_type="application/javascript",
         headers={
             "Service-Worker-Allowed": "/",
-            "Cache-Control": "no-cache"  # Don't cache the SW itself
+            # Prevent any caching of the SW file itself
+            # no-store: don't cache at all
+            # must-revalidate: if somehow cached, always check server
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
         }
     )
 

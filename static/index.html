@@ -193,7 +193,7 @@
                         <span class="section-action-text">MANAGE</span>
                     </div>
                     <div class="accounts-list">
-                        <template x-for="account in accounts" :key="account.id">
+                        <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
                             <div class="account-item">
                                 <div class="account-item-left">
                                     <div class="account-name">
@@ -203,7 +203,7 @@
                                         <span class="tag tag-credit" x-show="account.account_type === 'credit_card'">[credit]</span>
                                         <span class="tag tag-default" x-show="account.is_default">[default]</span>
                                     </div>
-                                    <div class="account-updated" x-text="'Updated ' + formatRelativeTime(account.balance_updated_at)"></div>
+                                    <div class="account-updated" x-text="'Balance updated ' + formatRelativeTime(account.balance_updated_at || account.updated_at)"></div>
                                 </div>
                                 <div class="account-item-right">
                                     <div class="account-balance" :class="getBalanceClass(account)" x-text="formatCurrency(account.current_balance, account.currency)"></div>
@@ -211,7 +211,7 @@
                             </div>
                         </template>
                         <!-- Accounts Total Row -->
-                        <div class="account-total-item" x-show="accounts.length > 0">
+                        <div class="account-total-item" x-show="accounts.filter(a => !a.is_archived).length > 0">
                             <div class="account-item-left">
                                 <div class="account-name">Total</div>
                             </div>
@@ -221,7 +221,7 @@
                                      x-text="formatCurrency(getAccountsTotalDisplay(), getAccountsTotalCurrency())"></div>
                             </div>
                         </div>
-                        <div class="empty-state" x-show="accounts.length === 0">
+                        <div class="empty-state" x-show="accounts.filter(a => !a.is_archived).length === 0">
                             <p>No accounts available, add one from the <span class="key">[Manage]</span> button above...</p>
                         </div>
                     </div>
@@ -324,7 +324,7 @@
 
                             <!-- TODAY Divider -->
                             <div class="today-divider" x-show="row.showTodayDivider">
-                                <span x-text="row.event_date ? ('━━━ TODAY (' + formatDate(row.event_date) + ') ━━━') : '━━━ TODAY ━━━'"></span>
+                                <span x-text="row.todayDate ? ('━━━ TODAY (' + formatDate(row.todayDate) + ') ━━━') : '━━━ TODAY ━━━'"></span>
                             </div>
 
                             <!-- Hidden Events Gap Indicator AFTER event (trailing gaps) -->
@@ -400,7 +400,7 @@
                                     </div>
                                     <div class="account-meta">
                                         <span class="account-currency" x-text="account.currency"></span>
-                                        <span class="account-updated" x-text="'Updated ' + formatRelativeTime(account.updated_at)"></span>
+                                        <span class="account-updated" x-text="'Updated ' + formatRelativeTime(account.updated_at || account.created_at)"></span>
                                     </div>
                                 </div>
                                 <div class="account-card-balance">
@@ -413,6 +413,36 @@
                                 </div>
                                 <div class="account-pending" x-show="account.pending_reconciliation">
                                     <span class="pending-indicator">[!!] Pending reconciliation</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+
+                <!-- Archived Accounts Section -->
+                <section class="section" x-show="accounts.filter(a => a.is_archived).length > 0">
+                    <div class="collapsible-header" @click="showArchivedAccounts = !showArchivedAccounts">
+                        <h2>
+                            <span x-text="showArchivedAccounts ? '▼' : '▶'"></span>
+                            Archived
+                            <span class="archived-count" x-text="'(' + accounts.filter(a => a.is_archived).length + ')'"></span>
+                        </h2>
+                    </div>
+                    <div class="accounts-list" x-show="showArchivedAccounts">
+                        <template x-for="account in getArchivedAccounts()" :key="account.id">
+                            <div class="account-card account-card-archived" @click="viewAccountDetails(account.id)">
+                                <div class="account-card-header">
+                                    <div class="account-name-row">
+                                        <span class="account-name" x-text="account.name"></span>
+                                        <span class="tag tag-archived">[archived]</span>
+                                    </div>
+                                    <div class="account-meta">
+                                        <span class="account-currency" x-text="account.currency"></span>
+                                    </div>
+                                </div>
+                                <div class="account-card-balance">
+                                    <span class="balance-label">Balance at Archive</span>
+                                    <span class="balance-value" x-text="formatCurrency(account.current_balance, account.currency)"></span>
                                 </div>
                             </div>
                         </template>
@@ -792,7 +822,7 @@
                             <span class="archived-count" x-text="'(' + stories.filter(s => s.is_archived).length + ')'"></span>
                         </h2>
                     </div>
-                    <div class="stories-list-management" x-show="showArchivedStories" x-collapse>
+                    <div class="stories-list-management" x-show="showArchivedStories">
                         <template x-for="story in getArchivedStories()" :key="story.id">
                             <div class="story-card story-card-archived" @click="viewStoryDetails(story.id)">
                                 <div class="story-card-header">
@@ -970,12 +1000,14 @@
                     <span class="form-hint">Default account used for new events</span>
                 </div>
                 <div class="modal-actions">
+                    <button type="button" class="btn-secondary" @click="showAccountModal = false">Cancel</button>
                     <button type="submit" class="btn-primary">Save Account</button>
-                    <button
-                        type="button"
-                        class="btn-danger"
-                        x-show="accountForm.id"
-                        @click="deleteAccount()">Delete</button>
+                    <button type="button" class="btn-archive-action" x-show="accountForm.id && !accountForm.is_archived"
+                        @click="archiveAccountFromModal()">Archive (Keep Events)</button>
+                    <button type="button" class="btn-archive-action" x-show="accountForm.id && accountForm.is_archived"
+                        @click="unarchiveAccountFromModal()">Unarchive</button>
+                    <button type="button" class="btn-danger" x-show="accountForm.id"
+                        @click="deleteAccountPermanently()">Delete Permanently</button>
                 </div>
             </form>
         </div>
@@ -2300,7 +2332,7 @@
                 </p>
                 <p style="margin-bottom: 16px;">This is a recurring event. How would you like to delete it?</p>
             </div>
-            <div class="modal-actions" style="flex-direction: column; gap: 8px; padding: 20px; padding-top: 16px;">
+            <div class="modal-actions" style="flex-direction: column; gap: 8px;">
                 <button type="button" class="btn-danger" @click="deleteThisOccurrence()">
                     Delete this occurrence only
                 </button>

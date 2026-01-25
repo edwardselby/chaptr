@@ -136,6 +136,7 @@ window.app = function() {
             description: '',
             recurringRuleId: null
         },
+        showArchivedAccounts: false,
         confirmModalData: {
             title: '',
             message: '',
@@ -1237,51 +1238,73 @@ window.app = function() {
         },
 
         /**
-         * Delete account (via storage adapter)
-         * Requires typing account name for confirmation (case-insensitive)
+         * Archive account from modal (soft delete) - keeps events
          */
-        async deleteAccount() {
-            const accountName = this.accountForm.name;
-
-            // Prompt user to type account name for confirmation
-            const userInput = window.prompt(
-                `⚠️  DELETE ACCOUNT\n\nTo confirm deletion, please type the account name:\n\n"${accountName}"\n\nThis action cannot be undone.`
-            );
-
-            // Check if user cancelled or input doesn't match (case-insensitive)
-            if (!userInput || userInput.trim().toLowerCase() !== accountName.toLowerCase()) {
-                if (userInput !== null) {
-                    // User tried but got it wrong
-                    this.showNotification('Account name did not match. Deletion cancelled.', 'error');
-                }
-                return; // Exit without deleting
-            }
-
-            // Name matched - proceed with deletion
+        async archiveAccountFromModal() {
             try {
                 const accountId = this.accountForm.id;
-
-                // Use storage adapter (handles all 3 modes)
-                await storage.deleteAccount(accountId);
-
-                // Update sync queue count for UI indicator
-                await this.updateSyncQueueCount();
-
+                await storage.deleteAccount(accountId, false);
                 this.showAccountModal = false;
-
-                // Reload data
+                await this.updateSyncQueueCount();
                 await this.loadData();
-
-                // Refresh projection view
                 await this.updateDashboardProjection();
                 await this.updateProjectionRows();
-
-                this.showNotification('Account deleted', 'success');
-
+                this.showNotification('Account archived', 'success');
             } catch (error) {
-                console.error('Error deleting account:', error);
-                this.showNotification('Delete failed', 'error');
+                console.error('Archive account failed:', error);
+                this.showNotification(error.message || 'Failed to archive account', 'error');
             }
+        },
+
+        /**
+         * Unarchive account from modal - restores account to active list
+         */
+        async unarchiveAccountFromModal() {
+            try {
+                const accountId = this.accountForm.id;
+                await storage.unarchiveAccount(accountId);
+                this.showAccountModal = false;
+                await this.updateSyncQueueCount();
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('Account restored', 'success');
+            } catch (error) {
+                console.error('Unarchive account failed:', error);
+                this.showNotification(error.message || 'Failed to restore account', 'error');
+            }
+        },
+
+        /**
+         * Delete account permanently - removes account and all events
+         * Requires user to type "delete" for confirmation
+         */
+        deleteAccountPermanently() {
+            const accountId = this.accountForm.id;
+            const accountName = this.accountForm.name;
+
+            this.showInput(
+                'Delete Permanently',
+                `Type "delete" to permanently remove "${accountName}" and all its events:`,
+                async (typed) => {
+                    if (typed && typed.toLowerCase() === 'delete') {
+                        try {
+                            await storage.deleteAccount(accountId, true);
+                            this.showAccountModal = false;
+                            await this.updateSyncQueueCount();
+                            await this.loadData();
+                            await this.updateDashboardProjection();
+                            await this.updateProjectionRows();
+                            this.showNotification('Account and all events deleted', 'success');
+                        } catch (error) {
+                            console.error('Delete account failed:', error);
+                            this.showNotification(error.message || 'Failed to delete account', 'error');
+                        }
+                    } else {
+                        this.showNotification('Deletion cancelled - you must type "delete" to confirm', 'warning');
+                    }
+                }
+            );
         },
 
         // ===== STORIES =====
@@ -1591,6 +1614,14 @@ window.app = function() {
                 !a.is_archived &&
                 (!query || a.name.toLowerCase().includes(query))
             );
+        },
+
+        /**
+         * Get archived accounts for display in archived section
+         * @returns {Array} Archived accounts
+         */
+        getArchivedAccounts() {
+            return this.accounts.filter(a => a.is_archived);
         },
 
         /**
@@ -2326,23 +2357,20 @@ window.app = function() {
         /**
          * Confirm and reset local database
          *
-         * Shows confirmation dialog before clearing local data.
+         * Shows confirmation modal before clearing local data.
          * Available to all users from Settings > Troubleshooting.
          */
-        async confirmResetLocalDatabase() {
-            const confirmed = confirm(
-                'Reset Local Database?\n\n' +
-                'This will:\n' +
-                '• Clear all local data\n' +
-                '• Download fresh data from the server\n\n' +
-                'Your server data will NOT be affected.\n\n' +
-                'Continue?'
+        confirmResetLocalDatabase() {
+            this.showConfirm(
+                'Reset Local Database',
+                'This will:\n• Clear all local data\n• Download fresh data from the server\n\nYour server data will NOT be affected.',
+                async () => {
+                    await this.clearDatabaseAndResync();
+                    this.showNotification('Database reset complete', 'success');
+                },
+                'Reset',
+                'danger'
             );
-
-            if (confirmed) {
-                await this.clearDatabaseAndResync();
-                this.showNotification('Database reset complete', 'success');
-            }
         },
 
         /**

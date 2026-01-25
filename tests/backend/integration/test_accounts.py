@@ -428,6 +428,169 @@ class TestAccountDelete:
         assert len(data) == 1
         assert data[0]["id"] == str(sample_account.id)
 
+    @pytest.mark.asyncio
+    async def test_cannot_delete_default_account(self, async_client, sample_account, auth_headers):
+        """Cannot delete the default account (either soft or hard)."""
+        # sample_account is the default account
+        assert sample_account.is_default is True
+
+        # Try soft delete (archive)
+        response = await async_client.delete(f"/api/accounts/{sample_account.id}", headers=auth_headers)
+        assert response.status_code == 409
+        assert "default" in response.json()["detail"].lower()
+
+        # Try hard delete
+        response = await async_client.delete(
+            f"/api/accounts/{sample_account.id}?hard=true",
+            headers=auth_headers
+        )
+        assert response.status_code == 409
+        assert "default" in response.json()["detail"].lower()
+
+
+# ============================================================================
+# DELETE /api/accounts/{id}?hard=true - Hard Delete Account
+# ============================================================================
+
+class TestAccountHardDelete:
+    """Tests for hard delete (cascade delete) of accounts."""
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_removes_account_and_events(
+        self, async_client, sample_account, sample_account_usd, auth_headers
+    ):
+        """Hard delete removes account and all associated events."""
+        from datetime import date
+        from uuid import uuid4
+
+        # Create some events for the USD account
+        event_payloads = [
+            {
+                "event_date": str(date.today()),
+                "description": "Test Event 1",
+                "amount": -100.00,
+                "currency": "USD",
+                "account_id": str(sample_account_usd.id),
+                "is_baseline": True,
+                "is_hypothetical": False,
+                "is_auto_adjustment": False
+            },
+            {
+                "event_date": str(date.today()),
+                "description": "Test Event 2",
+                "amount": -200.00,
+                "currency": "USD",
+                "account_id": str(sample_account_usd.id),
+                "is_baseline": True,
+                "is_hypothetical": False,
+                "is_auto_adjustment": False
+            }
+        ]
+
+        for payload in event_payloads:
+            resp = await async_client.post("/api/events", json=payload, headers=auth_headers)
+            assert resp.status_code == 201, f"Event creation failed: {resp.json()}"
+
+        # Verify events exist (may include opening balance event)
+        events_resp = await async_client.get("/api/events", headers=auth_headers)
+        events_data = events_resp.json()
+        usd_events = [e for e in events_data if e["account_id"] == str(sample_account_usd.id)]
+        assert len(usd_events) >= 2  # At least 2 created, may include opening balance
+
+        # Hard delete the USD account
+        delete_resp = await async_client.delete(
+            f"/api/accounts/{sample_account_usd.id}?hard=true",
+            headers=auth_headers
+        )
+        assert delete_resp.status_code == 204
+
+        # Verify account is gone (not just archived)
+        get_resp = await async_client.get(
+            f"/api/accounts/{sample_account_usd.id}",
+            headers=auth_headers
+        )
+        assert get_resp.status_code == 404
+
+        # Verify events are gone
+        events_after = await async_client.get("/api/events", headers=auth_headers)
+        events_after_data = events_after.json()
+        usd_events_after = [e for e in events_after_data if e["account_id"] == str(sample_account_usd.id)]
+        assert len(usd_events_after) == 0
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_nonexistent_account_returns_404(self, async_client, auth_headers):
+        """Hard delete non-existent account returns 404."""
+        from uuid import uuid4
+        fake_id = uuid4()
+
+        response = await async_client.delete(f"/api/accounts/{fake_id}?hard=true", headers=auth_headers)
+        assert response.status_code == 404
+
+
+# ============================================================================
+# PUT /api/accounts/{id} - Unarchive Account
+# ============================================================================
+
+class TestAccountUnarchive:
+    """Tests for unarchiving (restoring) accounts."""
+
+    @pytest.mark.asyncio
+    async def test_unarchive_account_success(self, async_client, sample_archived_account, auth_headers):
+        """Updating is_archived=false restores account."""
+        # Verify it's archived
+        get_resp = await async_client.get(
+            f"/api/accounts/{sample_archived_account.id}",
+            headers=auth_headers
+        )
+        assert get_resp.json()["is_archived"] is True
+
+        # Unarchive
+        update_resp = await async_client.put(
+            f"/api/accounts/{sample_archived_account.id}",
+            json={"is_archived": False},
+            headers=auth_headers
+        )
+
+        assert update_resp.status_code == 200
+        data = update_resp.json()
+        assert data["is_archived"] is False
+
+        # Verify it appears in default list now
+        list_resp = await async_client.get("/api/accounts", headers=auth_headers)
+        account_ids = [a["id"] for a in list_resp.json()]
+        assert str(sample_archived_account.id) in account_ids
+
+    @pytest.mark.asyncio
+    async def test_archive_preserves_events(
+        self, async_client, sample_account, sample_account_usd, auth_headers
+    ):
+        """Archiving (soft delete) preserves all events."""
+        from datetime import date
+
+        # Create events for USD account
+        event_payload = {
+            "event_date": str(date.today()),
+            "description": "Preserved Event",
+            "amount": -500.00,
+            "currency": "USD",
+            "account_id": str(sample_account_usd.id),
+            "is_baseline": True,
+            "is_hypothetical": False,
+            "is_auto_adjustment": False
+        }
+        resp = await async_client.post("/api/events", json=event_payload, headers=auth_headers)
+        assert resp.status_code == 201, f"Event creation failed: {resp.json()}"
+
+        # Archive the account
+        await async_client.delete(f"/api/accounts/{sample_account_usd.id}", headers=auth_headers)
+
+        # Verify event still exists
+        events_resp = await async_client.get("/api/events", headers=auth_headers)
+        events = events_resp.json()
+        preserved = [e for e in events if e["description"] == "Preserved Event"]
+        assert len(preserved) == 1
+        assert preserved[0]["account_id"] == str(sample_account_usd.id)
+
 
 # ============================================================================
 # Account Types - Create, Update, Validation

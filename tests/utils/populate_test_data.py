@@ -456,10 +456,13 @@ class TestDataGenerator:
             return events
 
         # Get rate to base for currency conversion
+        # rates are stored as "1 base = X foreign", invert to get "1 foreign = X base"
         if account.currency == self.settings.base_currency:
             rate_to_base = Decimal("1.0")
         else:
-            rate_to_base = self.settings.rates.get(account.currency, Decimal("1.0"))
+            stored_rate = self.settings.rates.get(account.currency, Decimal("1.0"))
+            # Round to 8 decimal places to match model constraints
+            rate_to_base = round(Decimal("1.0") / stored_rate, 8) if stored_rate else Decimal("1.0")
 
         # Generate baseline events (recurring monthly bills spanning whole year 2026)
         baseline_count = 0

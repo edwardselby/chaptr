@@ -7,11 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-01-25
+
+### Added
+- Account archive/delete UI: Inline buttons in account modal for "Archive (Keep Events)", "Unarchive", and "Delete Permanently" (matching story pattern). Delete requires typing "delete" for confirmation. Archived accounts section with collapsible toggle in Accounts screen. Dashboard hides archived accounts. Backend supports `?hard=true` query parameter for permanent deletion with cascade event removal (index.html, style.css, app.js, storage-adapter.js, accounts.py, routes/accounts.py)
+- Backend tests for account hard delete and unarchive functionality (test_accounts.py)
+
+### Fixed
+- **CRITICAL**: Foreign currency rate_to_base calculation inverted: Opening balance and recurring events for non-base currencies were multiplying amounts by rates instead of dividing. A 5000 CAD account was showing £8,600 instead of £2,907. Fixed in frontend and backend (event-helpers.js, entity-operations.js, accounts.py, recurring.py)
+- Account "Updated" display showing NaN or 1970 date: Dashboard now shows "Balance updated" with fallback to `updated_at` when `balance_updated_at` is not set (index.html)
+
 ## [0.16.0] - 2026-01-25
 
 ### Fixed
 - Auto-update regression: App now checks for service worker updates BEFORE loading, preventing full load of old version followed by reload. The `checkForServiceWorkerUpdate()` function now registers SW and waits for update check before deciding whether to load app or wait for reload (init.js)
 - Hypothetical events not displaying: Events marked as hypothetical were not visible in any view despite affecting running balance. Fixed by separating visible events from balance-affecting events in projection engine. Hypothetical events now show in story view with amber styling but don't affect running balance (projection.js, style.css, index.html)
+- TODAY divider showing wrong date: Was displaying the first future event's date instead of actual today's date. Now correctly shows today's date (projection.js, index.html)
+- Modal button positioning: Buttons in modal footers were pushed against edges. Added proper padding to `.modal-actions` with negative margin handling for modals where actions are inside `.modal-body` (style.css)
+- Service worker update detection: Updates weren't being detected on refresh because `registration.update()` resolves immediately when check starts, not when it completes. Now waits up to 3 seconds for update check to complete before proceeding (init.js, main.py)
+- Tag styling standardized: Removed borders from all tag badges ([default], [checking], [savings], [credit], [archived]) for consistent appearance. Changed [default] tag to grey (style.css)
+- Removed unused x-collapse directive that was causing Alpine.js warning (index.html)
 
 ### Added
 - Reset Local Database button in Settings > Troubleshooting section for all users: Allows clearing local IndexedDB and re-syncing from server to resolve data sync issues (index.html, app.js)
@@ -21,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Docker healthcheck endpoint corrected from `/api/health` to `/health` (docker-compose.yml)
+- Reset Local Database confirmation now uses styled modal instead of browser alert (app.js)
 - Test suite performance: Backend tests now run 6x faster (120s → 20s) by using fast bcrypt rounds (4 vs 12) for password hashing in tests and disabling unused Faker pytest plugin (conftest.py, pytest.ini)
 - File paths in main.py now use PROJECT_ROOT for reliable path resolution regardless of working directory, fixing tests that run from tests/backend/ (main.py)
 
