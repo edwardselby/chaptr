@@ -2150,13 +2150,8 @@ window.app = function() {
         async triggerManualSync() {
             if (this.isSyncing) return;
 
-            // DEFENSIVE FIX: Check queue before starting spinner to avoid early return bypassing minimum duration
+            // Update queue count for display
             await this.updateSyncQueueCount();
-
-            if (this.syncQueueCount === 0) {
-                this.showNotification('Nothing to sync', 'info');
-                return;
-            }
 
             // Start spinner and track start time
             this.isSyncing = true;

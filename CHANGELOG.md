@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-01-25
+
+### Changed
+- Event display in story view: Replaced `[recurring]` and `[auto]` tags with color coding - blue text for recurring events, dimmed italic for auto-adjustments (index.html, style.css)
+- Mobile layout: Running balance column now visible on all screen sizes with adjusted column widths and ellipsis overflow for long descriptions (style.css)
+
+### Fixed
+- Sync not pulling server changes: Manual sync now always contacts server even with empty local queue, enabling cross-device sync without local modifications (app.js, storage-adapter.js)
+
 ## [0.13.0] - 2026-01-25
 
 ### Added

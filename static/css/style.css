@@ -673,6 +673,16 @@ body::before {
     font-style: italic;
 }
 
+/* Recurring events - blue text color */
+.timeline-row.recurring-event .timeline-event {
+    color: var(--blue);
+    cursor: pointer;
+}
+
+.timeline-row.recurring-event .timeline-event:hover {
+    color: #4da6ff; /* Lighter blue on hover */
+}
+
 /* Conflict Modal Styling */
 .modal-conflict {
     max-width: 1100px;
@@ -1116,31 +1126,33 @@ body::before {
 }
 
 /* Responsive */
-/* Portrait Mobile - Hide balance, larger fonts for date/amount */
+/* Portrait Mobile - Show all columns with tighter spacing */
 @media (max-width: 480px) {
     .timeline-row {
-        grid-template-columns: 65px 1fr 85px; /* date | description | amount */
-        gap: 8px; /* Tighter spacing */
+        grid-template-columns: 52px 1fr 62px 62px; /* date | description | amount | balance */
+        gap: 4px; /* Tighter spacing */
         font-size: 11px;
-        padding: 8px 12px;
+        padding: 8px 10px;
     }
 
     .timeline-row.header {
-        grid-template-columns: 65px 1fr 85px;
+        grid-template-columns: 52px 1fr 62px 62px;
     }
 
-    /* Hide balance column on narrow screens */
-    .timeline-balance {
-        display: none;
+    /* Ellipsis for overflow text */
+    .timeline-event {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    /* Increase font size for date and amount - more readable with extra space */
     .timeline-date {
-        font-size: 12px; /* Was: 11px */
+        font-size: 11px;
     }
 
-    .timeline-amount {
-        font-size: 13px; /* Was: inherits 11-12px */
+    .timeline-amount,
+    .timeline-balance {
+        font-size: 11px;
     }
 
     /* Gap indicators on mobile - simplified without decorative lines */

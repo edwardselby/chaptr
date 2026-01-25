@@ -311,15 +311,12 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap && !row.isHistoricalGap"
-                                :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment }"
+                                :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment, 'recurring-event': row.recurring_rule_id }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="row.event_date ? formatDate(row.event_date) : ''"></div>
-                                <div class="timeline-event">
+                                <div class="timeline-event" @click.stop="row.recurring_rule_id && viewRecurringRule(row.recurring_rule_id)">
                                     <span x-text="row.description"></span>
-                                    <span class="tag auto-tag" x-show="row.is_auto_adjustment">[auto]</span>
-                                    <span class="tag recurring-tag" x-show="row.recurring_rule_id" @click.stop="viewRecurringRule(row.recurring_rule_id)">[recurring]</span>
-                                    <span class="tag" x-show="row.source && row.source !== 'baseline' && currentView === 'all'" x-text="'[' + row.source + ']'"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
                                 <div class="timeline-balance" :class="row.balance >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.balance, displayCurrency || settings.base_currency)"></div>

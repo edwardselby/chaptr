@@ -903,11 +903,7 @@ class StorageAdapter {
             // 1. Get pending changes from sync_queue
             const pending = await db.getPendingSyncQueue();
 
-            if (pending.length === 0) {
-                return { success: true, message: 'No changes to sync' };
-            }
-
-            // 2. Format changes for sync protocol
+            // 2. Format changes for sync protocol (empty array is valid - pulls server changes)
             const changes = pending.map(c => {
                 const change = {
                     entity_type: c.entity_type,
