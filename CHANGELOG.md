@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-01-25
+
+### Fixed
+- Opening balance events not syncing to requesting client: Server-created opening balances now use `client_id=None` so they're returned in `server_changes` to all clients including the one that created the account (accounts.py)
+- Duplicate opening balance prevention: Added check to skip creation if opening balance already exists for account (accounts.py)
+
+### Added
+- Opening balance sync tests: 3 tests verifying opening balance events are properly returned to requesting client and duplicates are prevented (test_sync_integration.py)
+
 ## [0.14.0] - 2026-01-25
 
 ### Changed

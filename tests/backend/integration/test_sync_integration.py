@@ -1629,3 +1629,189 @@ async def test_full_sync_response_does_not_contain_mongodb_id_fields(
     # Check settings (single object, not a list)
     if data.get("settings"):
         check_no_mongodb_id(data["settings"], "settings")
+
+
+# ============================================================================
+# Opening Balance Sync Tests
+# ============================================================================
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_account_creation_opening_balance_returned_to_requesting_client(
+    async_client_real,
+    auth_headers_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that opening balance events are returned to the client that created the account.
+
+    Critical sync bug fix: Server-created opening balance events must have client_id=None
+    so they appear in server_changes for the requesting client.
+
+    Without this fix:
+    1. Client A creates account → server creates opening balance with client_id="A"
+    2. Server query excludes client_id="A" from server_changes
+    3. Client A never receives the opening balance event
+    4. Client A has inconsistent data (no opening balance)
+
+    With this fix:
+    1. Client A creates account → server creates opening balance with client_id=None
+    2. Server query includes client_id=None in server_changes
+    3. Client A receives the opening balance event
+    """
+    account_id = uuid4()
+
+    # Client A creates an account via sync
+    sync_request = {
+        "client_id": "client-a",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(account_id),
+            "action": "create",
+            "data": {
+                "name": "Test Account",
+                "currency": "GBP",
+                "current_balance": 1000.00,
+                "is_default": True
+            },
+            "base_updated_at": None
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+    data = response.json()
+
+    # Account should be applied
+    assert len(data["applied"]) >= 1
+    account_applied = next((a for a in data["applied"] if a["entity_id"] == str(account_id)), None)
+    assert account_applied is not None, "Account should be applied"
+
+    # CRITICAL: Opening balance should be in server_changes for the SAME client
+    # This proves the opening balance was created with client_id=None
+    opening_balance_changes = [
+        sc for sc in data["server_changes"]
+        if sc.get("entity_type") == "event" and sc.get("data", {}).get("is_opening_balance") is True
+    ]
+
+    assert len(opening_balance_changes) >= 1, \
+        "Opening balance event should be returned in server_changes to the requesting client"
+
+    # Verify opening balance has correct data
+    ob_event = opening_balance_changes[0]
+    assert ob_event["data"]["account_id"] == str(account_id)
+    assert float(ob_event["data"]["amount"]) == 1000.00
+    assert ob_event["data"]["description"] == "opening balance"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_duplicate_opening_balance_prevention(
+    async_client_real,
+    auth_headers_real,
+    sample_account_with_user,
+    mongodb_real,
+    clean_database_real
+):
+    """
+    Test that duplicate opening balance events are not created.
+
+    If an account already has an opening balance event, creating a second
+    opening balance should be prevented.
+
+    This guards against edge cases where:
+    - Sync retries cause double creation
+    - Race conditions between clients
+    - Manual API calls after sync
+    """
+    from api.repositories.accounts import AccountRepository
+
+    account_repo = AccountRepository(mongodb_real)
+
+    # Count opening balance events before
+    opening_balances_before = await mongodb_real["events"].count_documents({
+        "account_id": str(sample_account_with_user.id),
+        "is_opening_balance": True
+    })
+
+    # Try to create another opening balance event by calling the internal method
+    # This simulates a retry or race condition
+    await account_repo._create_opening_balance_event(
+        account=sample_account_with_user,
+        current_user=None,
+        client_id=None
+    )
+
+    # Count opening balance events after
+    opening_balances_after = await mongodb_real["events"].count_documents({
+        "account_id": str(sample_account_with_user.id),
+        "is_opening_balance": True
+    })
+
+    # Should NOT have created a duplicate
+    assert opening_balances_after == opening_balances_before, \
+        "Duplicate opening balance event should not be created"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_opening_balance_not_excluded_from_server_changes(
+    async_client_real,
+    auth_headers_real,
+    sample_settings_real,
+    mongodb_real,
+    clean_database_real
+):
+    """
+    Test that server-created opening balances have correct change_log entry.
+
+    The change_log entry for opening balance events must have:
+    - changed_by_client = None (not the requesting client's ID)
+
+    This ensures the sync query includes them in server_changes for all clients.
+    """
+    account_id = uuid4()
+
+    # Create account via sync
+    sync_request = {
+        "client_id": "client-xyz",
+        "last_sync_at": None,
+        "changes": [{
+            "entity_type": "account",
+            "entity_id": str(account_id),
+            "action": "create",
+            "data": {
+                "name": "Balance Check Account",
+                "currency": "GBP",
+                "current_balance": 500.00,
+                "is_default": True
+            },
+            "base_updated_at": None
+        }]
+    }
+
+    response = await async_client_real.post("/api/sync", json=sync_request, headers=auth_headers_real)
+    assert response.status_code == 200
+
+    # Find the opening balance event in the database
+    opening_balance = await mongodb_real["events"].find_one({
+        "account_id": str(account_id),
+        "is_opening_balance": True
+    })
+
+    assert opening_balance is not None, "Opening balance event should exist in database"
+
+    # Find the change_log entry for this opening balance
+    change_log_entry = await mongodb_real["change_log"].find_one({
+        "entity_id": str(opening_balance["id"]),
+        "entity_type": "event"
+    })
+
+    assert change_log_entry is not None, "Change log entry should exist for opening balance"
+
+    # CRITICAL: changed_by_client should be None, NOT "client-xyz"
+    # This ensures the opening balance is returned in server_changes to the requesting client
+    assert change_log_entry.get("changed_by_client") is None, \
+        "Opening balance change_log entry should have changed_by_client=None"

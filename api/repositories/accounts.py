@@ -413,6 +413,16 @@ class AccountRepository(BaseRepository[Account]):
         from api.repositories.events import EventRepository
         from api.repositories.settings import SettingsRepository
 
+        # Check if opening balance already exists for this account (prevent duplicates)
+        existing = await self.db["events"].find_one({
+            "account_id": str(account.id),
+            "is_opening_balance": True,
+            "tenant_id": str(account.tenant_id)
+        })
+        if existing:
+            # Opening balance already exists, skip creation
+            return
+
         # Get settings for rate_to_base conversion (tenant-scoped)
         settings_repo = SettingsRepository(self.db)
         # Use account's tenant_id for settings lookup
@@ -444,10 +454,13 @@ class AccountRepository(BaseRepository[Account]):
         # Use EventRepository to create the event
         # This ensures proper validation, change log, etc.
         # Pass tenant_id from account to ensure event has correct tenant
+        # CRITICAL: Pass client_id=None so the opening balance is included in server_changes
+        # for the requesting client. Otherwise, the client deletes its optimistic version
+        # (due to derived_event_overridden conflict) but never receives the server's version.
         event_repo = EventRepository(self.db)
         created_event = await event_repo.create(
             data=event_data,
             current_user=current_user,
-            client_id=client_id,
+            client_id=None,  # Server-generated, return to ALL clients including requester
             tenant_id=account.tenant_id
         )
