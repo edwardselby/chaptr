@@ -55,6 +55,21 @@ pytest_plugins = ("pytest_asyncio",)
 
 
 # ============================================================================
+# Performance Optimization: Use fast bcrypt rounds for tests
+# ============================================================================
+# Production bcrypt uses rounds=12 (~0.25s per hash) for security.
+# Tests use rounds=4 (~0.005s per hash) for speed.
+# This is safe because tests don't need secure password hashing.
+
+from passlib.context import CryptContext
+import api.utils.auth as auth_module
+
+# Replace the production password context with a fast test version
+_fast_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4)
+auth_module.pwd_context = _fast_pwd_context
+
+
+# ============================================================================
 # Database Fixtures
 # ============================================================================
 

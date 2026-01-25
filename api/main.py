@@ -14,10 +14,14 @@ from datetime import datetime
 import hashlib
 from pathlib import Path
 import time
+import json
 
 from api.config import settings, MongoDB
 from api.utils.indexes import create_change_log_indexes, create_conflicts_indexes
 from api.utils.db import utc_now
+
+# Project root directory (parent of api/ directory)
+PROJECT_ROOT = Path(__file__).parent.parent
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +32,27 @@ logger = logging.getLogger(__name__)
 
 # Service Worker version will be calculated dynamically from file hashes
 # See get_sw_version() endpoint
+
+
+def get_app_version() -> str:
+    """
+    Read application version from package.json.
+
+    Returns:
+        str: Version string (e.g., "0.16.0")
+    """
+    try:
+        package_json = PROJECT_ROOT / "package.json"
+        with open(package_json, "r") as f:
+            package = json.load(f)
+            return package.get("version", "0.0.0")
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to read version from package.json: {e}")
+        return "0.0.0"
+
+
+# Cache version at module load (avoids reading file on every request)
+APP_VERSION = get_app_version()
 
 
 @asynccontextmanager
@@ -204,7 +229,7 @@ async def health_check():
     return {
         "status": "healthy" if db_connected else "unhealthy",
         "database": "connected" if db_connected else "disconnected",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "environment": settings.environment,
         "timestamp": utc_now().isoformat()
     }
@@ -219,7 +244,7 @@ async def root():
     """
     return {
         "name": "CHAPTR API",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "description": "Personal Finance Projection System",
         "docs": "/docs",
         "health": "/health"
@@ -246,10 +271,11 @@ async def get_sw_version():
     # Get precache files (shared function with /sw.js endpoint)
     precache_files = get_precache_files()
 
-    # Calculate combined hash of all precache files
-    combined_hash_input = ""
+    # Calculate combined hash of all precache files + app version
+    # Including APP_VERSION ensures version changes in package.json trigger SW updates
+    combined_hash_input = APP_VERSION
     for file_path in precache_files:
-        full_path = Path(file_path)
+        full_path = PROJECT_ROOT / file_path
         file_hash = generate_file_hash(full_path)
         combined_hash_input += file_hash
 
@@ -275,7 +301,7 @@ app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(admin_users.router, prefix="/api", tags=["admin-users"])
 
 # Mount static files for frontend
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=PROJECT_ROOT / "static"), name="static")
 
 
 def get_precache_files() -> list[str]:
@@ -288,9 +314,10 @@ def get_precache_files() -> list[str]:
     Returns:
         list[str]: List of file paths (e.g., ["static/index.html", "static/js/app.js"])
     """
-    static_dir = Path("static")
+    static_dir = PROJECT_ROOT / "static"
     # Use **/*.js to include all JS files including those in subdirectories (e.g., modules/)
-    js_files = sorted([str(p) for p in static_dir.glob("js/**/*.js")])
+    # Return relative paths (strip PROJECT_ROOT prefix)
+    js_files = sorted([str(p.relative_to(PROJECT_ROOT)) for p in static_dir.glob("js/**/*.js")])
 
     return [
         "static/index.html",
@@ -335,7 +362,7 @@ async def serve_service_worker():
     # Generate revision hashes for each file
     precache_entries = []
     for file_path in precache_files:
-        full_path = Path(file_path)
+        full_path = PROJECT_ROOT / file_path
         revision = generate_file_hash(full_path)
         url = f"/{file_path}"
         precache_entries.append(f"    {{ url: '{url}', revision: '{revision}' }}")
@@ -584,4 +611,4 @@ async def serve_app():
 
     Returns the main index.html for the CHAPTR PWA.
     """
-    return FileResponse("static/index.html")
+    return FileResponse(PROJECT_ROOT / "static/index.html")

@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from tempfile import TemporaryDirectory
 import json
 
-from api.main import app, get_sw_version, get_precache_files, generate_file_hash
+from api.main import app, get_sw_version, get_precache_files, generate_file_hash, APP_VERSION
 
 
 # Create test client
@@ -258,8 +258,8 @@ class TestHashingAlgorithm:
         response = client.get("/sw-version")
         version = response.json()["version"]
 
-        # Calculate expected combined hash
-        combined_input = "aaaa1111bbbb2222"
+        # Calculate expected combined hash (includes APP_VERSION prefix)
+        combined_input = APP_VERSION + "aaaa1111bbbb2222"
         expected_version = hashlib.md5(combined_input.encode()).hexdigest()[:8]
 
         assert version == expected_version

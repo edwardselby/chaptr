@@ -144,28 +144,37 @@ export async function calculateProjection(
             .between(startDate, endDate, true, true)
             .toArray();
 
-        // Filter by view - determine visible and hidden events
+        // Filter by view - determine visible and balance-affecting events
         let visibleEvents = [];
-        let allEventsForBalance = [];  // Events that affect running balance
+        let balanceEventIds = new Set();  // IDs of events that affect running balance
 
         if (view === 'baseline') {
             // Baseline view: only baseline events, exclude auto-adjustments (shown only in ALL view)
             visibleEvents = rangeEvents.filter(e => e.is_baseline && !e.is_auto_adjustment);
-            allEventsForBalance = visibleEvents;  // No hidden events in baseline view
+            // All visible events affect balance in baseline view
+            visibleEvents.forEach(e => balanceEventIds.add(e.id));
         } else if (view !== 'all' && storyId) {
-            // Story view: ONLY show story events, hide baseline and other stories (spec: gap indicators)
+            // Story view: show story events (including hypothetical), hide baseline and other stories
             // Auto-adjustments excluded from all non-ALL views
             visibleEvents = rangeEvents.filter(e => e.story_id === storyId && !e.is_auto_adjustment);
             // For balance calculation: include ALL non-hypothetical events (baseline + all stories)
-            allEventsForBalance = rangeEvents.filter(e => !e.is_hypothetical);
+            // Hypothetical events are visible but don't affect balance
+            rangeEvents.filter(e => !e.is_hypothetical).forEach(e => balanceEventIds.add(e.id));
         } else if (view === 'all') {
             // ALL view: show baseline + all non-hypothetical events (including auto-adjustments)
             visibleEvents = rangeEvents.filter(e => !e.is_hypothetical);
-            allEventsForBalance = visibleEvents;  // No hidden events in all view
+            // All visible events affect balance in ALL view
+            visibleEvents.forEach(e => balanceEventIds.add(e.id));
         }
 
-        // Step 3: Convert ALL events to base currency and sort
-        const allEventsWithBase = allEventsForBalance.map(event => {
+        // Step 3: Create combined set of events to process (visible OR affects balance)
+        // This ensures hypothetical events in story view are processed for display
+        const visibleEventIds = new Set(visibleEvents.map(e => e.id));
+        const allEventIdsToProcess = new Set([...visibleEventIds, ...balanceEventIds]);
+        const eventsToProcess = rangeEvents.filter(e => allEventIdsToProcess.has(e.id));
+
+        // Convert events to base currency
+        const allEventsWithBase = eventsToProcess.map(event => {
             const amount = parseFloat(event.amount || 0);
             const rateToBase = parseFloat(event.rate_to_base || 1.0);
             const baseAmount = convertToBaseCurrency(amount, rateToBase);
@@ -203,15 +212,18 @@ export async function calculateProjection(
             return a.created_at < b.created_at ? -1 : 1;
         });
 
-        // Step 4: Calculate running balance using ALL events
-        // Build visible event set for filtering
-        const visibleEventIds = new Set(visibleEvents.map(e => e.id));
+        // Step 4: Calculate running balance and build results
+        // Note: visibleEventIds and balanceEventIds are defined above
 
         let runningBalance = startingBalance;
         const results = [];
 
         for (const event of allEventsWithBase) {
-            runningBalance += event.base_amount;
+            // Only add to balance for non-hypothetical events
+            const affectsBalance = balanceEventIds.has(event.id);
+            if (affectsBalance) {
+                runningBalance += event.base_amount;
+            }
 
             // Only include visible events in results
             const isVisible = visibleEventIds.has(event.id);
@@ -231,11 +243,12 @@ export async function calculateProjection(
                     id: event.id,
                     event_date: event.event_date,
                     description: event.description,
-                    amount: event.base_amount,
-                    balance: runningBalance,
+                    amount: event.base_amount,  // Show actual amount (even for hypothetical)
+                    balance: runningBalance,    // Balance excludes hypothetical events
                     source: source,
                     isGap: false,
                     is_auto_adjustment: event.is_auto_adjustment || false,
+                    is_hypothetical: event.is_hypothetical || false,
                     recurring_rule_id: event.recurring_rule_id || null
                 };
 
@@ -261,7 +274,9 @@ export async function calculateProjection(
 
         // Step 5: Attach gap indicator metadata for story views (matches backend format)
         if (view !== 'all' && storyId) {
-            const gaps = detectGapsBetweenVisibleEvents(allEventsWithBase, visibleEventIds);
+            // For gap detection, only consider balance-affecting events (exclude hypothetical)
+            const balanceEventsForGaps = allEventsWithBase.filter(e => balanceEventIds.has(e.id));
+            const gaps = detectGapsBetweenVisibleEvents(balanceEventsForGaps, visibleEventIds);
 
             // Build index of results by event ID for fast lookup
             const resultsByEventId = {};

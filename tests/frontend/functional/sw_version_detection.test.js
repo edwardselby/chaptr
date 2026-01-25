@@ -22,15 +22,20 @@ describe('SW Version Detection - Network Edge Cases', () => {
     let mockRegistration;
     let mockServiceWorker;
     let originalConsoleWarn;
+    let originalConsoleError;
     let consoleWarnSpy;
+    let consoleErrorSpy;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
         // Mock console
         originalConsoleWarn = console.warn;
+        originalConsoleError = console.error;
         consoleWarnSpy = vi.fn();
+        consoleErrorSpy = vi.fn();
         console.warn = consoleWarnSpy;
+        console.error = consoleErrorSpy;
 
         // Mock service worker
         mockServiceWorker = {
@@ -70,22 +75,23 @@ describe('SW Version Detection - Network Edge Cases', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
     });
 
     // ==================== TIMEOUT SCENARIOS ====================
 
     describe('Timeout Scenarios', () => {
-        it('should return false when getRegistration throws error', async () => {
-            // Simulate registration error
-            navigator.serviceWorker.getRegistration.mockRejectedValue(new Error('Registration error'));
+        it('should return false when registration throws error', async () => {
+            // checkForServiceWorkerUpdate now uses register() instead of getRegistration()
+            navigator.serviceWorker.register.mockRejectedValue(new Error('Registration error'));
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(consoleWarnSpy).toHaveBeenCalledWith(
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Update check failed:',
+                'Service Worker registration failed:',
                 expect.any(Error)
             );
         });
@@ -145,17 +151,17 @@ describe('SW Version Detection - Network Edge Cases', () => {
     // ==================== REGISTRATION ERRORS ====================
 
     describe('Registration Errors', () => {
-        it('should return false when getRegistration throws TypeError', async () => {
-            // Simulate TypeError in getRegistration
-            navigator.serviceWorker.getRegistration.mockRejectedValue(new TypeError('Invalid scope'));
+        it('should return false when registration throws TypeError', async () => {
+            // checkForServiceWorkerUpdate now uses register() instead of getRegistration()
+            navigator.serviceWorker.register.mockRejectedValue(new TypeError('Invalid scope'));
 
             const { checkForServiceWorkerUpdate } = await import('../../../static/js/init.js');
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(consoleWarnSpy).toHaveBeenCalledWith(
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Update check failed:',
+                'Service Worker registration failed:',
                 expect.any(TypeError)
             );
         });
@@ -226,8 +232,8 @@ describe('SW Version Detection - Network Edge Cases', () => {
             // All should return false (no update)
             expect(results).toEqual([false, false, false]);
 
-            // getRegistration should be called 3 times
-            expect(navigator.serviceWorker.getRegistration).toHaveBeenCalledTimes(3);
+            // register should be called 3 times (checkForServiceWorkerUpdate now uses register)
+            expect(navigator.serviceWorker.register).toHaveBeenCalledTimes(3);
         });
 
         it('should gracefully handle version check during page unload', async () => {

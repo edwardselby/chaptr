@@ -311,7 +311,7 @@
                             <div
                                 class="timeline-row"
                                 x-show="!row.isGap && !row.isHistoricalGap"
-                                :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment, 'recurring-event': row.recurring_rule_id }"
+                                :class="{ 'past': row.event_date && isPast(row.event_date), 'today': row.event_date && isToday(row.event_date), 'drift': row.isDrift, 'baseline-row': row.source === 'baseline', 'auto-adjustment': row.is_auto_adjustment, 'recurring-event': row.recurring_rule_id, 'hypothetical-event': row.is_hypothetical }"
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="row.event_date ? formatDate(row.event_date) : ''"></div>
@@ -679,10 +679,26 @@
                             </div>
                         </section>
 
+                        <!-- Troubleshooting (All Users) -->
+                        <section class="section">
+                            <div class="section-header">
+                                <h2>Troubleshooting</h2>
+                            </div>
+                            <div class="backup-actions">
+                                <button class="btn-warning" @click="confirmResetLocalDatabase()" style="width: 100%;" :disabled="isSyncing">
+                                    <span x-show="!isSyncing">Reset Local Database</span>
+                                    <span x-show="isSyncing">Syncing...</span>
+                                </button>
+                                <span class="form-hint" style="display: block; margin-top: 8px;">
+                                    Clears local data and re-downloads from server. Use if data appears out of sync.
+                                </span>
+                            </div>
+                        </section>
+
                         <!-- Database Tools (Super Admin Only) -->
                         <section class="section" x-show="user?.role === 'super_admin'" x-cloak>
                             <div class="section-header">
-                                <h2>Database Tools</h2>
+                                <h2>Admin Tools</h2>
                             </div>
                             <div class="backup-actions">
                                 <button class="btn-secondary" @click="showDatabaseToolsModal = true" style="width: 100%;">
@@ -2156,6 +2172,9 @@
                     <h3>Accounts</h3>
                     <p>Manage accounts and view projected balances. Drift shows difference between actual and projected.</p>
                 </div>
+                <div class="help-version">
+                    <span x-text="'CHAPTR v' + (serverVersion || '...')"></span>
+                </div>
             </div>
         </div>
     </div>
@@ -2197,22 +2216,6 @@
                 <!-- RESET OPERATIONS -->
                 <div class="db-tools-section reset">
                     <h3 class="section-badge reset-badge">🟡 RESET OPERATIONS</h3>
-
-                    <div class="db-tool-card">
-                        <div class="tool-header">
-                            <h4>Reset Local Database</h4>
-                            <span class="tool-tag">Non-destructive</span>
-                        </div>
-                        <p class="tool-description">Clear & re-download from server</p>
-                        <ul class="tool-details">
-                            <li>Clears local data only</li>
-                            <li>Server data preserved</li>
-                            <li>Good for fixing sync issues</li>
-                        </ul>
-                        <button class="btn-warning" @click="clearDatabaseAndResync()">
-                            Reset Local
-                        </button>
-                    </div>
 
                     <div class="db-tool-card">
                         <div class="tool-header">

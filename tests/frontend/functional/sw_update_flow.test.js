@@ -260,15 +260,16 @@ describe('Service Worker Update Flow', () => {
     // ==================== ERROR CASES ====================
 
     describe('Error Handling', () => {
-        it('should return false on getRegistration error', async () => {
-            navigator.serviceWorker.getRegistration.mockRejectedValue(new Error('Registration error'));
+        it('should return false on registration error', async () => {
+            // checkForServiceWorkerUpdate now uses register() instead of getRegistration()
+            navigator.serviceWorker.register.mockRejectedValue(new Error('Registration error'));
 
             const result = await checkForServiceWorkerUpdate();
 
             expect(result).toBe(false);
-            expect(consoleWarnSpy).toHaveBeenCalledWith(
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
                 '[CHAPTR]',
-                '[SW] Update check failed:',
+                'Service Worker registration failed:',
                 expect.any(Error)
             );
         });

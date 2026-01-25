@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-01-25
+
+### Fixed
+- Auto-update regression: App now checks for service worker updates BEFORE loading, preventing full load of old version followed by reload. The `checkForServiceWorkerUpdate()` function now registers SW and waits for update check before deciding whether to load app or wait for reload (init.js)
+- Hypothetical events not displaying: Events marked as hypothetical were not visible in any view despite affecting running balance. Fixed by separating visible events from balance-affecting events in projection engine. Hypothetical events now show in story view with amber styling but don't affect running balance (projection.js, style.css, index.html)
+
+### Added
+- Reset Local Database button in Settings > Troubleshooting section for all users: Allows clearing local IndexedDB and re-syncing from server to resolve data sync issues (index.html, app.js)
+- Dynamic version display in Help modal: Version fetched from `/health` endpoint, sourced from package.json (app.js, main.py)
+- Version included in `/health` and `/` API responses, read from package.json (main.py)
+- SW update triggers on version change: package.json version included in SW hash calculation (main.py)
+
+### Changed
+- Docker healthcheck endpoint corrected from `/api/health` to `/health` (docker-compose.yml)
+- Test suite performance: Backend tests now run 6x faster (120s → 20s) by using fast bcrypt rounds (4 vs 12) for password hashing in tests and disabling unused Faker pytest plugin (conftest.py, pytest.ini)
+- File paths in main.py now use PROJECT_ROOT for reliable path resolution regardless of working directory, fixing tests that run from tests/backend/ (main.py)
+
 ## [0.15.0] - 2026-01-25
 
 ### Fixed

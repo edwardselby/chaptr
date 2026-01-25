@@ -88,6 +88,9 @@ window.app = function() {
         // User
         user: null,
 
+        // Server Info
+        serverVersion: null,
+
         // Data
         stories: [],
         accounts: [],
@@ -263,6 +266,9 @@ window.app = function() {
             if (!this.isAuthenticated) {
                 return;
             }
+
+            // Fetch server version (non-blocking, for display only)
+            this.fetchServerVersion();
 
             // Set initial projection dates FIRST (before any rendering happens)
             this.setDefaultProjectionDates();
@@ -2318,6 +2324,28 @@ window.app = function() {
         },
 
         /**
+         * Confirm and reset local database
+         *
+         * Shows confirmation dialog before clearing local data.
+         * Available to all users from Settings > Troubleshooting.
+         */
+        async confirmResetLocalDatabase() {
+            const confirmed = confirm(
+                'Reset Local Database?\n\n' +
+                'This will:\n' +
+                '• Clear all local data\n' +
+                '• Download fresh data from the server\n\n' +
+                'Your server data will NOT be affected.\n\n' +
+                'Continue?'
+            );
+
+            if (confirmed) {
+                await this.clearDatabaseAndResync();
+                this.showNotification('Database reset complete', 'success');
+            }
+        },
+
+        /**
          * Clear local database and force full resync
          *
          * Non-destructive escape hatch for when sync gets out of sync.
@@ -4151,6 +4179,31 @@ window.app = function() {
                 'basic': 'Memory (cleared on refresh)'
             };
             return storageTypes[this.storageMode] || 'Unknown';
+        },
+
+        // ===== SERVER INFO =====
+
+        /**
+         * Fetch server version from health endpoint
+         * Non-blocking - fires and forgets, updates serverVersion when complete
+         * Caches version in localStorage for offline access
+         */
+        async fetchServerVersion() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.serverVersion = data.version;
+                    // Cache for offline access
+                    localStorage.setItem('chaptr_server_version', data.version);
+                }
+            } catch (error) {
+                // Offline or fetch failed - use cached version
+                const cachedVersion = localStorage.getItem('chaptr_server_version');
+                if (cachedVersion) {
+                    this.serverVersion = cachedVersion;
+                }
+            }
         },
 
         // ===== AUTH =====

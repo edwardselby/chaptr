@@ -198,7 +198,10 @@ function registerGlobals() {
 }
 
 /**
- * Initialize service worker for offline support
+ * Initialize service worker event listeners for offline support
+ *
+ * Note: SW registration and initial update check happens in checkForServiceWorkerUpdate()
+ * This function sets up listeners for subsequent updates during the session.
  */
 async function initServiceWorker() {
     if (!('serviceWorker' in navigator)) {
@@ -206,27 +209,16 @@ async function initServiceWorker() {
         return;
     }
 
-    const registerSW = async () => {
+    const setupSWListeners = async () => {
         try {
-            // Register SW with fixed URL - the SW content itself changes when files change
-            // (precache hashes inside SW change), which triggers browser's byte-by-byte update detection
+            // Register SW (idempotent - returns existing registration if already registered)
             const registration = await navigator.serviceWorker.register('/sw.js', {
-                updateViaCache: 'none'  // Always fetch SW from network, never use HTTP cache
+                updateViaCache: 'none'
             });
             logger.info('Service Worker registered:', registration.scope);
             logger.perf('Service Worker registration');
 
-            // Force update check - ensures browser fetches latest SW from server
-            // This is important because updateViaCache only affects the SW script itself,
-            // not whether the browser decides to check for updates
-            try {
-                await registration.update();
-                logger.info('[SW] Update check completed');
-            } catch (updateError) {
-                logger.warn('[SW] Update check failed:', updateError);
-            }
-
-            // Check for updates on registration
+            // Listen for updates during the session
             registration.addEventListener('updatefound', () => {
                 const newWorker = registration.installing;
                 logger.info('[SW] Update found, new service worker installing...');
@@ -289,9 +281,9 @@ async function initServiceWorker() {
 
     // Check if page has already fully loaded
     if (document.readyState === 'complete') {
-        await registerSW();
+        await setupSWListeners();
     } else {
-        window.addEventListener('load', registerSW);
+        window.addEventListener('load', setupSWListeners);
     }
 }
 
@@ -370,7 +362,14 @@ const testableUtils = {
 
 /**
  * Check if service worker update is available
- * Returns true if there's a waiting worker ready to activate
+ *
+ * This function:
+ * 1. Registers the SW (or gets existing registration)
+ * 2. Checks for waiting worker immediately
+ * 3. Triggers an update check
+ * 4. Waits for update to install if one is found
+ *
+ * This ensures we detect updates BEFORE loading the app, not after.
  */
 async function checkForServiceWorkerUpdate() {
     if (!('serviceWorker' in navigator)) {
@@ -378,18 +377,72 @@ async function checkForServiceWorkerUpdate() {
     }
 
     try {
-        const registration = await navigator.serviceWorker.getRegistration();
+        // Step 1: Register or get existing registration
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+            updateViaCache: 'none'
+        });
+        logger.info('[SW] Registration obtained');
 
-        // Check if there's a waiting worker (update already downloaded)
-        if (registration?.waiting) {
+        // Step 2: Check if there's already a waiting worker
+        if (registration.waiting) {
             logger.info('[SW] Update ready (waiting worker found)');
             return true;
         }
-    } catch (error) {
-        logger.warn('[SW] Update check failed:', error);
-    }
 
-    return false;
+        // Step 3: Trigger update check
+        logger.info('[SW] Checking for updates...');
+
+        // Set up listener for update BEFORE calling update()
+        let updateFoundPromise = null;
+
+        const onUpdateFound = () => {
+            const newWorker = registration.installing;
+            if (newWorker) {
+                logger.info('[SW] Update found, waiting for install...');
+                updateFoundPromise = new Promise((resolve) => {
+                    const onStateChange = () => {
+                        if (newWorker.state === 'installed') {
+                            logger.info('[SW] New version installed');
+                            resolve(true);
+                        }
+                    };
+                    newWorker.addEventListener('statechange', onStateChange);
+                    // Check if already installed
+                    if (newWorker.state === 'installed') {
+                        resolve(true);
+                    }
+                    // Timeout for install (shouldn't take more than 10s)
+                    setTimeout(() => resolve(registration.waiting ? true : false), 10000);
+                });
+            }
+        };
+        registration.addEventListener('updatefound', onUpdateFound);
+
+        // Trigger update check
+        try {
+            await registration.update();
+        } catch (updateError) {
+            logger.warn('[SW] Update check failed:', updateError);
+        }
+
+        // If update was found during the check, wait for it to install
+        if (updateFoundPromise) {
+            return await updateFoundPromise;
+        }
+
+        // Check one more time for waiting worker
+        if (registration.waiting) {
+            logger.info('[SW] Waiting worker found after update');
+            return true;
+        }
+
+        logger.info('[SW] No update available');
+        return false;
+
+    } catch (error) {
+        logger.error('Service Worker registration failed:', error);
+        return false;
+    }
 }
 
 /**
@@ -408,6 +461,13 @@ async function init() {
             logger.info('[SW] Activating waiting worker...');
             const registration = await navigator.serviceWorker.getRegistration();
             if (registration?.waiting) {
+                // Set flag to show "Updating Application..." on next load
+                try {
+                    sessionStorage.setItem('chaptr-sw-updating', 'true');
+                } catch (e) {
+                    // sessionStorage disabled - UX message won't show but update still works
+                }
+
                 // Set up controllerchange listener before activating
                 let reloadTriggered = false;
                 navigator.serviceWorker.addEventListener('controllerchange', () => {

@@ -178,13 +178,16 @@ class TestGeneratedCodeValidity:
 
     def test_no_python_template_artifacts(self):
         """Should not contain Python f-string artifacts or template errors"""
+        import re
         response = client.get("/sw.js")
         content = response.text
 
         # Check for common f-string artifacts
         assert "{precache_list}" not in content, "Should not have unresolved template variables"
         assert "f\"" not in content, "Should not have Python f-string syntax"
-        assert "f'" not in content, "Should not have Python f-string syntax"
+        # Check for f' at word boundaries (start of line or after whitespace)
+        # This avoids false positives from hashes ending in 'f' like '1d50ea5f'
+        assert not re.search(r"(?:^|\s)f'", content), "Should not have Python f-string syntax"
 
 
 # ==================== OFFLINE NAVIGATION TESTS ====================
