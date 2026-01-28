@@ -26,10 +26,11 @@ describe('calculateRateToBase', () => {
     expect(calculateRateToBase('GBP', mockSettings)).toBe(1.0);
   });
 
-  it('returns correct rate for currency in settings', () => {
-    expect(calculateRateToBase('USD', mockSettings)).toBe(0.79);
-    expect(calculateRateToBase('EUR', mockSettings)).toBe(0.85);
-    expect(calculateRateToBase('CAD', mockSettings)).toBe(0.58);
+  it('returns correct rate for currency in settings (inverted)', () => {
+    // Rates are stored as "1 GBP = X foreign" and inverted to "1 foreign = X GBP"
+    expect(calculateRateToBase('USD', mockSettings)).toBeCloseTo(1 / 0.79, 5);
+    expect(calculateRateToBase('EUR', mockSettings)).toBeCloseTo(1 / 0.85, 5);
+    expect(calculateRateToBase('CAD', mockSettings)).toBeCloseTo(1 / 0.58, 5);
   });
 
   it('returns 1.0 fallback for currency not in settings', () => {
@@ -143,7 +144,8 @@ describe('createOpeningBalanceEventData', () => {
     const event = createOpeningBalanceEventData(account, mockSettings);
 
     expect(event.currency).toBe('USD');
-    expect(event.rate_to_base).toBe(0.79);
+    // Rate is inverted: "1 USD = X GBP" stored as 0.79, inverted to 1/0.79
+    expect(event.rate_to_base).toBeCloseTo(1 / 0.79, 5);
   });
 
   it('generates unique UUID for each event', () => {
@@ -235,7 +237,8 @@ describe('createRecurringInstanceData', () => {
     const event = createRecurringInstanceData(usdRule, date, mockSettings, false);
 
     expect(event.currency).toBe('USD');
-    expect(event.rate_to_base).toBe(0.79);
+    // Rate is inverted: "1 USD = X GBP" stored as 0.79, inverted to 1/0.79
+    expect(event.rate_to_base).toBeCloseTo(1 / 0.79, 5);
   });
 
   it('generates unique UUID for each instance', () => {

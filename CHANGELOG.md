@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-01-28
+
+### Fixed
+- Balance adjustment same-day ordering: Auto-adjustments now appear AFTER all other events on the same day (previously appeared before). This ensures the running balance at end of day matches the actual account balance (projection.js:226-229, reconciliation_frontend.test.js)
+- Test suite currency rate expectations: Updated 4 failing tests to expect inverted rates (1/X) matching the v0.17.0 critical fix for foreign currency conversions (event_helpers.test.js, entity_operations.test.js)
+
 ## [0.17.1] - 2026-01-28
 
 ### Added

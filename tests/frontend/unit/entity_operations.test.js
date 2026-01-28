@@ -271,7 +271,8 @@ describe('Entity Operations: createEvent', () => {
             testData.settings, generateId
         );
 
-        expect(result.entity.rate_to_base).toBe(0.79); // From settings.rates.USD
+        // Rate is inverted: "1 USD = X GBP" stored as 0.79, inverted to 1/0.79
+        expect(result.entity.rate_to_base).toBeCloseTo(1 / 0.79, 5);
     });
 
     it('should default rate_to_base to 1.0 for unknown currency', async () => {

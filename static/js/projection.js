@@ -223,17 +223,18 @@ export async function calculateProjection(
                 return a.is_opening_balance ? -1 : 1;
             }
 
-            // 2. Auto-adjustments next (before regular events)
+            // 2. Regular events by amount (debits before credits = negative before positive)
+            // 3. Auto-adjustments LAST (to show balance at end of day)
             if (a.is_auto_adjustment !== b.is_auto_adjustment) {
-                return a.is_auto_adjustment ? -1 : 1;
+                return a.is_auto_adjustment ? 1 : -1;  // Auto-adjustments sort LAST
             }
 
-            // 3. Then by amount (debits before credits = negative before positive)
+            // 4. Then by amount (debits before credits = negative before positive)
             if (a.base_amount !== b.base_amount) {
                 return a.base_amount - b.base_amount;
             }
 
-            // 4. Tie-breaker: created_at ASC
+            // 5. Tie-breaker: created_at ASC
             return a.created_at < b.created_at ? -1 : 1;
         });
 

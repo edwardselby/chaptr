@@ -3,7 +3,7 @@
  *
  * Tests for auto-adjustment event handling in the frontend:
  * - Projection filtering: auto-adjustments excluded from baseline/story views, included in ALL view
- * - Same-day ordering: auto-adjustments appear after opening balance, before regular events
+ * - Same-day ordering: auto-adjustments appear LAST (after all regular events) to show end-of-day balance
  * - Adjustment event creation: correct flags set when creating balance adjustment events
  *
  * These tests verify the reconciliation system's frontend behavior per spec:
@@ -267,8 +267,8 @@ describe('Projection View Filtering - Auto-Adjustments', () => {
 describe('Same-Day Event Ordering', () => {
 
     /**
-     * Same-day sorting comparator (from projection.js:186-204)
-     * Order: 1) Opening balance, 2) Auto-adjustments, 3) Regular events (by amount)
+     * Same-day sorting comparator (from projection.js:214-238)
+     * Order: 1) Opening balance, 2) Regular events (by amount), 3) Auto-adjustments LAST
      */
     const sameDayComparator = (a, b) => {
         // Primary: Sort by date
@@ -281,17 +281,18 @@ describe('Same-Day Event Ordering', () => {
             return a.is_opening_balance ? -1 : 1;
         }
 
-        // 2. Auto-adjustments next (before regular events)
+        // 2. Regular events by amount (debits before credits = negative before positive)
+        // 3. Auto-adjustments LAST (to show balance at end of day)
         if (a.is_auto_adjustment !== b.is_auto_adjustment) {
-            return a.is_auto_adjustment ? -1 : 1;
+            return a.is_auto_adjustment ? 1 : -1;  // Auto-adjustments sort LAST
         }
 
-        // 3. Then by amount (debits before credits = negative before positive)
+        // 4. Then by amount (debits before credits = negative before positive)
         if (a.base_amount !== b.base_amount) {
             return a.base_amount - b.base_amount;
         }
 
-        // 4. Tie-breaker: created_at ASC
+        // 5. Tie-breaker: created_at ASC
         return a.created_at < b.created_at ? -1 : 1;
     };
 
@@ -307,7 +308,7 @@ describe('Same-Day Event Ordering', () => {
         expect(events[0].is_opening_balance).toBe(true);
     });
 
-    it('should sort auto-adjustments SECOND (after opening balance, before regular)', () => {
+    it('should sort auto-adjustments LAST (after opening balance and regular events)', () => {
         const events = [
             createMockEvent({ description: 'Regular event', base_amount: 100 }),
             createAutoAdjustmentEvent({ base_amount: -50 }),
@@ -317,8 +318,8 @@ describe('Same-Day Event Ordering', () => {
         events.sort(sameDayComparator);
 
         expect(events[0].is_opening_balance).toBe(true);
-        expect(events[1].is_auto_adjustment).toBe(true);
-        expect(events[2].description).toBe('Regular event');
+        expect(events[1].description).toBe('Regular event');
+        expect(events[2].is_auto_adjustment).toBe(true);
     });
 
     it('should sort regular events by amount (debits before credits)', () => {
@@ -349,15 +350,15 @@ describe('Same-Day Event Ordering', () => {
 
         // Expected order:
         // 1. Opening balance (is_opening_balance = true)
-        // 2. Auto-adjustment (is_auto_adjustment = true)
-        // 3. Rent -1200 (most negative)
-        // 4. Coffee -5
-        // 5. Income +3000 (positive)
+        // 2. Rent -1200 (most negative regular event)
+        // 3. Coffee -5 (less negative regular event)
+        // 4. Income +3000 (positive regular event)
+        // 5. Auto-adjustment (is_auto_adjustment = true) - LAST
         expect(events[0].is_opening_balance).toBe(true);
-        expect(events[1].is_auto_adjustment).toBe(true);
-        expect(events[2].description).toBe('Rent');
-        expect(events[3].description).toBe('Coffee');
-        expect(events[4].description).toBe('Income');
+        expect(events[1].description).toBe('Rent');
+        expect(events[2].description).toBe('Coffee');
+        expect(events[3].description).toBe('Income');
+        expect(events[4].is_auto_adjustment).toBe(true);
     });
 
     it('should use created_at as tiebreaker for same amount', () => {
@@ -385,7 +386,7 @@ describe('Same-Day Event Ordering', () => {
         expect(events[0].event_date).toBe('2025-01-15');
         expect(events[0].is_opening_balance).toBe(true);  // Opening balance first on Jan 15
         expect(events[1].event_date).toBe('2025-01-15');
-        expect(events[1].is_auto_adjustment).toBe(true);  // Auto-adjustment second on Jan 15
+        expect(events[1].is_auto_adjustment).toBe(true);  // Auto-adjustment LAST on Jan 15
         expect(events[2].event_date).toBe('2025-01-16');  // Jan 16 event last
     });
 });
