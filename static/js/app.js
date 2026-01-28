@@ -242,6 +242,11 @@ window.app = function() {
         // Expanded gaps tracking
         expandedGaps: new Set(),
 
+        // Account filter state (per-view)
+        showFilterPanel: false,
+        accountFilters: {}, // { viewName: Set of account IDs or null }
+        ACCOUNT_FILTER_STORAGE_KEY: 'chaptr_account_filters',
+
         // Conflict resolution
         showConflictModal: false,
         conflicts: [],
@@ -287,6 +292,15 @@ window.app = function() {
 
             // Load data from storage adapter
             await this.loadData();
+
+            // Load saved account filter (after accounts are loaded)
+            this.loadAccountFilter();
+
+            // Update projection rows to apply loaded filter
+            // (only matters if user is on projection screen during init/refresh)
+            if (this.currentScreen === 'projection') {
+                await this.updateProjectionRows();
+            }
 
             // Initialize AutoSyncManager with callbacks
             this.autoSyncManager = new AutoSyncManager({
@@ -770,6 +784,9 @@ window.app = function() {
             // Clear expanded gaps to prevent memory leak across view changes
             this.expandedGaps.clear();
 
+            // Close filter panel when changing views (but preserve filter state)
+            this.showFilterPanel = false;
+
             // Reset display currency when switching views
             if (view !== 'all') {
                 this.displayCurrency = null;
@@ -846,7 +863,8 @@ window.app = function() {
                     this.currentView !== 'all' && this.currentView !== 'baseline' ? this.currentView : null,
                     this.displayCurrency,
                     virtualDrifts,
-                    this.settings  // ← Pass the already-loaded settings!
+                    this.settings,  // ← Pass the already-loaded settings!
+                    this.getCurrentViewFilter()  // Account filter for current view: null = all, Set = specific accounts
                 );
 
                 // Extract starting balance from first actual event (skip gap indicators)
@@ -886,6 +904,175 @@ window.app = function() {
             } else {
                 this.expandedGaps.add(gapId);
             }
+        },
+
+        // ===== ACCOUNT FILTER =====
+
+        /**
+         * Get account filter for current view
+         * @returns {Set|null} Set of account IDs or null for all accounts
+         */
+        getCurrentViewFilter() {
+            return this.accountFilters[this.currentView] || null;
+        },
+
+        /**
+         * Set account filter for current view
+         * @param {Set|null} filter - Set of account IDs or null for all accounts
+         */
+        setCurrentViewFilter(filter) {
+            if (filter === null) {
+                delete this.accountFilters[this.currentView];
+            } else {
+                this.accountFilters[this.currentView] = filter;
+            }
+            this.saveAccountFilters();
+        },
+
+        /**
+         * Save account filters to localStorage (all views)
+         */
+        saveAccountFilters() {
+            try {
+                const filtersToSave = {};
+
+                // Convert Sets to arrays for each view
+                for (const [view, filter] of Object.entries(this.accountFilters)) {
+                    if (filter !== null && filter instanceof Set) {
+                        filtersToSave[view] = Array.from(filter);
+                    }
+                }
+
+                if (Object.keys(filtersToSave).length === 0) {
+                    localStorage.removeItem(this.ACCOUNT_FILTER_STORAGE_KEY);
+                } else {
+                    localStorage.setItem(this.ACCOUNT_FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
+                }
+            } catch (error) {
+                console.error('Failed to save account filters:', error);
+            }
+        },
+
+        /**
+         * Load account filters from localStorage (all views)
+         */
+        loadAccountFilter() {
+            try {
+                const saved = localStorage.getItem(this.ACCOUNT_FILTER_STORAGE_KEY);
+                if (saved) {
+                    const savedFilters = JSON.parse(saved);
+                    const validAccountIds = new Set(
+                        this.accounts.filter(a => !a.is_archived).map(a => a.id)
+                    );
+
+                    // Convert arrays back to Sets and validate
+                    for (const [view, filterArray] of Object.entries(savedFilters)) {
+                        const filterSet = new Set(filterArray);
+
+                        // Remove invalid account IDs
+                        for (const id of filterSet) {
+                            if (!validAccountIds.has(id)) {
+                                filterSet.delete(id);
+                            }
+                        }
+
+                        // Only save if not all accounts selected (allow empty set for "clear all")
+                        if (filterSet.size < validAccountIds.size) {
+                            this.accountFilters[view] = filterSet;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load account filters:', error);
+                this.accountFilters = {};
+            }
+        },
+
+        /**
+         * Toggle filter panel visibility
+         */
+        toggleFilterPanel() {
+            this.showFilterPanel = !this.showFilterPanel;
+        },
+
+        /**
+         * Check if any account filter is active for current view
+         * @returns {boolean} True if filtering is active
+         */
+        hasActiveAccountFilter() {
+            return this.getCurrentViewFilter() !== null;
+        },
+
+        /**
+         * Get filter button label for current view
+         * @returns {string} Button label text
+         */
+        getFilterButtonLabel() {
+            const filter = this.getCurrentViewFilter();
+            if (filter === null) {
+                return '⧩ filter';
+            }
+            const total = this.accounts.filter(a => !a.is_archived).length;
+            const selected = filter.size;
+            return `⧩ ${selected}/${total}`;
+        },
+
+        /**
+         * Check if specific account is selected in current view's filter
+         * @param {string} accountId - Account ID to check
+         * @returns {boolean} True if account is selected
+         */
+        isAccountSelected(accountId) {
+            const filter = this.getCurrentViewFilter();
+            if (filter === null) return true;  // All selected
+            return filter.has(accountId);
+        },
+
+        /**
+         * Toggle individual account selection in current view's filter
+         * @param {string} accountId - Account ID to toggle
+         */
+        async toggleAccountFilter(accountId) {
+            let filter = this.getCurrentViewFilter();
+
+            // Initialize Set from all accounts if currently null
+            if (filter === null) {
+                filter = new Set(
+                    this.accounts.filter(a => !a.is_archived).map(a => a.id)
+                );
+            }
+
+            if (filter.has(accountId)) {
+                filter.delete(accountId);
+            } else {
+                filter.add(accountId);
+            }
+
+            // If all accounts selected again, reset to null
+            const allAccountIds = this.accounts.filter(a => !a.is_archived).map(a => a.id);
+            if (filter.size === allAccountIds.length) {
+                this.setCurrentViewFilter(null);
+            } else {
+                this.setCurrentViewFilter(filter);
+            }
+
+            await this.updateProjectionRows();
+        },
+
+        /**
+         * Select all accounts (reset filter for current view)
+         */
+        async selectAllAccounts() {
+            this.setCurrentViewFilter(null);
+            await this.updateProjectionRows();
+        },
+
+        /**
+         * Clear all account selections for current view
+         */
+        async clearAccountFilter() {
+            this.setCurrentViewFilter(new Set());
+            await this.updateProjectionRows();
         },
 
         // ===== STORIES =====

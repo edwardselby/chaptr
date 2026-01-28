@@ -264,9 +264,18 @@
                             <button class="filter-chip" :class="{ 'active': currentView === story.id }" @click="setView(story.id)" x-text="story.name"></button>
                         </template>
                     </div>
-                    <button class="currency-toggle" x-show="currentView === 'all'" @click="toggleDisplayCurrency()">
-                        <span x-text="displayCurrency || settings.base_currency"></span>
-                    </button>
+                    <!-- Right-side controls (currency + filter) -->
+                    <div class="filters-controls" x-show="currentView === 'all' || currentView === 'baseline'">
+                        <button class="currency-toggle" x-show="currentView === 'all'" @click="toggleDisplayCurrency()">
+                            <span x-text="displayCurrency || settings.base_currency"></span>
+                        </button>
+                        <button class="filter-toggle"
+                                :class="{ 'active': showFilterPanel }"
+                                @click="toggleFilterPanel()"
+                                title="Filter accounts">
+                            <span class="filter-icon" x-text="showFilterPanel ? '✕' : '☰'"></span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Projection Header -->
@@ -356,6 +365,51 @@
                     </div>
                 </div>
 
+            </div>
+
+            <!-- Filter Drawer -->
+            <div class="filter-drawer"
+                 x-show="showFilterPanel"
+                 x-transition:enter="drawer-enter"
+                 x-transition:enter-start="drawer-enter-start"
+                 x-transition:enter-end="drawer-enter-end"
+                 x-transition:leave="drawer-leave"
+                 x-transition:leave-start="drawer-leave-start"
+                 x-transition:leave-end="drawer-leave-end"
+                 @click.away="showFilterPanel = false">
+
+                <div class="drawer-header">
+                    <span class="drawer-title">═══ filters ═══</span>
+                    <button class="drawer-close" @click="showFilterPanel = false" type="button">✕</button>
+                </div>
+
+                <div class="drawer-content">
+                    <div class="filter-section">
+                        <div class="filter-section-title">accounts</div>
+                        <div class="filter-section-divider">────────────────</div>
+                        <div class="filter-options">
+                            <template x-for="account in accounts.filter(a => !a.is_archived)" :key="account.id">
+                                <label class="filter-checkbox" @click="toggleAccountFilter(account.id)">
+                                    <span class="checkbox-icon" x-text="isAccountSelected(account.id) ? '[■]' : '[ ]'"></span>
+                                    <span class="account-name" x-text="account.name"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-actions">
+                    <button type="button" class="drawer-action" @click="selectAllAccounts()">[select all]</button>
+                    <button type="button" class="drawer-action" @click="clearAccountFilter()">[clear]</button>
+                </div>
+            </div>
+
+            <!-- Backdrop overlay when drawer is open -->
+            <div class="drawer-backdrop"
+                 x-show="showFilterPanel"
+                 x-cloak
+                 x-transition.opacity
+                 @click="showFilterPanel = false">
             </div>
         </div>
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-01-28
+
+### Added
+- Per-view account filter: Right-side drawer UI for filtering projection events by account in ALL and Baseline views. Each view maintains independent filter state (ALL, Baseline, and Story views). Filter selections persist across page refreshes via localStorage. Terminal aesthetic with ASCII checkboxes ([■]/[ ]), slide-in animation, and responsive design (320px desktop, full-width mobile). Filter positioned between header and command bar. Drawer includes [select all] and [clear] actions. (index.html, style.css, app.js, projection.js)
+- Account filter test suite: 42 comprehensive unit tests covering per-view state management, localStorage persistence, filter methods, view independence, account validation, edge cases (account_filter.test.js)
+
+### Fixed
+- Account filter empty state persistence: Clearing all accounts ([clear] button) now correctly persists between page refreshes. Previously, empty filters were not loaded from localStorage due to size > 0 validation check (app.js:981)
+
 ## [0.17.0] - 2026-01-25
 
 ### Added

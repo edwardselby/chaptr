@@ -60,7 +60,8 @@ export async function calculateProjection(
     storyId = null,
     displayCurrency = null,
     virtualDrifts = [],
-    settings = null  // ← Accept settings as parameter!
+    settings = null,  // ← Accept settings as parameter!
+    accountFilter = null  // Account filter: null = all, Set = specific account IDs
 ) {
     try {
         // Validate dates
@@ -73,6 +74,13 @@ export async function calculateProjection(
         if (!settings) {
             settings = await db.settings.get(1) || { base_currency: 'GBP', rates: {} };
         }
+
+        // Helper: Check if event passes account filter
+        const passesAccountFilter = (event) => {
+            if (accountFilter === null) return true;  // No filter = include all
+            if (accountFilter.size === 0) return false;  // Empty filter = include none
+            return accountFilter.has(event.account_id);
+        };
 
         // Step 1: Calculate starting balance from ALL historical events
         // This includes:
@@ -105,6 +113,11 @@ export async function calculateProjection(
                 includeEvent = !event.is_hypothetical;
             }
 
+            // Apply account filter (only for ALL and Baseline views)
+            if (includeEvent && (view === 'all' || view === 'baseline')) {
+                includeEvent = passesAccountFilter(event);
+            }
+
             if (includeEvent) {
                 const amount = parseFloat(event.amount || 0);
                 const rateToBase = parseFloat(event.rate_to_base || 1.0);
@@ -125,6 +138,11 @@ export async function calculateProjection(
                 includeEvent = event.story_id === storyId || event.is_baseline;
             } else {
                 includeEvent = !event.is_hypothetical;
+            }
+
+            // Apply account filter (only for ALL and Baseline views)
+            if (includeEvent && (view === 'all' || view === 'baseline')) {
+                includeEvent = passesAccountFilter(event);
             }
 
             if (includeEvent) {
@@ -150,19 +168,26 @@ export async function calculateProjection(
 
         if (view === 'baseline') {
             // Baseline view: only baseline events, exclude auto-adjustments (shown only in ALL view)
-            visibleEvents = rangeEvents.filter(e => e.is_baseline && !e.is_auto_adjustment);
+            // Apply account filter if active
+            visibleEvents = rangeEvents.filter(e =>
+                e.is_baseline && !e.is_auto_adjustment && passesAccountFilter(e)
+            );
             // All visible events affect balance in baseline view
             visibleEvents.forEach(e => balanceEventIds.add(e.id));
         } else if (view !== 'all' && storyId) {
             // Story view: show story events (including hypothetical), hide baseline and other stories
             // Auto-adjustments excluded from all non-ALL views
+            // Note: Account filter NOT applied to story views
             visibleEvents = rangeEvents.filter(e => e.story_id === storyId && !e.is_auto_adjustment);
             // For balance calculation: include ALL non-hypothetical events (baseline + all stories)
             // Hypothetical events are visible but don't affect balance
             rangeEvents.filter(e => !e.is_hypothetical).forEach(e => balanceEventIds.add(e.id));
         } else if (view === 'all') {
             // ALL view: show baseline + all non-hypothetical events (including auto-adjustments)
-            visibleEvents = rangeEvents.filter(e => !e.is_hypothetical);
+            // Apply account filter if active
+            visibleEvents = rangeEvents.filter(e =>
+                !e.is_hypothetical && passesAccountFilter(e)
+            );
             // All visible events affect balance in ALL view
             visibleEvents.forEach(e => balanceEventIds.add(e.id));
         }
