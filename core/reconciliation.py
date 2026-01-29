@@ -64,14 +64,15 @@ async def trigger_reconciliation(
     for account_doc in pending_accounts:
         account_id = UUID(account_doc["id"])
 
-        # 2. Remove old [auto] adjustments for this account
-        await remove_old_auto_adjustments(account_id, db, user_id, client_id, tenant_id)
+        # 2. Remove only TODAY's auto-adjustments for this account (consolidation)
+        # Historical adjustments (from past dates) are preserved
+        await remove_todays_auto_adjustments(account_id, db, user_id, client_id, tenant_id)
 
-        # 3. Calculate drift (actual vs projected)
+        # 3. Calculate incremental drift (includes historical adjustments, excludes today's)
         drift_event = await calculate_auto_adjustment(account_id, Decimal(str(account_doc["current_balance"])), db, user_id, tenant_id)
 
         if drift_event:
-            # 4. Create [auto] adjustment event
+            # 4. Create [auto] adjustment event dated TODAY (replaces any previous today adjustment)
             await event_repo.create(
                 drift_event,
                 current_user=current_user,
@@ -101,10 +102,16 @@ async def calculate_auto_adjustment(
     tenant_id: Optional[UUID] = None
 ) -> Optional[Dict]:
     """
-    Calculate drift and return EventCreate if adjustment needed.
+    Calculate INCREMENTAL drift and return EventCreate if adjustment needed.
 
-    Uses projection engine to calculate projected balance up to today,
-    compares with actual balance, returns event if drift > 0.01.
+    Uses event sourcing to calculate projected balance INCLUDING existing
+    auto-adjustments, then compares with actual balance. Returns adjustment
+    event only for NEW drift since last reconciliation.
+
+    This ensures adjustments are immutable and incremental, preserving:
+    - Historical balance accuracy
+    - Planning feedback (adjustment frequency)
+    - Event sourcing principles
 
     :param account_id: Account UUID
     :param actual_balance: User-entered actual balance
@@ -130,21 +137,22 @@ async def calculate_auto_adjustment(
     today = datetime.now(timezone.utc).date()
     today_str = today.isoformat()
 
-    # Query all REAL events for this account up to today
+    # Query all REAL events INCLUDING AUTO-ADJUSTMENTS up to today
+    # Auto-adjustments ARE real events - they're part of the event history
     # Exclude hypothetical events: "Reality as anchor - hypotheticals are explicit opt-ins" (spec)
     # Events use "event_date" field consistently everywhere
     # Multi-tenancy: Filter by tenant_id (not created_by - supports multi-user tenants)
     events_query = {
         "account_id": str(account_id),
         "event_date": {"$lte": today_str},
-        "is_hypothetical": False  # Only real events affect account drift
+        "is_hypothetical": False  # Includes auto-adjustments (they're real)
     }
     if tenant_id:
         events_query["tenant_id"] = str(tenant_id)
     account_events = await db.events.find(events_query).to_list(length=None)
 
-    # Event sourcing: Sum all events from £0
-    # Note: Old [auto] adjustments have been removed before this function is called
+    # Event sourcing: Sum all events INCLUDING existing adjustments from £0
+    # This makes drift calculation incremental (only NEW drift since last adjustment)
     projected_balance = Decimal('0')
     for event in account_events:
         amount = Decimal(str(event.get("amount", 0)))
@@ -225,6 +233,68 @@ async def remove_old_auto_adjustments(
             user_id,
             client_id,
             tenant_id  # Multi-tenancy: Include tenant_id in change_log
+        )
+
+        deleted_count += 1
+
+    return deleted_count
+
+
+async def remove_todays_auto_adjustments(
+    account_id: UUID,
+    db: AsyncIOMotorDatabase,
+    user_id: UUID,
+    client_id: Optional[str] = None,
+    tenant_id: Optional[UUID] = None
+) -> int:
+    """
+    Remove auto-adjustments dated TODAY for this account (same-day consolidation).
+
+    This ensures only ONE adjustment per date. If reconciling multiple times on the same day,
+    the old TODAY adjustment is replaced with a new one. Historical adjustments (from past
+    dates) are never deleted - they remain immutable.
+
+    :param account_id: Account UUID
+    :param db: MongoDB database instance
+    :param user_id: User UUID
+    :param client_id: Client identifier for change log
+    :param tenant_id: Tenant UUID for multi-tenancy isolation
+    :return: Number of events deleted
+    """
+    from api.repositories.events import EventRepository
+
+    event_repo = EventRepository(db)
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    # Find auto-adjustments for this account dated TODAY only
+    auto_query = {
+        "account_id": str(account_id),
+        "is_auto_adjustment": True,
+        "event_date": today  # Only TODAY's adjustments
+    }
+    if tenant_id:
+        auto_query["tenant_id"] = str(tenant_id)
+
+    todays_adjustments = await event_repo.collection.find(auto_query).to_list(length=None)
+
+    deleted_count = 0
+
+    for event_doc in todays_adjustments:
+        event_id = UUID(event_doc["id"])
+
+        # Delete from collection
+        await event_repo.collection.delete_one({"id": str(event_id)})
+
+        # Log deletion to change_log
+        event_snapshot = {k: v for k, v in event_doc.items() if k != "_id"}
+        await event_repo.log_change(
+            "event",
+            event_id,
+            "delete",
+            event_snapshot,
+            user_id,
+            client_id,
+            tenant_id
         )
 
         deleted_count += 1

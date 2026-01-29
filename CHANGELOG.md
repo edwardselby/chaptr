@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-01-29
+
+### Fixed
+- Balance adjustment architecture: Adjustments are now incremental across different dates instead of cumulative. System preserves historical adjustments (immutable event history) and only creates new adjustments for NEW drift since last reconciliation. This fixes historical balance accuracy - past date queries now include all adjustments up to that date instead of showing incorrect balances (reconciliation.py:67-179, test_reconciliation.py:519-614)
+- Balance adjustment same-day consolidation: Only 1 adjustment per date allowed. Multiple reconciliations on same day now consolidate into single adjustment (deletes today's adjustment, recalculates). Historical adjustments on different dates are preserved immutably (reconciliation.py:243-302, test_reconciliation.py:427-476)
+- Story view refresh after sync: Projection timeline now automatically refreshes after sync completes, immediately showing server's authoritative balance adjustments (previously required manual navigation to see updated events). Refresh applies to both projection and dashboard screens based on active view (app.js:2405-2414)
+- TODAY divider positioning: Divider now appears after the last event of today (previously appeared after the first future event). This ensures the divider correctly marks the end of today's events (projection.js:499-558, today_divider.test.js)
+- "[+ To Story]" button in ALL/Baseline views: Now creates baseline events instead of showing "Select story first" error (app.js:2801-2810)
+
 ## [0.17.2] - 2026-01-28
 
 ### Fixed

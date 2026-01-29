@@ -2405,6 +2405,13 @@ window.app = function() {
                     // Reload data to reflect server changes
                     await this.loadData();
 
+                    // Refresh current view to reflect server changes
+                    if (this.currentScreen === 'projection') {
+                        await this.updateProjectionRows();
+                    } else if (this.currentScreen === 'dashboard') {
+                        await this.updateDashboardProjection();
+                    }
+
                     // Show conflict resolution modal if conflicts exist
                     await this.checkForConflicts();
                 })();
@@ -2800,7 +2807,8 @@ window.app = function() {
          */
         addEventToStory() {
             if (this.currentView === 'all' || this.currentView === 'baseline') {
-                this.showNotification('Select story first', 'error');
+                // Create baseline event when in ALL or Baseline views
+                this.openEventModal();
                 return;
             }
             this.openEventModalForStory(this.currentView);

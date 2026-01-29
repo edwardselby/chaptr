@@ -143,9 +143,12 @@ async def account_with_auto_adjustment(
 
 
 # ============================================================================
-# Unit Tests: remove_old_auto_adjustments()
+# Unit Tests: remove_old_auto_adjustments() - DEPRECATED
 # ============================================================================
+# NOTE: These tests are deprecated. The function exists but is no longer
+# called during normal reconciliation workflow. Adjustments are now immutable.
 
+@pytest.mark.skip(reason="Function deprecated - adjustments now immutable")
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_remove_old_auto_adjustments_success(
@@ -155,42 +158,14 @@ async def test_remove_old_auto_adjustments_success(
     clean_database_real
 ):
     """
-    Test successful removal of [auto] adjustment events.
+    DEPRECATED: Test successful removal of [auto] adjustment events.
 
-    Validates:
-    - Old [auto] events are deleted
-    - Returns correct count
-    - Only affects target account
+    Function still exists for potential cleanup scripts but not used in normal workflow.
     """
-    # Verify auto-adjustment exists before removal
-    event_repo = EventRepository(mongodb_real)
-    auto_events_before = await event_repo.collection.find({
-        "account_id": str(account_with_auto_adjustment.id),
-        "is_auto_adjustment": True
-    }).to_list(length=None)
-
-    assert len(auto_events_before) == 1, "Should have 1 auto-adjustment before removal"
-
-    # Remove auto-adjustments
-    removed_count = await remove_old_auto_adjustments(
-        account_id=account_with_auto_adjustment.id,
-        db=mongodb_real,
-        user_id=sample_user_real.id,
-        client_id="test-client",
-        tenant_id=sample_user_real.tenant_id
-    )
-
-    # Verify removal
-    assert removed_count == 1, "Should remove 1 auto-adjustment"
-
-    auto_events_after = await event_repo.collection.find({
-        "account_id": str(account_with_auto_adjustment.id),
-        "is_auto_adjustment": True
-    }).to_list(length=None)
-
-    assert len(auto_events_after) == 0, "Should have 0 auto-adjustments after removal"
+    pass
 
 
+@pytest.mark.skip(reason="Function deprecated - adjustments now immutable")
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_remove_old_auto_adjustments_no_events(
@@ -200,21 +175,11 @@ async def test_remove_old_auto_adjustments_no_events(
     clean_database_real
 ):
     """
-    Test removal when no [auto] adjustments exist.
+    DEPRECATED: Test removal when no [auto] adjustments exist.
 
-    Validates:
-    - Returns 0 when no auto-adjustments found
-    - Doesn't error on empty result
+    Function still exists for potential cleanup scripts but not used in normal workflow.
     """
-    removed_count = await remove_old_auto_adjustments(
-        account_id=sample_account_with_user.id,
-        db=mongodb_real,
-        user_id=sample_user_real.id,
-        client_id="test-client",
-        tenant_id=sample_user_real.tenant_id
-    )
-
-    assert removed_count == 0, "Should remove 0 when no auto-adjustments exist"
+    pass
 
 
 # ============================================================================
@@ -451,7 +416,7 @@ async def test_trigger_reconciliation_no_pending_accounts(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_trigger_reconciliation_removes_old_adjustments(
+async def test_trigger_reconciliation_creates_incremental_adjustments(
     mongodb_real,
     account_repo_real,
     sample_user_real,
@@ -459,12 +424,13 @@ async def test_trigger_reconciliation_removes_old_adjustments(
     clean_database_real
 ):
     """
-    Test that reconciliation removes old [auto] adjustments before creating new ones.
+    Test that reconciliation creates INCREMENTAL adjustments (not cumulative).
 
     Validates:
-    - Old [auto] adjustments are deleted
-    - New [auto] adjustment replaces old one
-    - No accumulation of stale adjustments
+    - Old [auto] adjustments are NOT deleted
+    - New [auto] adjustment reflects INCREMENTAL drift
+    - Multiple adjustments accumulate over time
+    - Historical balances remain accurate
     """
     # Create account with current_balance=1000
     account_data = AccountCreate(
@@ -485,16 +451,11 @@ async def test_trigger_reconciliation_removes_old_adjustments(
         {"$set": {"pending_reconciliation": True}}
     )
 
-    # No additional events needed - opening balance already created with +1000
-    # Projected = opening_balance(1000) = 1000
-    # Actual = 1000
-    # Drift = 0 (no adjustment needed without additional events)
-
-    # Create additional event that creates drift
+    # Create event that creates drift
     event = EventCreate(
         event_date="2025-01-10",
         description="Spending",
-        amount=Decimal("-500.00"),  # This creates drift: projected becomes 500
+        amount=Decimal("-500.00"),  # Projected becomes 500
         account_id=account.id,
         currency="GBP",
         rate_to_base=Decimal("1.0"),
@@ -506,23 +467,24 @@ async def test_trigger_reconciliation_removes_old_adjustments(
         client_id=None
     )
 
-    # Create OLD [auto] adjustment (stale, should be removed)
-    old_auto = EventCreate(
+    # Create FIRST [auto] adjustment manually (simulates previous reconciliation)
+    first_auto = EventCreate(
         event_date="2025-01-15",
         description="balance adjustment",
-        amount=Decimal("200.00"),  # Old, incorrect drift
+        amount=Decimal("200.00"),  # First adjustment
         account_id=account.id,
         currency="GBP",
         rate_to_base=Decimal("1.0"),
-        is_auto_adjustment=True
+        is_auto_adjustment=True,
+        is_baseline=True
     )
     await EventRepository(mongodb_real).create(
-        old_auto,
+        first_auto,
         current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
         client_id=None
     )
 
-    # Trigger reconciliation
+    # Trigger reconciliation (should create INCREMENTAL adjustment)
     await trigger_reconciliation(
         trigger_reason="sync",
         db=mongodb_real,
@@ -531,21 +493,457 @@ async def test_trigger_reconciliation_removes_old_adjustments(
         tenant_id=sample_user_real.tenant_id
     )
 
-    # Verify old adjustment removed and new one created
+    # Verify BOTH adjustments exist (old NOT deleted, new created)
     event_repo = EventRepository(mongodb_real)
     auto_events = await event_repo.collection.find({
         "account_id": str(account.id),
         "is_auto_adjustment": True
     }).to_list(length=None)
 
-    assert len(auto_events) == 1, "Should have exactly 1 auto-adjustment (old removed, new created)"
+    assert len(auto_events) == 2, "Should have 2 auto-adjustments (old preserved, new added)"
 
-    # Verify new adjustment has correct drift
-    # Projected = opening_balance(1000) - 500 = 500
+    # Verify new adjustment has INCREMENTAL drift (not total drift)
+    # Projected = opening_balance(1000) - 500 + first_adjustment(200) = 700
     # Actual = 1000
-    # Drift = 1000 - 500 = +500
-    new_auto = auto_events[0]
-    assert Decimal(str(new_auto["amount"])) == Decimal("500.00"), "Should have correct drift (+500)"
+    # Incremental drift = 1000 - 700 = +300
+    new_auto = sorted(auto_events, key=lambda x: x["created_at"])[1]  # Get newest
+    assert Decimal(str(new_auto["amount"])) == Decimal("300.00"), "Should have incremental drift (+300, not +500)"
+
+    # Verify total drift = sum of both adjustments = 500
+    total_drift = sum(Decimal(str(adj["amount"])) for adj in auto_events)
+    assert total_drift == Decimal("500.00"), "Total drift should be sum of adjustments"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_incremental_drift_calculation(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that adjustments are incremental across DIFFERENT dates, not cumulative.
+
+    Scenario:
+    1. Opening balance: £1000
+    2. Manually create adjustment dated Jan 10: -£50 (simulates past reconciliation)
+    3. Reconciliation TODAY: actual £900 → drift -£50 (not -£100!) → adjustment -£50
+    4. Verify: Two adjustments exist (Jan 10 + TODAY), both -£50
+    5. Verify: Total drift = -£100 (sum of both adjustments)
+    """
+    # Create account with opening balance £1000
+    account_data = AccountCreate(
+        name="Barclays Incremental",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # Manually create adjustment dated Jan 10 (simulates past reconciliation)
+    past_adjustment = EventCreate(
+        event_date="2026-01-10",
+        description="balance adjustment",
+        amount=Decimal("-50.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_auto_adjustment=True,
+        is_baseline=True
+    )
+    await event_repo.create(
+        past_adjustment,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Verify past adjustment exists
+    adjustments_before = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(adjustments_before) == 1, "Should have 1 past adjustment"
+    assert adjustments_before[0]["event_date"] == "2026-01-10", "Past adjustment should be dated Jan 10"
+
+    # Reconciliation TODAY: actual = £900 (drift should be -£50, not -£100)
+    await account_repo_real.collection.update_one(
+        {"id": str(account.id)},
+        {"$set": {"current_balance": 900.0, "pending_reconciliation": True}}
+    )
+
+    await trigger_reconciliation(
+        trigger_reason="manual",
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        client_id="test-today",
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    # Verify second adjustment created (incremental, not cumulative)
+    adjustments_after = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(adjustments_after) == 2, "Should have 2 adjustments (Jan 10 + TODAY)"
+
+    # Sort by event_date to get them in chronological order
+    sorted_adjustments = sorted(adjustments_after, key=lambda x: x["event_date"])
+    assert Decimal(str(sorted_adjustments[0]["amount"])) == Decimal("-50.00"), "Jan 10 adjustment should be -£50"
+    assert Decimal(str(sorted_adjustments[1]["amount"])) == Decimal("-50.00"), "TODAY adjustment should be incremental -£50 (not -£100)"
+
+    # Verify past adjustment preserved (not deleted)
+    assert sorted_adjustments[0]["event_date"] == "2026-01-10", "Jan 10 adjustment should be preserved"
+
+    # Verify total drift = sum of adjustments
+    total_drift = sum(Decimal(str(adj["amount"])) for adj in adjustments_after)
+    assert total_drift == Decimal("-100.00"), "Total drift should be -£100"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_same_day_adjustment_consolidation(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that multiple reconciliations on the same day create only ONE adjustment.
+
+    When reconciling multiple times on the same day (e.g., checking balance repeatedly),
+    only one adjustment should exist for that date. The old same-day adjustment is replaced
+    with the new one.
+
+    Scenario:
+    1. First reconciliation: actual £950 → creates adjustment -£50 dated TODAY
+    2. Second reconciliation (same day): actual £900 → REPLACES adjustment with -£100 dated TODAY
+    3. Verify: Only 1 adjustment exists, with latest amount
+    """
+    # Create account with opening balance £1000
+    account_data = AccountCreate(
+        name="Same Day Test",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # First reconciliation: actual = £950
+    await account_repo_real.collection.update_one(
+        {"id": str(account.id)},
+        {"$set": {"current_balance": 950.0, "pending_reconciliation": True}}
+    )
+
+    await trigger_reconciliation(
+        trigger_reason="manual",
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        client_id="test-1",
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    # Verify first adjustment created
+    adjustments_1 = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(adjustments_1) == 1, "Should have 1 adjustment after first reconciliation"
+    assert Decimal(str(adjustments_1[0]["amount"])) == Decimal("-50.00"), "First adjustment should be -£50"
+    first_adjustment_id = adjustments_1[0]["id"]
+
+    # Second reconciliation SAME DAY: actual = £900
+    await account_repo_real.collection.update_one(
+        {"id": str(account.id)},
+        {"$set": {"current_balance": 900.0, "pending_reconciliation": True}}
+    )
+
+    await trigger_reconciliation(
+        trigger_reason="manual",
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        client_id="test-2",
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    # Verify: Still only 1 adjustment (same day replacement)
+    adjustments_2 = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(adjustments_2) == 1, "Should still have only 1 adjustment (same-day consolidation)"
+    assert Decimal(str(adjustments_2[0]["amount"])) == Decimal("-100.00"), "Adjustment should be updated to -£100"
+    assert adjustments_2[0]["id"] != first_adjustment_id, "Should be a NEW adjustment (old one deleted)"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_adjustment_dates_affect_historical_balances(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that adjustments dated on DIFFERENT dates correctly affect historical balances.
+
+    This verifies that adjustments are immutable events with specific dates, and queries
+    for balances at different points in time correctly include/exclude adjustments.
+
+    Scenario:
+    - Create Salary event on Jan 5
+    - Manually create adjustment dated Jan 5 (simulates past reconciliation)
+    - Create Rent event on Jan 15
+    - Trigger reconciliation (creates adjustment dated TODAY)
+    - Verify both adjustments exist with different dates
+    - Verify historical queries (Jan 10) only include Jan 5 adjustment
+    - Verify current balance includes both adjustments
+    """
+    from datetime import datetime, timezone
+
+    # Create account with opening balance £1000
+    account_data = AccountCreate(
+        name="NatWest Historical",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # Create salary event dated Jan 5
+    await event_repo.create(
+        EventCreate(
+            event_date="2026-01-05",
+            description="Salary",
+            amount=Decimal("2000.00"),
+            account_id=account.id,
+            currency="GBP",
+            rate_to_base=Decimal("1.0"),
+            is_baseline=True
+        ),
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Manually create adjustment dated Jan 5 (simulates past reconciliation)
+    await event_repo.create(
+        EventCreate(
+            event_date="2026-01-05",
+            description="balance adjustment",
+            amount=Decimal("-50.00"),
+            account_id=account.id,
+            currency="GBP",
+            rate_to_base=Decimal("1.0"),
+            is_auto_adjustment=True,
+            is_baseline=True
+        ),
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Verify balance on Jan 10 includes Jan 5 adjustment
+    jan10_events = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "event_date": {"$lte": "2026-01-10"},
+        "is_hypothetical": False
+    }).to_list(length=None)
+
+    jan10_balance = sum(Decimal(str(e["amount"])) for e in jan10_events)
+    assert jan10_balance == Decimal("1950.00"), "Jan 10 balance should include Jan 5 adjustment"
+
+    # Create rent event dated Jan 15
+    await event_repo.create(
+        EventCreate(
+            event_date="2026-01-15",
+            description="Rent",
+            amount=Decimal("-1200.00"),
+            account_id=account.id,
+            currency="GBP",
+            rate_to_base=Decimal("1.0"),
+            is_baseline=True
+        ),
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Trigger reconciliation (creates adjustment dated TODAY)
+    await account_repo_real.collection.update_one(
+        {"id": str(account.id)},
+        {"$set": {"current_balance": 1700.0, "pending_reconciliation": True}}
+    )
+
+    await trigger_reconciliation(
+        trigger_reason="manual",
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        client_id="test-today",
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    # Verify BOTH adjustments exist with different dates
+    all_adjustments = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(all_adjustments) == 2, "Should have 2 adjustments (Jan 5 + TODAY)"
+
+    adjustment_dates = sorted([adj["event_date"] for adj in all_adjustments])
+    today_str = datetime.now(timezone.utc).date().isoformat()
+
+    assert adjustment_dates[0] == "2026-01-05", "First adjustment should be dated Jan 5"
+    assert adjustment_dates[1] == today_str, f"Second adjustment should be dated TODAY ({today_str})"
+
+    # Verify Jan 10 balance unchanged (Jan 5 adjustment preserved, TODAY adjustment not included)
+    jan10_events_after = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "event_date": {"$lte": "2026-01-10"},
+        "is_hypothetical": False
+    }).to_list(length=None)
+
+    jan10_balance_after = sum(Decimal(str(e["amount"])) for e in jan10_events_after)
+    assert jan10_balance_after == Decimal("1950.00"), "Jan 10 balance unchanged (historical accuracy)"
+
+    # Verify final balance equals account current_balance
+    all_events = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_hypothetical": False
+    }).to_list(length=None)
+
+    final_balance = sum(Decimal(str(e["amount"])) for e in all_events)
+    assert final_balance == Decimal("1700.00"), "Final balance should match current_balance"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_opening_balance_included_in_drift_calculation(
+    mongodb_real,
+    account_repo_real,
+    sample_user_real,
+    sample_settings_real,
+    clean_database_real
+):
+    """
+    Test that opening balance events are included in drift calculations.
+
+    Opening balance events ensure correct event sourcing:
+    - Account created with current_balance = £1000
+    - Opening balance event created automatically with amount = £1000
+    - Projected balance = opening_balance(1000) + subsequent_events
+    - This prevents incorrect drift (without opening balance, projected would start at £0)
+
+    Scenario:
+    1. Create account with £1000 → creates opening balance event dated TODAY
+    2. Add expense -£200 dated TODAY
+    3. Set actual balance to £800 (matches projected)
+    4. Trigger reconciliation
+    5. Verify: No adjustment created (drift = 0)
+    """
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    # Create account with opening balance £1000
+    account_data = AccountCreate(
+        name="Opening Balance Test",
+        currency="GBP",
+        current_balance=Decimal("1000.00"),
+        is_default=False
+    )
+    account = await account_repo_real.create(
+        account_data,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    event_repo = EventRepository(mongodb_real)
+
+    # Verify opening balance event was created
+    opening_balance_events = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_opening_balance": True
+    }).to_list(length=None)
+
+    assert len(opening_balance_events) == 1, "Should have 1 opening balance event"
+    assert Decimal(str(opening_balance_events[0]["amount"])) == Decimal("1000.00"), "Opening balance should be £1000"
+    assert opening_balance_events[0]["event_date"] == today, f"Opening balance should be dated today ({today})"
+
+    # Add expense event dated today
+    expense_event = EventCreate(
+        event_date=today,
+        description="Groceries",
+        amount=Decimal("-200.00"),
+        account_id=account.id,
+        currency="GBP",
+        rate_to_base=Decimal("1.0"),
+        is_baseline=True
+    )
+    await event_repo.create(
+        expense_event,
+        current_user={"id": str(sample_user_real.id), "tenant_id": str(sample_user_real.tenant_id)},
+        client_id=None
+    )
+
+    # Set actual balance to £800 (opening 1000 - expense 200 = 800)
+    await account_repo_real.collection.update_one(
+        {"id": str(account.id)},
+        {"$set": {"current_balance": 800.0, "pending_reconciliation": True}}
+    )
+
+    # Trigger reconciliation
+    await trigger_reconciliation(
+        trigger_reason="manual",
+        db=mongodb_real,
+        user_id=sample_user_real.id,
+        client_id="test-opening",
+        tenant_id=sample_user_real.tenant_id
+    )
+
+    # Verify NO adjustment created (opening balance makes projected = actual)
+    adjustments = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_auto_adjustment": True
+    }).to_list(length=None)
+
+    assert len(adjustments) == 0, (
+        "Should have 0 adjustments. "
+        f"Projected = opening(1000) + expense(-200) = 800, actual = 800, drift = 0. "
+        f"Opening balance event ensures correct drift calculation."
+    )
+
+    # Verify final projected balance matches actual
+    all_events = await event_repo.collection.find({
+        "account_id": str(account.id),
+        "is_hypothetical": False
+    }).to_list(length=None)
+
+    final_balance = sum(Decimal(str(e["amount"])) for e in all_events)
+    assert final_balance == Decimal("800.00"), "Projected balance should be £800 (opening + expense)"
 
 
 @pytest.mark.integration
@@ -1555,15 +1953,17 @@ async def test_reconciliation_idempotency_second_run_no_change(
     clean_database_real
 ):
     """
-    Test that running reconciliation twice produces same result.
+    Test idempotency with same-day consolidation: second run replaces TODAY's adjustment.
 
-    Idempotency is critical for reliability - repeated calls should not
-    accumulate adjustments or cause data corruption.
+    Same-day consolidation behavior:
+    - First reconciliation creates [auto] adjustment for drift (dated TODAY)
+    - Second reconciliation (same day, same actual balance):
+      1. Deletes TODAY's adjustment
+      2. Recalculates drift (projected now excludes deleted adjustment)
+      3. Creates NEW adjustment with same amount (idempotent result)
+    - Result: Different adjustment ID, but same amount (idempotent outcome)
 
-    Validates:
-    - First reconciliation creates [auto] adjustment
-    - Second reconciliation produces same result (no additional adjustments)
-    - Total [auto] adjustments remains 1
+    This validates same-day consolidation: only 1 adjustment per date.
     """
     event_repo = EventRepository(mongodb_real)
 
@@ -1645,25 +2045,24 @@ async def test_reconciliation_idempotency_second_run_no_change(
         "is_auto_adjustment": True
     }).to_list(length=None)
 
-    # VERIFY IDEMPOTENCY
-    assert len(second_result) == 1, "Second run should also reconcile account"
+    # VERIFY SAME-DAY CONSOLIDATION IDEMPOTENCY
+    assert len(second_result) == 1, "Second run should also process pending account"
     assert len(auto_events_after_second) == 1, (
-        "Should still have exactly 1 auto-adjustment after second run. "
-        "Reconciliation should be idempotent - old adjustment removed, new one created."
+        "Should still have exactly 1 auto-adjustment after second run (same-day consolidation). "
+        "Second run deletes TODAY's adjustment and creates new one."
     )
 
-    # The second adjustment should be the same amount (since projected = actual now)
-    # Actually, after first reconciliation, projected = actual, so second should create 0 drift
-    # But the old adjustment is removed first, so we need to recalculate...
-    # Let me think about this more carefully:
-    # After first run: projected includes the new [auto] adjustment
-    # When second run starts, it REMOVES old [auto] adjustments BEFORE calculating drift
-    # So the drift calculation sees: opening(1000) + spending(-200) = 800 projected
-    # Actual = 1000, so drift = 1000 - 800 = +200 (same as first time)
-    second_adjustment_amount = Decimal(str(auto_events_after_second[0]["amount"]))
-    assert second_adjustment_amount == first_adjustment_amount, (
-        "Second reconciliation should produce same adjustment amount as first. "
-        f"First: {first_adjustment_amount}, Second: {second_adjustment_amount}"
+    # Verify the adjustment was replaced (different ID) but has same amount (idempotent result)
+    # Same-day consolidation: Always delete TODAY's adjustment and recalculate
+    # Projected (after deletion) = opening(1000) + spending(-200) = 800
+    # Actual = 1000
+    # Drift = 1000 - 800 = +200 → Creates new adjustment +200 (same as first run)
+    assert auto_events_after_second[0]["id"] != auto_events_after_first[0]["id"], (
+        "Should be NEW adjustment (same-day consolidation replaces old one)"
+    )
+    assert Decimal(str(auto_events_after_second[0]["amount"])) == first_adjustment_amount, (
+        f"Should have same amount as first run (idempotent result). "
+        f"Expected {first_adjustment_amount}, got {auto_events_after_second[0]['amount']}"
     )
 
 

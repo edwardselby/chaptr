@@ -481,12 +481,14 @@ function detectGapsBetweenVisibleEvents(allEventsSorted, visibleEventIds) {
 
 /**
  * Insert gap indicator rows where gaps > threshold days
+ * Also inserts TODAY divider after last event of today
  *
  * @param {Array} rows - Array of event rows
  * @param {number} thresholdDays - Minimum gap in days to show indicator
+ * @param {Array} virtualDrifts - Virtual drift rows to inject after TODAY divider
  * @returns {Array} Rows with gap indicators inserted
  */
-function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
+export function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
     if (rows.length === 0) return rows;
 
     const withGaps = [];
@@ -498,20 +500,24 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
 
         // Insert TODAY divider after today's events, before first future event
         if (!todayDividerInserted && row.event_date > today) {
-            row.showTodayDivider = true;
-            row.todayDate = today;  // Actual today date (not event date)
+            // Mark the PREVIOUS row (last event of today) with the divider
+            if (withGaps.length > 0) {
+                const previousRow = withGaps[withGaps.length - 1];
+                previousRow.showTodayDivider = true;
+                previousRow.todayDate = today;  // Actual today date (not event date)
+
+                // Inject virtual drift rows AFTER the last event of today
+                if (virtualDrifts && virtualDrifts.length > 0) {
+                    for (const driftRow of virtualDrifts) {
+                        withGaps.push(driftRow);
+                    }
+                }
+            }
             todayDividerInserted = true;
         }
 
         // Push the current row first
         withGaps.push(row);
-
-        // Then inject virtual drift rows AFTER the row with today divider
-        if (row.showTodayDivider && virtualDrifts && virtualDrifts.length > 0) {
-            for (const driftRow of virtualDrifts) {
-                withGaps.push(driftRow);
-            }
-        }
 
         // Check gap to next event
         if (i < rows.length - 1) {
@@ -532,6 +538,21 @@ function insertGapIndicators(rows, thresholdDays = 7, virtualDrifts = []) {
                     startDate: row.event_date,
                     endDate: nextRow.event_date
                 });
+            }
+        }
+    }
+
+    // If we haven't inserted the TODAY divider yet, it means all events are today or earlier
+    // Add it after the last event
+    if (!todayDividerInserted && withGaps.length > 0) {
+        const lastRow = withGaps[withGaps.length - 1];
+        lastRow.showTodayDivider = true;
+        lastRow.todayDate = today;
+
+        // Inject virtual drift rows AFTER the last event
+        if (virtualDrifts && virtualDrifts.length > 0) {
+            for (const driftRow of virtualDrifts) {
+                withGaps.push(driftRow);
             }
         }
     }
