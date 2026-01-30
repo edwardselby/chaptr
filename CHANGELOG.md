@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-01-30
+
+### Changed
+- Recurring event deletion UX: Split delete options between modal modes for clearer context. Timeline row clicks now always open event instance (Simple Event mode). Removed nested click handler where description text opened rule directly. Simple Event mode shows "Delete" button for single occurrence deletion with confirmation. Recurring Event mode shows "Delete Rule" button with 2-option dialog (delete this+future, or entire rule). User can toggle between modes to switch deletion context. Replaced old 3-option modal with mode-specific workflows (index.html:327,1789,2195-2199,2379-2403, app.js:139-145,3238-3262,3432-3605)
+
 ## [0.17.3] - 2026-01-29
 
 ### Fixed

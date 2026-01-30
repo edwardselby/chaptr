@@ -324,7 +324,7 @@
                                 @click="row.id && viewEventDetails(row.id)"
                                 style="cursor: pointer;">
                                 <div class="timeline-date" x-text="row.event_date ? formatDate(row.event_date) : ''"></div>
-                                <div class="timeline-event" @click.stop="row.recurring_rule_id && viewRecurringRule(row.recurring_rule_id)">
+                                <div class="timeline-event">
                                     <span x-text="row.description"></span>
                                 </div>
                                 <div class="timeline-amount" :class="row.amount >= 0 ? 'positive' : 'negative'" x-text="formatCurrency(row.amount, displayCurrency || settings.base_currency)"></div>
@@ -1786,7 +1786,7 @@
                         <button type="button" class="toggle-option" :class="{ active: !eventForm.is_recurring }" @click="eventForm.is_recurring = false">
                             Simple Event
                         </button>
-                        <button type="button" class="toggle-option" :class="{ active: eventForm.is_recurring }" @click="eventForm.is_recurring = true">
+                        <button type="button" class="toggle-option" :class="{ active: eventForm.is_recurring }" @click="toggleToRecurringMode()">
                             Recurring Event
                         </button>
                     </div>
@@ -2192,6 +2192,11 @@
                         class="btn-danger"
                         x-show="eventForm.id && !eventForm.is_recurring"
                         @click="deleteEventFromModal()">Delete</button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        x-show="eventForm.id && eventForm.is_recurring"
+                        @click="deleteRecurringRuleWithOptions()">Delete Rule</button>
                 </div>
             </form>
         </div>
@@ -2371,32 +2376,27 @@
         </div>
     </div>
 
-    <!-- Recurring Event Delete Modal -->
-    <div class="modal-overlay" x-show="showRecurringDeleteModal" @keydown.escape.window="closeRecurringDeleteModal()" x-cloak role="dialog" aria-modal="true">
+    <!-- Recurring Rule Delete Modal (2 options) -->
+    <div class="modal-overlay" x-show="showRecurringRuleDeleteModal" @keydown.escape.window="closeRecurringRuleDeleteModal()" x-cloak role="dialog" aria-modal="true">
         <div class="modal modal-sm" @click.stop>
             <div class="modal-header" style="border-bottom-color: var(--red);">
-                <h2>Delete Recurring Event</h2>
-                <button class="modal-close" @click="closeRecurringDeleteModal()">✕</button>
+                <h2>Delete Recurring Rule</h2>
+                <button class="modal-close" @click="closeRecurringRuleDeleteModal()">✕</button>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 16px;">
-                    <strong x-text="recurringDeleteData.description"></strong>
-                    <br>
-                    <span class="text-muted" x-text="recurringDeleteData.eventDate"></span>
+                    <strong x-text="recurringRuleDeleteData.description"></strong>
                 </p>
-                <p style="margin-bottom: 16px;">This is a recurring event. How would you like to delete it?</p>
+                <p style="margin-bottom: 16px;">How would you like to delete this recurring rule?</p>
             </div>
             <div class="modal-actions" style="flex-direction: column; gap: 8px;">
-                <button type="button" class="btn-danger" @click="deleteThisOccurrence()">
-                    Delete this occurrence only
-                </button>
-                <button type="button" class="btn-danger" @click="deleteThisAndFuture()">
+                <button type="button" class="btn-danger" @click="deleteRuleThisAndFuture()">
                     Delete this and future occurrences
                 </button>
-                <button type="button" class="btn-danger" @click="deleteEntireRule()">
+                <button type="button" class="btn-danger" @click="deleteRuleEntireRule()">
                     Delete entire recurring rule
                 </button>
-                <button type="button" class="btn-secondary" style="margin-top: 8px;" @click="closeRecurringDeleteModal()">
+                <button type="button" class="btn-secondary" style="margin-top: 8px;" @click="closeRecurringRuleDeleteModal()">
                     Cancel
                 </button>
             </div>

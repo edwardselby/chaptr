@@ -129,12 +129,11 @@ window.app = function() {
         showConfirmModal: false,
         showInputModal: false,
         showPasswordModal: false,
-        showRecurringDeleteModal: false,
-        recurringDeleteData: {
-            eventId: null,
+        showRecurringRuleDeleteModal: false,
+        recurringRuleDeleteData: {
+            ruleId: null,
             eventDate: null,
-            description: '',
-            recurringRuleId: null
+            description: ''
         },
         showArchivedAccounts: false,
         confirmModalData: {
@@ -3230,6 +3229,34 @@ window.app = function() {
         },
 
         /**
+         * Toggle to recurring mode and load rule data if editing a recurring instance
+         */
+        async toggleToRecurringMode() {
+            // If we're viewing a recurring instance (has recurring_rule_id), load the rule
+            if (this.eventForm.recurring_rule_id) {
+                const ruleId = this.eventForm.recurring_rule_id;
+                const rule = await db.recurring_rules.get(ruleId);
+
+                if (rule) {
+                    // Preserve original event date for "this and future" deletion
+                    const originalEventDate = this.eventForm.event_date;
+
+                    // Load rule data into form
+                    await this.editRecurringRule(rule);
+
+                    // Restore event date for reference (used in delete functions)
+                    this.eventForm.event_date = originalEventDate;
+                } else {
+                    this.showNotification('Recurring rule not found', 'error');
+                    this.eventForm.is_recurring = false; // Revert toggle
+                }
+            } else {
+                // Not a recurring instance, just toggle mode
+                this.eventForm.is_recurring = true;
+            }
+        },
+
+        /**
          * Edit recurring rule (opens modal with rule data)
          * @param {Object} rule - Recurring rule object
          */
@@ -3430,18 +3457,48 @@ window.app = function() {
          * Shows 3-option dialog for recurring events
          */
         async deleteEventFromModal() {
-            // Check if this is a recurring event
+            // Check if this is a recurring event instance
             if (this.eventForm.recurring_rule_id) {
-                // Show 3-option recurring delete modal
-                this.recurringDeleteData = {
-                    eventId: this.eventForm.id,
-                    eventDate: this.eventForm.event_date,
-                    description: this.eventForm.description,
-                    recurringRuleId: this.eventForm.recurring_rule_id
-                };
-                this.showRecurringDeleteModal = true;
+                // Direct single-occurrence deletion with confirmation
+                this.showConfirm(
+                    'Delete Event Occurrence',
+                    `Delete this occurrence of "${this.eventForm.description}"?\n\nThis will add ${this.eventForm.event_date} to the rule's excluded dates. Other occurrences will remain.`,
+                    async () => {
+                        try {
+                            const eventId = this.eventForm.id;
+                            const eventDate = this.eventForm.event_date;
+                            const recurringRuleId = this.eventForm.recurring_rule_id;
+
+                            // Delete the event instance
+                            await this.deleteEvent(eventId);
+
+                            // Add date to excluded_dates on the recurring rule
+                            const rule = await db.recurring_rules.get(recurringRuleId);
+                            if (rule) {
+                                const excludedDates = rule.excluded_dates || [];
+                                if (!excludedDates.includes(eventDate)) {
+                                    excludedDates.push(eventDate);
+                                }
+
+                                // Update rule with new excluded_dates
+                                await storage.updateRecurringRule(recurringRuleId, { excluded_dates: excludedDates });
+                            }
+
+                            this.showEventModal = false;
+                            await this.loadData();
+                            await this.updateDashboardProjection();
+                            await this.updateProjectionRows();
+                            this.showNotification('Occurrence deleted', 'success');
+                        } catch (error) {
+                            console.error('Error deleting occurrence:', error);
+                            this.showNotification('Delete failed', 'error');
+                        }
+                    },
+                    'Delete',
+                    'danger'
+                );
             } else {
-                // Normal event - simple confirmation
+                // Normal event - simple confirmation (unchanged)
                 this.showConfirm(
                     'Delete Event',
                     `Delete event "${this.eventForm.description}"?\n\nThis will affect all projections.`,
@@ -3461,6 +3518,106 @@ window.app = function() {
                     'Delete',
                     'danger'
                 );
+            }
+        },
+
+        /**
+         * Delete recurring rule with 2-option dialog
+         * Shows in "Recurring Event" mode
+         */
+        async deleteRecurringRuleWithOptions() {
+            // Get rule ID from eventForm
+            const ruleId = this.eventForm.id;
+            if (!ruleId) return;
+
+            // Get the original event date (if toggled from instance)
+            const eventDate = this.eventForm.event_date || null;
+
+            // Show custom 2-option modal
+            this.recurringRuleDeleteData = {
+                ruleId: ruleId,
+                eventDate: eventDate,
+                description: this.eventForm.description
+            };
+            this.showRecurringRuleDeleteModal = true;
+        },
+
+        /**
+         * Close recurring rule delete modal
+         */
+        closeRecurringRuleDeleteModal() {
+            this.showRecurringRuleDeleteModal = false;
+            this.recurringRuleDeleteData = {
+                ruleId: null,
+                eventDate: null,
+                description: ''
+            };
+        },
+
+        /**
+         * Delete this and future occurrences from rule delete modal
+         */
+        async deleteRuleThisAndFuture() {
+            try {
+                const { ruleId, eventDate } = this.recurringRuleDeleteData;
+
+                // If we have eventDate (toggled from instance), delete from that date forward
+                // Otherwise delete all future events from today
+                const cutoffDate = eventDate || toLocalISODate(new Date());
+
+                // Get all events for this rule with date >= cutoffDate
+                const events = await db.events.where('recurring_rule_id').equals(ruleId).toArray();
+                const futureEvents = events.filter(e => e.event_date >= cutoffDate);
+
+                // Delete all future events
+                for (const event of futureEvents) {
+                    await this.deleteEvent(event.id);
+                }
+
+                // Update rule with end_date = day before cutoff date
+                const endDate = new Date(cutoffDate);
+                endDate.setDate(endDate.getDate() - 1);
+                const endDateStr = endDate.toISOString().split('T')[0];
+
+                await storage.updateRecurringRule(ruleId, { end_date: endDateStr });
+
+                this.closeRecurringRuleDeleteModal();
+                this.showEventModal = false;
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('This and future occurrences deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting future occurrences:', error);
+                this.showNotification('Delete failed', 'error');
+            }
+        },
+
+        /**
+         * Delete entire recurring rule and all events
+         */
+        async deleteRuleEntireRule() {
+            try {
+                const { ruleId } = this.recurringRuleDeleteData;
+
+                // Delete all events for this rule
+                const events = await db.events.where('recurring_rule_id').equals(ruleId).toArray();
+                for (const event of events) {
+                    await this.deleteEvent(event.id);
+                }
+
+                // Delete the rule itself
+                await storage.deleteRecurringRule(ruleId);
+
+                this.closeRecurringRuleDeleteModal();
+                this.showEventModal = false;
+                await this.loadData();
+                await this.updateDashboardProjection();
+                await this.updateProjectionRows();
+                this.showNotification('Recurring rule and all events deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting recurring rule:', error);
+                this.showNotification('Delete failed', 'error');
             }
         },
 
@@ -4127,122 +4284,6 @@ window.app = function() {
                 confirmStyle: 'primary',
                 onConfirm: null
             };
-        },
-
-        /**
-         * Close recurring delete modal and reset state
-         */
-        closeRecurringDeleteModal() {
-            this.showRecurringDeleteModal = false;
-            this.recurringDeleteData = {
-                eventId: null,
-                eventDate: null,
-                description: '',
-                recurringRuleId: null
-            };
-        },
-
-        /**
-         * Delete only this occurrence of recurring event
-         * Adds date to excluded_dates on the rule
-         */
-        async deleteThisOccurrence() {
-            try {
-                const { eventId, eventDate, recurringRuleId } = this.recurringDeleteData;
-
-                // Delete the event instance
-                await this.deleteEvent(eventId);
-
-                // Add date to excluded_dates on the recurring rule
-                const rule = await db.recurring_rules.get(recurringRuleId);
-                if (rule) {
-                    const excludedDates = rule.excluded_dates || [];
-                    if (!excludedDates.includes(eventDate)) {
-                        excludedDates.push(eventDate);
-                    }
-
-                    // Update rule with new excluded_dates
-                    await storage.updateRecurringRule(recurringRuleId, { excluded_dates: excludedDates });
-                }
-
-                this.closeRecurringDeleteModal();
-                this.showEventModal = false;
-                await this.loadData();
-                await this.updateDashboardProjection();
-                await this.updateProjectionRows();
-                this.showNotification('Occurrence deleted', 'success');
-            } catch (error) {
-                console.error('Error deleting occurrence:', error);
-                this.showNotification('Delete failed', 'error');
-            }
-        },
-
-        /**
-         * Delete this and all future occurrences
-         * Sets end_date on the rule to exclude future events
-         */
-        async deleteThisAndFuture() {
-            try {
-                const { eventId, eventDate, recurringRuleId } = this.recurringDeleteData;
-
-                // Delete this event
-                await this.deleteEvent(eventId);
-
-                // Get all events for this rule with date >= eventDate and delete them
-                const events = await db.events.where('recurring_rule_id').equals(recurringRuleId).toArray();
-                const futureEvents = events.filter(e => e.event_date >= eventDate);
-
-                for (const event of futureEvents) {
-                    if (event.id !== eventId) {
-                        await this.deleteEvent(event.id);
-                    }
-                }
-
-                // Update rule with end_date = day before this event
-                const endDate = new Date(eventDate);
-                endDate.setDate(endDate.getDate() - 1);
-                const endDateStr = endDate.toISOString().split('T')[0];
-
-                await storage.updateRecurringRule(recurringRuleId, { end_date: endDateStr });
-
-                this.closeRecurringDeleteModal();
-                this.showEventModal = false;
-                await this.loadData();
-                await this.updateDashboardProjection();
-                await this.updateProjectionRows();
-                this.showNotification('This and future occurrences deleted', 'success');
-            } catch (error) {
-                console.error('Error deleting future occurrences:', error);
-                this.showNotification('Delete failed', 'error');
-            }
-        },
-
-        /**
-         * Delete entire recurring rule and all its events
-         */
-        async deleteEntireRule() {
-            try {
-                const { recurringRuleId } = this.recurringDeleteData;
-
-                // Delete all events for this rule
-                const events = await db.events.where('recurring_rule_id').equals(recurringRuleId).toArray();
-                for (const event of events) {
-                    await this.deleteEvent(event.id);
-                }
-
-                // Delete the rule itself
-                await storage.deleteRecurringRule(recurringRuleId);
-
-                this.closeRecurringDeleteModal();
-                this.showEventModal = false;
-                await this.loadData();
-                await this.updateDashboardProjection();
-                await this.updateProjectionRows();
-                this.showNotification('Recurring rule and all events deleted', 'success');
-            } catch (error) {
-                console.error('Error deleting recurring rule:', error);
-                this.showNotification('Delete failed', 'error');
-            }
         },
 
         /**
