@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-02-06
+
+### Added
+- Comprehensive README.md with project overview, architecture documentation, and setup instructions. Includes detailed explanations of 7 key architectural patterns (progressive enhancement, queue-as-state, change log sync, automatic reconciliation, multi-tenancy, sync endpoint hijacking, multi-currency). Organized following DRY principles with technical depth in architecture section, file references, code examples, and trade-off discussions. Positioned as personal spare-time project demonstrating architectural problem-solving without promotional language.
+
 ## [0.18.0] - 2026-01-30
 
 ### Changed
