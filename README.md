@@ -429,7 +429,7 @@ Demonstrates architectural problem-solving:
 - Test-driven development
 - Solo project ownership (spec to implementation)
 
-Built in spare time for household financial planning. Source code visible for educational purposes.
+Built in spare time for household financial planning. Source code available for personal use and educational purposes.
 
 ---
 
@@ -437,7 +437,7 @@ Built in spare time for household financial planning. Source code visible for ed
 
 Personal project - All rights reserved.
 
-Not intended for commercial use or public distribution.
+Not intended for commercial use.
 
 ---
 
