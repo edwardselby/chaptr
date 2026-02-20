@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `pyproject.toml` as source of truth for Python dependencies (replaces `requirements.txt`)
+- `uv.lock` for reproducible dependency installs via uv
+- `.python-version` pinning Python 3.11 for uv toolchain
+
+### Fixed
+- Missing `admin_username` field in Settings causing Pydantic `extra_forbidden` error on startup when `ADMIN_USERNAME` set in `.env`
+
+### Removed
+- `requirements.txt` — superseded by `pyproject.toml`
+
 ## [0.18.1] - 2026-02-06
 
 ### Added

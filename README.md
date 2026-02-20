@@ -287,7 +287,9 @@ chaptr/
 │   ├── chaptr-implementation-guide.md
 │   ├── testing-guide.md
 │   └── chaptr-mockup.html
-├── requirements.txt         # Python dependencies
+├── pyproject.toml           # Python dependencies (source of truth)
+├── uv.lock                 # Locked dependency versions
+├── .python-version         # Python version pin for uv
 ├── package.json            # Node.js dependencies
 └── docker-compose.yml      # Container orchestration
 ```
@@ -297,7 +299,7 @@ chaptr/
 ## Installation & Setup
 
 ### Prerequisites
-- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (Python toolchain manager — replaces pyenv, pip, venv)
 - MongoDB 4.4+
 - Node.js 18+ (for frontend tests)
 - Docker (optional)
@@ -308,11 +310,12 @@ chaptr/
 # Clone and setup
 git clone <repository-url>
 cd Chaptr
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install Python and dependencies via uv (creates .venv automatically)
+uv sync
+uv sync --group dev  # include dev dependencies
+
+# Install frontend test dependencies
 npm install
 
 # Configure environment
