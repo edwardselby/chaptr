@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Admin Operations
     admin_password: Optional[str] = None
+    admin_username: Optional[str] = None
 
     # Change Log Pruning Configuration
     change_log_retention_days: int = 31
